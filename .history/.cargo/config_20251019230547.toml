@@ -1,0 +1,11 @@
+# This configuration attempts to work around a bug in the MSVC linker (LNK1318).
+
+[profile.dev]
+# This changes the debug info strategy to create a single PDB file, which can 
+# help avoid PDB-merging bugs in the linker.
+split-debuginfo = "packed"
+
+# Disabling incremental compilation can also avoid linker bugs by ensuring
+# a full, clean build process every time. This is a common workaround for 
+# stubborn linker errors.
+incremental = false
