@@ -33,7 +33,7 @@ fn init_database() -> Result<()> {
 }
 
 
-// --- 账户配置数据结构 ---
+// --- 数据结构定义 ---
 #[derive(Serialize, Deserialize, Debug, Clone)]
 struct AccountConfig {
     id: Option<i32>,
@@ -43,6 +43,14 @@ struct AccountConfig {
     imap_port: u16,
     smtp_server: String,
     smtp_port: u16,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct EmailHeader {
+    uid: u32,
+    subject: String,
+    from: String,
+    date: String,
 }
 
 // --- Tauri 命令 ---
@@ -82,58 +90,137 @@ fn load_account_configs() -> Result<Vec<AccountConfig>, String> {
 }
 
 
-// 异步收取邮件的骨架
+// 异步收取邮件
 #[command]
-async fn fetch_emails(config: AccountConfig) -> Result<String, String> {
+async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, String> {
     println!("Fetching emails for {}", config.email);
+    let email_for_log = config.email.clone(); // Clone email before config is moved.
     
-tokio::task::spawn_blocking(move || {
+    let emails = tokio::task::spawn_blocking(move || -> Result<Vec<EmailHeader>, String> {
         let domain = config.imap_server.as_str();
         let port = config.imap_port;
         let email = config.email.as_str();
         let password = config.password.as_str();
 
-        let tls = TlsConnector::builder().build().unwrap();
-        let client_result = imap::connect((domain, port), domain, &tls);
-        
-        let client = match client_result {
-            Ok(client) => client,
-            Err(error) => {
-                eprintln!("Error connecting to IMAP: {}", error);
-                return;
-            }
-        };
+        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
+        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
 
-        let mut imap_session = match client.login(email, password) {
-            Ok(session) => session,
-            Err((e, _)) => {
-                eprintln!("Error logging in: {}", e);
-                return;
-            }
-        };
+        let mut imap_session = client.login(email, password).map_err(|e| e.0.to_string())?;
+        println!("IMAP login successful");
 
-        if let Err(error) = imap_session.select("INBOX") {
-            eprintln!("Error selecting INBOX: {}", error);
-            return;
+        let mailbox = imap_session.select("INBOX").map_err(|e| e.to_string())?;
+        println!("INBOX selected with {} messages", mailbox.exists);
+
+        let total = mailbox.exists;
+        if total == 0 {
+            return Ok(Vec::new());
         }
-        println!("INBOX selected");
 
-        match imap_session.fetch("1:*", "UID") {
-            Ok(messages) => {
-                for msg in messages.iter() {
-                    println!("Message UID: {:?}", msg.uid);
-                }
-            },
-            Err(error) => {
-                eprintln!("Error fetching messages: {}", error);
-                return;
-            }
+        let start = total.saturating_sub(19);
+        let seq_range = format!("{}:{}", start, total);
+
+        // 获取最近20封邮件的 ENVELOPE
+        let messages = imap_session.fetch(seq_range, "(UID ENVELOPE)").map_err(|e| e.to_string())?;
+        
+        let mut headers = Vec::new();
+        // 邮件是按顺序返回的，我们需要反转它以将最新的显示在最前面
+        for msg in messages.iter().rev() { 
+            let envelope = msg.envelope().ok_or("No envelope found")?;
+            let subject = envelope
+                .subject
+                .as_ref()
+                .map(|s| String::from_utf8_lossy(s).to_string())
+                .unwrap_or_else(|| "(No Subject)".to_string());
+
+            let from = envelope
+                .from
+                .as_ref()
+                .map(|addrs| {
+                    addrs.iter().map(|addr| {
+                        format!("{}", String::from_utf8_lossy(addr.mailbox.unwrap_or_default()))
+                    }).collect::<Vec<_>>().join(", ")
+                })
+                .unwrap_or_else(|| "(Unknown Sender)".to_string());
+
+            let date = envelope
+                .date
+                .as_ref()
+                .map(|d| String::from_utf8_lossy(d).to_string())
+                .unwrap_or_else(|| "(No Date)".to_string());
+
+            headers.push(EmailHeader {
+                uid: msg.uid.unwrap_or(0),
+                subject,
+                from,
+                date,
+            });
         }
 
         let _ = imap_session.logout();
-    });
+        Ok(headers)
+    }).await.map_err(|e| e.to_string())??;
 
-    Ok("Started fetching emails in background.".into())
+    println!("✅ Fetched {} email headers for {}", emails.len(), email_for_log);
+    Ok(emails)
+}
+
+#[command]
+async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String, String> {
+    println!("Fetching body for UID {}", uid);
+
+    let body = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let domain = config.imap_server.as_str();
+        let port = config.imap_port;
+        let email = config.email.as_str();
+        let password = config.password.as_str();
+
+        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
+        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
+
+        let mut imap_session = client.login(email, password).map_err(|e| e.0.to_string())?;
+        imap_session.select("INBOX").map_err(|e| e.to_string())?;
+
+        let messages = imap_session.uid_fetch(uid.to_string(), "BODY[]").map_err(|e| e.to_string())?;
+        let message = messages.first().ok_or("No message found for UID")?;
+
+        let raw_body = message.body().unwrap_or_default();
+        
+        let parsed_mail = mailparse::parse_mail(raw_body).map_err(|e| e.to_string())?;
+
+        // 优先查找 HTML 正文，其次是纯文本正文
+        let mut html_body = None;
+        let mut text_body = None;
+
+        if parsed_mail.ctype.mimetype == "text/html" {
+            html_body = Some(parsed_mail.get_body().unwrap_or_default());
+        } else if parsed_mail.ctype.mimetype == "text/plain" {
+            text_body = Some(parsed_mail.get_body().unwrap_or_default());
+        }
+
+        for part in &parsed_mail.subparts {
+            if part.ctype.mimetype == "text/html" {
+                html_body = Some(part.get_body().unwrap_or_default());
+                break; // 找到HTML就优先使用
+            } else if part.ctype.mimetype == "text/plain" {
+                text_body = Some(part.get_body().unwrap_or_default());
+            }
+        }
+
+        let final_body = if let Some(body) = html_body {
+            body
+        } else if let Some(body) = text_body {
+            // 将纯文本转换为 pre 标签，以保留换行和空格
+            format!("<pre>{}</pre>", html_escape::encode_text(&body))
+        } else {
+            "(No readable body found)".to_string()
+        };
+
+        let _ = imap_session.logout();
+        Ok(final_body)
+    }).await.map_err(|e| e.to_string())??;
+
+    println!("✅ Fetched and parsed body for UID {}", uid);
+    Ok(body)
 }
 
 // 异步发送邮件的骨架
@@ -189,6 +276,7 @@ fn main() {
             save_account_config,
             load_account_configs,
             fetch_emails,
+            fetch_email_body,
             send_email
         ])
         .run(tauri::generate_context!())

@@ -10,7 +10,8 @@
     smtp_port: 465,
   };
 
-  async function saveConfig() {
+  async function saveConfig(event: SubmitEvent) {
+    event.preventDefault();
     try {
       await invoke("save_account_config", { config: accountConfig });
       alert("配置已保存！");
@@ -29,7 +30,7 @@
 
 <div class="container">
   <h1>账户配置</h1>
-  <form on:submit|preventDefault={saveConfig}>
+  <form onsubmit={saveConfig}>
     <div class="form-group">
       <label for="email">邮箱地址</label>
       <input id="email" type="email" bind:value={accountConfig.email} required>
@@ -57,7 +58,7 @@
     <button type="submit">保存配置</button>
   </form>
 
-  <button on:click={testFetch} style="margin-top: 20px;">测试收取邮件</button>
+  <button onclick={testFetch} style="margin-top: 20px;">测试收取邮件</button>
 </div>
 <style>
   .container {
