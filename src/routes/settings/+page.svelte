@@ -1,4 +1,4 @@
-'''<script lang="ts">
+<script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
 
   let accountConfig = {
@@ -59,7 +59,6 @@
 
   <button on:click={testFetch} style="margin-top: 20px;">测试收取邮件</button>
 </div>
-
 <style>
   .container {
     padding: 2rem;
@@ -93,4 +92,3 @@
     background-color: #0056b3;
   }
 </style>
-''

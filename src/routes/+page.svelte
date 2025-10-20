@@ -1,155 +1,150 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
 
-  let name = $state("");
-  let greetMsg = $state("");
-
-  async function greet(event: Event) {
-    event.preventDefault();
-    // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
-    greetMsg = await invoke("greet", { name });
+  // 与 Rust 后端匹配的账户配置类型
+  interface AccountConfig {
+    id: number;
+    email: string;
+    // 其他字段暂时不需要
   }
+
+  let accounts = $state<AccountConfig[]>([]);
+  let error = $state<string | null>(null);
+
+  // 组件加载时，从后端获取账户列表
+  onMount(async () => {
+    try {
+      const loadedAccounts = await invoke<AccountConfig[]>("load_account_configs");
+      accounts = loadedAccounts;
+      console.log("Accounts loaded into UI:", loadedAccounts);
+    } catch (e) {
+      error = `Failed to load accounts: ${e}`;
+      console.error(error);
+    }
+  });
+
 </script>
 
-<main class="container">
-  <a href="/settings">账户配置</a>
-  <h1>Welcome to Tauri + Svelte</h1>  <div class="row">
-    <a href="https://vite.dev" target="_blank">
-      <img src="/vite.svg" class="logo vite" alt="Vite Logo" />
-    </a>
-    <a href="https://tauri.app" target="_blank">
-      <img src="/tauri.svg" class="logo tauri" alt="Tauri Logo" />
-    </a>
-    <a href="https://svelte.dev" target="_blank">
-      <img src="/svelte.svg" class="logo svelte-kit" alt="SvelteKit Logo" />
-    </a>
-  </div>
-  <p>Click on the Tauri, Vite, and SvelteKit logos to learn more.</p>
+<div class="main-layout">
+  <aside class="sidebar">
+    <h2>Accounts</h2>
+    {#if error}
+      <p class="error-message">{error}</p>
+    {/if}
+    <ul>
+      {#each accounts as account (account.id)}
+        <li class="account-item">{account.email}</li>
+      {/each}
+      {#if accounts.length === 0 && !error}
+        <li class="no-accounts">No accounts configured.</li>
+      {/if}
+    </ul>
+    <a href="/settings" class="settings-link">+ Add Account</a>
+  </aside>
 
-  <form class="row" onsubmit={greet}>
-    <input id="greet-input" placeholder="Enter a name..." bind:value={name} />
-    <button type="submit">Greet</button>
-  </form>
-  <p>{greetMsg}</p>
-</main>
+  <main class="content-pane">
+    <h1>Welcome to Mail Desk</h1>
+    <p>Select an account from the sidebar to view emails.</p>
+  </main>
+</div>
 
 <style>
-.logo.vite:hover {
-  filter: drop-shadow(0 0 2em #747bff);
-}
-
-.logo.svelte-kit:hover {
-  filter: drop-shadow(0 0 2em #ff3e00);
-}
-
-:root {
-  font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 400;
-
-  color: #0f0f0f;
-  background-color: #f6f6f6;
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  -webkit-text-size-adjust: 100%;
-}
-
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: 0.75s;
-}
-
-.logo.tauri:hover {
-  filter: drop-shadow(0 0 2em #24c8db);
-}
-
-.row {
-  display: flex;
-  justify-content: center;
-}
-
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-
-a:hover {
-  color: #535bf2;
-}
-
-h1 {
-  text-align: center;
-}
-
-input,
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  color: #0f0f0f;
-  background-color: #ffffff;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-}
-
-button {
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: #396cd8;
-}
-button:active {
-  border-color: #396cd8;
-  background-color: #e8e8e8;
-}
-
-input,
-button {
-  outline: none;
-}
-
-#greet-input {
-  margin-right: 5px;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color: #f6f6f6;
-    background-color: #2f2f2f;
+  .main-layout {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
+    background-color: #f6f6f6;
+    color: #0f0f0f;
   }
 
-  a:hover {
-    color: #24c8db;
+  .sidebar {
+    width: 280px;
+    background-color: #e8e8e8;
+    padding: 1rem;
+    border-right: 1px solid #dcdcdc;
+    display: flex;
+    flex-direction: column;
   }
 
-  input,
-  button {
-    color: #ffffff;
-    background-color: #0f0f0f98;
+  .sidebar h2 {
+    margin-top: 0;
+    border-bottom: 1px solid #dcdcdc;
+    padding-bottom: 0.5rem;
   }
-  button:active {
-    background-color: #0f0f0f69;
-  }
-}
 
+  .sidebar ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    flex-grow: 1;
+  }
+
+  .account-item {
+    padding: 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s;
+  }
+
+  .account-item:hover {
+    background-color: #dcdcdc;
+  }
+
+  .no-accounts {
+    padding: 0.75rem;
+    color: #666;
+  }
+
+  .settings-link {
+      display: block;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 6px;
+      background-color: #007bff;
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      margin-top: 1rem;
+  }
+
+  .settings-link:hover {
+      background-color: #0056b3;
+  }
+
+  .content-pane {
+    flex-grow: 1;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  .error-message {
+    color: #d9534f;
+  }
+
+  /* Dark mode styles */
+  @media (prefers-color-scheme: dark) {
+    .main-layout {
+      background-color: #2f2f2f;
+      color: #f6f6f6;
+    }
+    .sidebar {
+      background-color: #252525;
+      border-right: 1px solid #3a3a3a;
+    }
+    .sidebar h2 {
+      border-bottom: 1px solid #3a3a3a;
+    }
+    .account-item:hover {
+      background-color: #3a3a3a;
+    }
+    .settings-link {
+        background-color: #24c8db;
+    }
+    .settings-link:hover {
+        background-color: #1c9aa8;
+    }
+  }
 </style>
