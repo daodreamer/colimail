@@ -89,6 +89,8 @@ pub async fn listen_for_oauth_callback() -> Result<(String, String), String> {
         .map_err(|e| format!("Failed to read request line: {}", e))?
         .ok_or_else(|| "Empty request".to_string())?;
 
+    println!("📥 Received request: {}", request_line);
+
     // Parse the callback URL
     let parts: Vec<&str> = request_line.split_whitespace().collect();
     if parts.len() < 2 {
@@ -96,18 +98,31 @@ pub async fn listen_for_oauth_callback() -> Result<(String, String), String> {
     }
 
     let path = parts[1];
+    println!("🔍 Callback path: {}", path);
+
     let url = format!("http://localhost:8765{}", path);
     let parsed_url = url::Url::parse(&url).map_err(|e| format!("Failed to parse URL: {}", e))?;
 
     let mut code = None;
     let mut state = None;
+    let mut error = None;
+    let mut error_description = None;
 
     for (key, value) in parsed_url.query_pairs() {
+        println!("  {} = {}", key, value);
         match key.as_ref() {
             "code" => code = Some(value.to_string()),
             "state" => state = Some(value.to_string()),
+            "error" => error = Some(value.to_string()),
+            "error_description" => error_description = Some(value.to_string()),
             _ => {}
         }
+    }
+
+    // Check for OAuth error responses
+    if let Some(err) = error {
+        let desc = error_description.unwrap_or_else(|| "No description".to_string());
+        return Err(format!("OAuth error: {} - {}", err, desc));
     }
 
     // Send success response to browser
@@ -133,8 +148,15 @@ pub async fn listen_for_oauth_callback() -> Result<(String, String), String> {
         .await
         .map_err(|e| format!("Failed to flush stream: {}", e))?;
 
-    let code = code.ok_or_else(|| "Missing authorization code".to_string())?;
-    let state = state.ok_or_else(|| "Missing state parameter".to_string())?;
+    let code = code.ok_or_else(|| {
+        println!("❌ Missing authorization code in callback URL");
+        "Missing authorization code. The OAuth provider may have sent an error or the callback was incomplete.".to_string()
+    })?;
+    let state = state.ok_or_else(|| {
+        println!("❌ Missing state parameter in callback URL");
+        "Missing state parameter".to_string()
+    })?;
 
+    println!("✅ Successfully received authorization code");
     Ok((code, state))
 }

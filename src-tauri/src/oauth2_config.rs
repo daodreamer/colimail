@@ -132,8 +132,10 @@ impl OAuth2Provider {
             auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
             token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
             scopes: vec![
-                "https://outlook.office365.com/IMAP.AccessAsUser.All".to_string(),
-                "https://outlook.office365.com/SMTP.Send".to_string(),
+                // Microsoft Graph API v2.0 scopes
+                "https://graph.microsoft.com/IMAP.AccessAsUser.All".to_string(),
+                "https://graph.microsoft.com/SMTP.Send".to_string(),
+                "https://graph.microsoft.com/User.Read".to_string(),
                 "offline_access".to_string(),
             ],
             imap_server: "outlook.office365.com".to_string(),
