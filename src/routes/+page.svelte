@@ -86,6 +86,29 @@
       }
   }
 
+  async function handleDeleteAccount(email: string, event: MouseEvent) {
+      event.stopPropagation();
+
+      if (!confirm(`确定要删除账户 ${email} 吗？`)) {
+          return;
+      }
+
+      try {
+          await invoke("delete_account", { email });
+          // Reload accounts
+          accounts = await invoke<AccountConfig[]>("load_account_configs");
+          // Clear selection if deleted account was selected
+          const deletedAccount = accounts.find(acc => acc.email === email);
+          if (deletedAccount && deletedAccount.id === selectedAccountId) {
+              selectedAccountId = null;
+              emails = [];
+              emailBody = null;
+          }
+      } catch (e) {
+          error = `Failed to delete account: ${e}`;
+      }
+  }
+
 </script>
 
 <div class="main-layout">
@@ -95,13 +118,23 @@
     <ul>
       {#each accounts as account (account.id)}
         <li>
-          <button 
-            class="account-item" 
-            class:selected={account.id === selectedAccountId}
-            onclick={() => handleAccountClick(account.id)}
-          >
-            {account.email}
-          </button>
+          <div class="account-item-wrapper">
+            <button
+              class="account-item"
+              class:selected={account.id === selectedAccountId}
+              onclick={() => handleAccountClick(account.id)}
+            >
+              {account.email}
+            </button>
+            <button
+              class="delete-button"
+              onclick={(e) => handleDeleteAccount(account.email, e)}
+              title="删除账户"
+              aria-label="删除账户 {account.email}"
+            >
+              ×
+            </button>
+          </div>
         </li>
       {/each}
       {#if accounts.length === 0 && !error}
@@ -223,9 +256,16 @@
       margin-bottom: 4px;
   }
 
+  .account-item-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+  }
+
   .account-item {
     background: none; border: none; font: inherit; color: inherit; text-align: left;
-    width: 100%;
+    flex: 1;
     padding: 0.75rem;
     border-radius: 6px;
     cursor: pointer;
@@ -243,6 +283,33 @@
   .account-item.selected {
     background-color: var(--selected-bg);
     color: var(--selected-text);
+  }
+
+  .delete-button {
+    background: none;
+    border: none;
+    color: #999;
+    font-size: 1.5rem;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    transition: all 0.2s;
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .delete-button:hover {
+    background-color: #ff4444;
+    color: white;
+  }
+
+  .account-item-wrapper:hover .delete-button {
+    opacity: 1;
   }
 
   .settings-link {

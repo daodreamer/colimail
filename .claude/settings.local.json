@@ -3,7 +3,9 @@
     "allow": [
       "Bash(cargo fmt:*)",
       "Bash(cargo check:*)",
-      "Bash(npm run check:*)"
+      "Bash(npm run check:*)",
+      "WebSearch",
+      "WebFetch(domain:docs.rs)"
     ],
     "deny": [],
     "ask": []

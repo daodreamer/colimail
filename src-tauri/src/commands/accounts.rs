@@ -3,6 +3,20 @@ use crate::models::{AccountConfig, AuthType};
 use tauri::command;
 
 #[command]
+pub async fn delete_account(email: String) -> Result<(), String> {
+    let pool = pool();
+
+    sqlx::query("DELETE FROM accounts WHERE email = ?")
+        .bind(&email)
+        .execute(&*pool)
+        .await
+        .map_err(|e| format!("Failed to delete account: {}", e))?;
+
+    println!("✅ Account deleted from database: {}", email);
+    Ok(())
+}
+
+#[command]
 pub async fn save_account_config(config: AccountConfig) -> Result<(), String> {
     let pool = pool();
 

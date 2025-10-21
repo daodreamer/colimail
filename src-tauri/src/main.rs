@@ -6,8 +6,9 @@ mod models;
 mod oauth2_config;
 
 use commands::{
-    complete_oauth2_flow, fetch_email_body, fetch_emails, listen_for_oauth_callback,
-    load_account_configs, save_account_config, send_email, start_oauth2_flow,
+    complete_oauth2_flow, delete_account, fetch_email_body, fetch_emails,
+    listen_for_oauth_callback, load_account_configs, save_account_config, send_email,
+    start_oauth2_flow,
 };
 
 #[tokio::main]
@@ -27,6 +28,7 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             save_account_config,
             load_account_configs,
+            delete_account,
             fetch_emails,
             fetch_email_body,
             send_email,

@@ -1,6 +1,7 @@
 use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse,
+    TokenUrl,
 };
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -132,10 +133,10 @@ impl OAuth2Provider {
             auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
             token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
             scopes: vec![
-                // Microsoft Graph API v2.0 scopes
-                "https://graph.microsoft.com/IMAP.AccessAsUser.All".to_string(),
-                "https://graph.microsoft.com/SMTP.Send".to_string(),
-                "https://graph.microsoft.com/User.Read".to_string(),
+                // Use Outlook-specific scopes for IMAP/SMTP access
+                // Note: These require "Office 365 Exchange Online" API permissions in Azure AD
+                "https://outlook.office.com/IMAP.AccessAsUser.All".to_string(),
+                "https://outlook.office.com/SMTP.Send".to_string(),
                 "offline_access".to_string(),
             ],
             imap_server: "outlook.office365.com".to_string(),
@@ -266,5 +267,47 @@ impl OAuth2Provider {
 
         !provider_obj.client_id.starts_with("YOUR_")
             && !provider_obj.client_secret.starts_with("YOUR_")
+    }
+
+    /// Refresh an access token using a refresh token
+    pub async fn refresh_access_token(
+        &self,
+        refresh_token_str: &str,
+    ) -> Result<(String, Option<i64>), String> {
+        // Create OAuth2 client
+        let client = BasicClient::new(ClientId::new(self.client_id.clone()))
+            .set_client_secret(ClientSecret::new(self.client_secret.clone()))
+            .set_auth_uri(
+                AuthUrl::new(self.auth_url.clone())
+                    .map_err(|e| format!("Invalid auth URL: {}", e))?,
+            )
+            .set_token_uri(
+                TokenUrl::new(self.token_url.clone())
+                    .map_err(|e| format!("Invalid token URL: {}", e))?,
+            );
+
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+        // Exchange refresh token for new access token
+        let token_result = client
+            .exchange_refresh_token(&RefreshToken::new(refresh_token_str.to_string()))
+            .request_async(&http_client)
+            .await
+            .map_err(|e| format!("Failed to refresh access token: {}", e))?;
+
+        let access_token = token_result.access_token().secret().to_string();
+
+        let expires_at = token_result.expires_in().map(|duration| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            now + duration.as_secs() as i64
+        });
+
+        Ok((access_token, expires_at))
     }
 }

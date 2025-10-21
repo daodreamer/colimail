@@ -1,4 +1,5 @@
-use crate::models::AccountConfig;
+use crate::commands::utils::ensure_valid_token;
+use crate::models::{AccountConfig, AuthType};
 use lettre::{
     message::Mailbox, transport::smtp::authentication::Credentials, AsyncSmtpTransport,
     AsyncTransport, Message, Tokio1Executor,
@@ -14,6 +15,9 @@ pub async fn send_email(
 ) -> Result<String, String> {
     println!("Sending email to {}", to);
 
+    // Ensure we have a valid access token (refresh if needed)
+    let config = ensure_valid_token(config).await?;
+
     let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
@@ -24,11 +28,22 @@ pub async fn send_email(
         .body(body)
         .map_err(|e| e.to_string())?;
 
-    let password = config
-        .password
-        .clone()
-        .ok_or("Password is required for basic authentication")?;
-    let creds = Credentials::new(config.email.clone(), password);
+    let creds = match config.auth_type {
+        Some(AuthType::OAuth2) => {
+            let access_token = config
+                .access_token
+                .clone()
+                .ok_or("Access token is required for OAuth2 authentication")?;
+            Credentials::new(config.email.clone(), access_token)
+        }
+        _ => {
+            let password = config
+                .password
+                .clone()
+                .ok_or("Password is required for basic authentication")?;
+            Credentials::new(config.email.clone(), password)
+        }
+    };
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
         .map_err(|e| e.to_string())?
