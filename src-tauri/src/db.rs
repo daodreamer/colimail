@@ -12,7 +12,9 @@ pub async fn init() -> Result<(), sqlx::Error> {
     std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
     let db_path = data_dir.join("maildesk.db");
 
-    let db_url = format!("sqlite://{}", db_path.to_str().unwrap());
+    println!("Database path: {}", db_path.display());
+
+    let db_url = format!("sqlite://{}?mode=rwc", db_path.to_str().unwrap());
 
     // Create connection pool
     let pool = SqlitePoolOptions::new()
