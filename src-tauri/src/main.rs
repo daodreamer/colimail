@@ -8,10 +8,11 @@ use commands::{
     fetch_email_body, fetch_emails, load_account_configs, save_account_config, send_email,
 };
 
-fn main() {
-    db::init().expect("Failed to initialize database");
+#[tokio::main]
+async fn main() {
+    db::init().await.expect("Failed to initialize database");
 
-    match load_account_configs() {
+    match load_account_configs().await {
         Ok(accounts) => println!(
             "🚀 App startup: Loaded {} accounts from database.",
             accounts.len()

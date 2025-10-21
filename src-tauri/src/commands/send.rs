@@ -14,10 +14,7 @@ pub async fn send_email(
 ) -> Result<String, String> {
     println!("Sending email to {}", to);
 
-    let from: Mailbox = config
-        .email
-        .parse::<Mailbox>()
-        .map_err(|e| e.to_string())?;
+    let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
     let email = Message::builder()
