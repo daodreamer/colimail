@@ -2,13 +2,58 @@ use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
 };
+use once_cell::sync::Lazy;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fs;
 use std::sync::Mutex;
 
 lazy_static::lazy_static! {
     // Store PKCE verifiers for pending OAuth flows
     static ref OAUTH_SESSIONS: Mutex<HashMap<String, PkceCodeVerifier>> = Mutex::new(HashMap::new());
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct OAuth2Credentials {
+    google: ProviderCredentials,
+    outlook: ProviderCredentials,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct ProviderCredentials {
+    client_id: String,
+    client_secret: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
+static CREDENTIALS: Lazy<Option<OAuth2Credentials>> = Lazy::new(|| {
+    // Try to load credentials from file (for official builds)
+    if let Ok(content) = fs::read_to_string("oauth2_credentials.json") {
+        if let Ok(creds) = serde_json::from_str::<OAuth2Credentials>(&content) {
+            println!("✓ Loaded OAuth2 credentials from oauth2_credentials.json");
+            return Some(creds);
+        } else {
+            eprintln!("⚠ Warning: oauth2_credentials.json exists but is invalid");
+        }
+    }
+
+    // Fallback: check if it's in the executable directory
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let config_path = exe_dir.join("oauth2_credentials.json");
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                if let Ok(creds) = serde_json::from_str::<OAuth2Credentials>(&content) {
+                    println!("✓ Loaded OAuth2 credentials from {}", config_path.display());
+                    return Some(creds);
+                }
+            }
+        }
+    }
+
+    println!("ℹ No oauth2_credentials.json found, will use environment variables");
+    None
+});
 
 pub struct OAuth2Provider {
     pub client_id: String,
@@ -24,13 +69,29 @@ pub struct OAuth2Provider {
 
 impl OAuth2Provider {
     pub fn google() -> Self {
+        let (client_id, client_secret) = if let Some(creds) = &*CREDENTIALS {
+            // Use credentials from config file
+            (
+                creds.google.client_id.clone(),
+                creds.google.client_secret.clone(),
+            )
+        } else {
+            // Fallback to environment variables
+            (
+                std::env::var("GOOGLE_CLIENT_ID").unwrap_or_else(|_| {
+                    eprintln!("⚠ Warning: GOOGLE_CLIENT_ID not set");
+                    "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com".to_string()
+                }),
+                std::env::var("GOOGLE_CLIENT_SECRET").unwrap_or_else(|_| {
+                    eprintln!("⚠ Warning: GOOGLE_CLIENT_SECRET not set");
+                    "YOUR_GOOGLE_CLIENT_SECRET".to_string()
+                }),
+            )
+        };
+
         Self {
-            // These are placeholder values - users need to create their own OAuth app
-            // in Google Cloud Console and replace these
-            client_id: std::env::var("GOOGLE_CLIENT_ID")
-                .unwrap_or_else(|_| "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com".to_string()),
-            client_secret: std::env::var("GOOGLE_CLIENT_SECRET")
-                .unwrap_or_else(|_| "YOUR_GOOGLE_CLIENT_SECRET".to_string()),
+            client_id,
+            client_secret,
             auth_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
             token_url: "https://oauth2.googleapis.com/token".to_string(),
             scopes: vec![
@@ -45,13 +106,29 @@ impl OAuth2Provider {
     }
 
     pub fn outlook() -> Self {
+        let (client_id, client_secret) = if let Some(creds) = &*CREDENTIALS {
+            // Use credentials from config file
+            (
+                creds.outlook.client_id.clone(),
+                creds.outlook.client_secret.clone(),
+            )
+        } else {
+            // Fallback to environment variables
+            (
+                std::env::var("OUTLOOK_CLIENT_ID").unwrap_or_else(|_| {
+                    eprintln!("⚠ Warning: OUTLOOK_CLIENT_ID not set");
+                    "YOUR_OUTLOOK_CLIENT_ID".to_string()
+                }),
+                std::env::var("OUTLOOK_CLIENT_SECRET").unwrap_or_else(|_| {
+                    eprintln!("⚠ Warning: OUTLOOK_CLIENT_SECRET not set");
+                    "YOUR_OUTLOOK_CLIENT_SECRET".to_string()
+                }),
+            )
+        };
+
         Self {
-            // These are placeholder values - users need to register an app
-            // in Microsoft Azure Portal and replace these
-            client_id: std::env::var("OUTLOOK_CLIENT_ID")
-                .unwrap_or_else(|_| "YOUR_OUTLOOK_CLIENT_ID".to_string()),
-            client_secret: std::env::var("OUTLOOK_CLIENT_SECRET")
-                .unwrap_or_else(|_| "YOUR_OUTLOOK_CLIENT_SECRET".to_string()),
+            client_id,
+            client_secret,
             auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
             token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
             scopes: vec![
@@ -75,6 +152,13 @@ impl OAuth2Provider {
     }
 
     pub fn generate_auth_url(&self) -> Result<(String, String), String> {
+        // Validate credentials before proceeding
+        if self.client_id.starts_with("YOUR_") {
+            return Err(
+                "OAuth2 credentials not configured. Please set up oauth2_credentials.json or environment variables.".to_string()
+            );
+        }
+
         // Create OAuth2 client
         let client = BasicClient::new(ClientId::new(self.client_id.clone()))
             .set_client_secret(ClientSecret::new(self.client_secret.clone()))
@@ -158,9 +242,7 @@ impl OAuth2Provider {
             .map_err(|e| format!("Failed to exchange authorization code: {}", e))?;
 
         let access_token = token_result.access_token().secret().to_string();
-        let refresh_token = token_result
-            .refresh_token()
-            .map(|t| t.secret().to_string());
+        let refresh_token = token_result.refresh_token().map(|t| t.secret().to_string());
 
         let expires_at = token_result.expires_in().map(|duration| {
             let now = std::time::SystemTime::now()
@@ -171,5 +253,16 @@ impl OAuth2Provider {
         });
 
         Ok((access_token, refresh_token, expires_at))
+    }
+
+    /// Check if credentials are configured (for UI validation)
+    pub fn are_credentials_configured(provider: &str) -> bool {
+        let provider_obj = match Self::get_provider(provider) {
+            Ok(p) => p,
+            Err(_) => return false,
+        };
+
+        !provider_obj.client_id.starts_with("YOUR_")
+            && !provider_obj.client_secret.starts_with("YOUR_")
     }
 }

@@ -2397,6 +2397,7 @@ dependencies = [
  "mailparse",
  "native-tls",
  "oauth2",
+ "once_cell",
  "reqwest",
  "serde",
  "serde_json",
