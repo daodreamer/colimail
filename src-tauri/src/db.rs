@@ -25,11 +25,15 @@ pub async fn init() -> Result<(), sqlx::Error> {
         "CREATE TABLE IF NOT EXISTS accounts (
             id INTEGER PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
-            password TEXT NOT NULL,
+            password TEXT,
             imap_server TEXT NOT NULL,
             imap_port INTEGER NOT NULL,
             smtp_server TEXT NOT NULL,
-            smtp_port INTEGER NOT NULL
+            smtp_port INTEGER NOT NULL,
+            auth_type TEXT NOT NULL DEFAULT 'basic',
+            access_token TEXT,
+            refresh_token TEXT,
+            token_expires_at INTEGER
         )",
     )
     .execute(&pool)

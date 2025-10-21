@@ -1,0 +1,175 @@
+use oauth2::{
+    basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
+    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, Scope, TokenResponse, TokenUrl,
+};
+use std::collections::HashMap;
+use std::sync::Mutex;
+
+lazy_static::lazy_static! {
+    // Store PKCE verifiers for pending OAuth flows
+    static ref OAUTH_SESSIONS: Mutex<HashMap<String, PkceCodeVerifier>> = Mutex::new(HashMap::new());
+}
+
+pub struct OAuth2Provider {
+    pub client_id: String,
+    pub client_secret: String,
+    pub auth_url: String,
+    pub token_url: String,
+    pub scopes: Vec<String>,
+    pub imap_server: String,
+    pub imap_port: u16,
+    pub smtp_server: String,
+    pub smtp_port: u16,
+}
+
+impl OAuth2Provider {
+    pub fn google() -> Self {
+        Self {
+            // These are placeholder values - users need to create their own OAuth app
+            // in Google Cloud Console and replace these
+            client_id: std::env::var("GOOGLE_CLIENT_ID")
+                .unwrap_or_else(|_| "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com".to_string()),
+            client_secret: std::env::var("GOOGLE_CLIENT_SECRET")
+                .unwrap_or_else(|_| "YOUR_GOOGLE_CLIENT_SECRET".to_string()),
+            auth_url: "https://accounts.google.com/o/oauth2/v2/auth".to_string(),
+            token_url: "https://oauth2.googleapis.com/token".to_string(),
+            scopes: vec![
+                "https://mail.google.com/".to_string(),
+                "https://www.googleapis.com/auth/userinfo.email".to_string(),
+            ],
+            imap_server: "imap.gmail.com".to_string(),
+            imap_port: 993,
+            smtp_server: "smtp.gmail.com".to_string(),
+            smtp_port: 465,
+        }
+    }
+
+    pub fn outlook() -> Self {
+        Self {
+            // These are placeholder values - users need to register an app
+            // in Microsoft Azure Portal and replace these
+            client_id: std::env::var("OUTLOOK_CLIENT_ID")
+                .unwrap_or_else(|_| "YOUR_OUTLOOK_CLIENT_ID".to_string()),
+            client_secret: std::env::var("OUTLOOK_CLIENT_SECRET")
+                .unwrap_or_else(|_| "YOUR_OUTLOOK_CLIENT_SECRET".to_string()),
+            auth_url: "https://login.microsoftonline.com/common/oauth2/v2.0/authorize".to_string(),
+            token_url: "https://login.microsoftonline.com/common/oauth2/v2.0/token".to_string(),
+            scopes: vec![
+                "https://outlook.office365.com/IMAP.AccessAsUser.All".to_string(),
+                "https://outlook.office365.com/SMTP.Send".to_string(),
+                "offline_access".to_string(),
+            ],
+            imap_server: "outlook.office365.com".to_string(),
+            imap_port: 993,
+            smtp_server: "smtp.office365.com".to_string(),
+            smtp_port: 587,
+        }
+    }
+
+    pub fn get_provider(provider: &str) -> Result<Self, String> {
+        match provider.to_lowercase().as_str() {
+            "google" => Ok(Self::google()),
+            "outlook" => Ok(Self::outlook()),
+            _ => Err(format!("Unsupported provider: {}", provider)),
+        }
+    }
+
+    pub fn generate_auth_url(&self) -> Result<(String, String), String> {
+        // Create OAuth2 client
+        let client = BasicClient::new(ClientId::new(self.client_id.clone()))
+            .set_client_secret(ClientSecret::new(self.client_secret.clone()))
+            .set_auth_uri(
+                AuthUrl::new(self.auth_url.clone())
+                    .map_err(|e| format!("Invalid auth URL: {}", e))?,
+            )
+            .set_token_uri(
+                TokenUrl::new(self.token_url.clone())
+                    .map_err(|e| format!("Invalid token URL: {}", e))?,
+            )
+            .set_redirect_uri(
+                RedirectUrl::new("http://localhost:8765/callback".to_string())
+                    .map_err(|e| format!("Invalid redirect URL: {}", e))?,
+            );
+
+        // Generate PKCE challenge
+        let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+
+        // Generate authorization URL
+        let mut auth_request = client
+            .authorize_url(CsrfToken::new_random)
+            .set_pkce_challenge(pkce_challenge);
+
+        // Add scopes
+        for scope in &self.scopes {
+            auth_request = auth_request.add_scope(Scope::new(scope.clone()));
+        }
+
+        let (auth_url, csrf_token) = auth_request.url();
+
+        // Store the verifier for later verification
+        let state = csrf_token.secret().to_string();
+        OAUTH_SESSIONS
+            .lock()
+            .unwrap()
+            .insert(state.clone(), pkce_verifier);
+
+        Ok((auth_url.to_string(), state))
+    }
+
+    pub async fn exchange_code(
+        &self,
+        code: &str,
+        state: &str,
+    ) -> Result<(String, Option<String>, Option<i64>), String> {
+        // Retrieve and remove the stored verifier
+        let pkce_verifier = OAUTH_SESSIONS
+            .lock()
+            .unwrap()
+            .remove(state)
+            .ok_or_else(|| "Invalid or expired OAuth state".to_string())?;
+
+        // Create OAuth2 client
+        let client = BasicClient::new(ClientId::new(self.client_id.clone()))
+            .set_client_secret(ClientSecret::new(self.client_secret.clone()))
+            .set_auth_uri(
+                AuthUrl::new(self.auth_url.clone())
+                    .map_err(|e| format!("Invalid auth URL: {}", e))?,
+            )
+            .set_token_uri(
+                TokenUrl::new(self.token_url.clone())
+                    .map_err(|e| format!("Invalid token URL: {}", e))?,
+            )
+            .set_redirect_uri(
+                RedirectUrl::new("http://localhost:8765/callback".to_string())
+                    .map_err(|e| format!("Invalid redirect URL: {}", e))?,
+            );
+
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+
+        // Exchange authorization code for token
+        let token_result = client
+            .exchange_code(AuthorizationCode::new(code.to_string()))
+            .set_pkce_verifier(pkce_verifier)
+            .request_async(&http_client)
+            .await
+            .map_err(|e| format!("Failed to exchange authorization code: {}", e))?;
+
+        let access_token = token_result.access_token().secret().to_string();
+        let refresh_token = token_result
+            .refresh_token()
+            .map(|t| t.secret().to_string());
+
+        let expires_at = token_result.expires_in().map(|duration| {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs() as i64;
+            now + duration.as_secs() as i64
+        });
+
+        Ok((access_token, refresh_token, expires_at))
+    }
+}

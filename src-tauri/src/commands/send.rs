@@ -24,7 +24,11 @@ pub async fn send_email(
         .body(body)
         .map_err(|e| e.to_string())?;
 
-    let creds = Credentials::new(config.email.clone(), config.password.clone());
+    let password = config
+        .password
+        .clone()
+        .ok_or("Password is required for basic authentication")?;
+    let creds = Credentials::new(config.email.clone(), password);
 
     let mailer = AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
         .map_err(|e| e.to_string())?

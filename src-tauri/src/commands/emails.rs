@@ -11,7 +11,11 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
         let domain = config.imap_server.as_str();
         let port = config.imap_port;
         let email = config.email.as_str();
-        let password = config.password.as_str();
+        let password = config
+            .password
+            .as_ref()
+            .ok_or("Password is required for basic authentication")?;
+        let password = password.as_str();
 
         let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
         let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
@@ -96,7 +100,11 @@ pub async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String,
         let domain = config.imap_server.as_str();
         let port = config.imap_port;
         let email = config.email.as_str();
-        let password = config.password.as_str();
+        let password = config
+            .password
+            .as_ref()
+            .ok_or("Password is required for basic authentication")?;
+        let password = password.as_str();
 
         let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
         let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;

@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(cargo fmt:*)"
+      "Bash(cargo fmt:*)",
+      "Bash(cargo check:*)",
+      "Bash(npm run check:*)"
     ],
     "deny": [],
     "ask": []
