@@ -132,3 +132,17 @@ From `development_requirements.md`, the project aims for:
 - `mailparse`: Email message parsing
 - `directories`: Platform-specific directory paths
 - `lazy_static`: Global static database connection
+
+## Execution Rules for Claude Code
+
+These rules **must be followed** during every execution session:
+
+1. **Evaluate Tool Results Before Proceeding**: After receiving tool results, carefully assess their quality and determine the best next action before continuing. Use your reasoning capabilities to plan and iterate based on new information, then take the optimal next step.
+
+2. **Clean Up Temporary Files**: If any temporary files, scripts, or helper files are created during the iteration process, delete them at the end of the task to complete cleanup work.
+
+3. **Implement General Solutions Using Standard Tools**: Use standard available tools to write high-quality, general solutions. Do not create helper scripts or workarounds to complete tasks more efficiently. Implement solutions that work correctly for all valid inputs, not just test cases. Do not hard-code values or create solutions that only work for specific test inputs. Instead, implement general logic that fundamentally solves the problem.
+   - Focus on understanding problem requirements and implementing correct algorithms. Tests serve to verify correctness, not to define the solution itself. Provide canonical implementations that follow best practices and software design principles.
+   - If the task itself is unreasonable or infeasible, or if any test cases are incorrect, inform the user directly rather than trying to work around them. The final solution should be robust, maintainable, and extensible.
+
+4. **Never Speculate About Unread Code**: Never make assumptions about code you haven't opened. If the user mentions a specific file, you must read that file before responding. Always investigate and read relevant files before answering questions about the codebase. Unless you are highly confident of the correct answer, never make assertions about code before investigating—provide well-reasoned, hallucination-free responses.
