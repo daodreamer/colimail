@@ -1,5 +1,6 @@
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType, EmailHeader};
+use encoding_rs::Encoding;
 use native_tls::TlsConnector;
 use tauri::command;
 
@@ -42,7 +43,6 @@ fn decode_header(encoded: &str) -> String {
                         2 + charset.len() + 1 + encoding.len() + 1 + encoded_text.len() + 2;
                     let full_encoded = &remaining[start_pos..start_pos + full_length];
 
-                    let charset_upper = charset.to_uppercase();
                     let encoding_upper = encoding.to_uppercase();
 
                     let decoded = match encoding_upper.as_str() {
@@ -53,18 +53,23 @@ fn decode_header(encoded: &str) -> String {
 
                     if let Some(decoded_bytes) = decoded {
                         // Convert bytes to string using the specified charset
-                        if charset_upper == "UTF-8" || charset_upper == "UTF8" {
-                            if let Ok(decoded_str) = String::from_utf8(decoded_bytes) {
-                                result.push_str(&decoded_str);
-                            } else {
-                                result.push_str(full_encoded);
-                            }
+                        // Use encoding_rs to handle various character encodings
+                        let encoding = Encoding::for_label(charset.as_bytes());
+
+                        let decoded_str = if let Some(enc) = encoding {
+                            // Use encoding_rs to decode
+                            let (cow, _encoding_used, _had_errors) = enc.decode(&decoded_bytes);
+                            Some(cow.into_owned())
                         } else {
-                            // For other charsets, try UTF-8 first (most common)
-                            match String::from_utf8(decoded_bytes.clone()) {
-                                Ok(s) => result.push_str(&s),
-                                Err(_) => result.push_str(full_encoded),
-                            }
+                            // If encoding not recognized, try UTF-8 as fallback
+                            String::from_utf8(decoded_bytes).ok()
+                        };
+
+                        if let Some(s) = decoded_str {
+                            result.push_str(&s);
+                        } else {
+                            // Decoding failed, keep original
+                            result.push_str(full_encoded);
                         }
                     } else {
                         // Decoding failed, keep original

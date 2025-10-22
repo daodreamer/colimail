@@ -525,6 +525,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "directories",
+ "encoding_rs",
  "html-escape",
  "imap",
  "lazy_static",
