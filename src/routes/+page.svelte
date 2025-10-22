@@ -432,6 +432,27 @@
 {/if}
 
 <style>
+  /* Global scrollbar hiding for desktop app experience */
+  :global(*) {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+  }
+
+  :global(*::-webkit-scrollbar) {
+    display: none; /* Chrome, Safari, and Opera */
+  }
+
+  /* Prevent any global scrolling - desktop app should have fixed layout */
+  :global(html),
+  :global(body) {
+    margin: 0;
+    padding: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden; /* No page-level scrolling */
+    position: fixed; /* Lock the viewport */
+  }
+
   :root {
     --border-color: #dcdcdc;
     --sidebar-bg: #e8e8e8;
@@ -468,35 +489,38 @@
     font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
     background-color: var(--app-bg);
     color: var(--text-color);
+    overflow: hidden; /* Prevent page-level scrolling */
   }
 
   .sidebar, .email-list-pane, .content-pane {
       height: 100vh;
-      overflow-y: auto;
-      padding: 1rem;
+      overflow: hidden; /* Remove scrollbars, content will be contained */
+      display: flex;
+      flex-direction: column;
   }
 
   .accounts-sidebar, .folders-sidebar {
     background-color: var(--sidebar-bg);
     border-right: 1px solid var(--border-color);
-    display: flex;
-    flex-direction: column;
     user-select: none;
-    padding: 1rem;
+    padding: 0;
   }
 
   .accounts-sidebar h2, .folders-sidebar h2 {
-    margin-top: 0;
+    margin: 0;
     border-bottom: 1px solid var(--border-color);
-    padding-bottom: 0.5rem;
+    padding: 1rem;
     font-size: 1rem;
+    flex-shrink: 0; /* Fixed header */
   }
 
   .accounts-sidebar ul, .folders-sidebar ul {
     list-style: none;
-    padding: 0;
+    padding: 0.5rem;
     margin: 0;
-    flex-grow: 1;
+    flex: 1;
+    overflow-y: auto; /* Only the list scrolls */
+    min-height: 0; /* Allow flex shrinking */
   }
 
   .accounts-sidebar li, .folders-sidebar li {
@@ -504,6 +528,17 @@
   }
 
   .loading-text, .no-folders {
+    text-align: center;
+    color: #666;
+    font-size: 0.875rem;
+    padding: 2rem 1rem;
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .no-accounts {
     text-align: center;
     color: #666;
     font-size: 0.875rem;
@@ -590,15 +625,15 @@
 
   .compose-button {
       display: block;
-      width: 100%;
+      width: calc(100% - 2rem);
       text-align: center;
       padding: 0.75rem;
+      margin: 0.5rem 1rem;
       border-radius: 6px;
       background-color: #28a745;
       color: white;
       border: none;
       font-weight: 500;
-      margin-top: 1rem;
       flex-shrink: 0;
       cursor: pointer;
       transition: background-color 0.2s;
@@ -618,24 +653,33 @@
       display: block;
       text-align: center;
       padding: 0.75rem;
+      margin: 0 1rem 1rem 1rem;
       border-radius: 6px;
       background-color: var(--link-bg);
       color: var(--link-text);
       text-decoration: none;
       font-weight: 500;
-      margin-top: 0.5rem;
       flex-shrink: 0;
   }
 
   .email-list-pane {
       border-right: 1px solid var(--border-color);
+      padding: 0;
+  }
+
+  .email-list-pane > p {
+      padding: 1rem;
+      text-align: center;
   }
 
   .email-list {
       list-style: none;
-      padding: 0;
+      padding: 0.5rem;
       margin: 0;
       text-align: left;
+      flex: 1;
+      overflow-y: auto; /* Only the list scrolls */
+      min-height: 0;
   }
 
   .email-list li {
@@ -684,6 +728,7 @@
       padding: 1rem 2rem;
       border-bottom: 1px solid var(--border-color);
       background-color: var(--sidebar-bg);
+      flex-shrink: 0; /* Fixed header */
   }
 
   .reply-button {
@@ -704,11 +749,14 @@
   .email-body {
       padding: 1rem 2rem;
       line-height: 1.6;
+      flex: 1;
+      overflow-y: auto; /* Only the body scrolls */
+      min-height: 0;
   }
 
   .placeholder, .content-pane > p {
       text-align: center;
-      margin-top: 4rem;
+      padding: 4rem 2rem;
       color: #666;
   }
 
