@@ -9,6 +9,22 @@ pub async fn ensure_valid_token(mut config: AccountConfig) -> Result<AccountConf
         return Ok(config);
     }
 
+    // IMPORTANT: Reload token info from database to get the latest expiration time
+    // This is necessary because the config passed from frontend may be stale
+    let db_pool = pool();
+    let db_result = sqlx::query_as::<_, (Option<String>, Option<i64>)>(
+        "SELECT access_token, token_expires_at FROM accounts WHERE email = ?",
+    )
+    .bind(&config.email)
+    .fetch_optional(&*db_pool)
+    .await
+    .map_err(|e| format!("Failed to query token info from database: {}", e))?;
+
+    if let Some((db_access_token, db_token_expires_at)) = db_result {
+        config.access_token = db_access_token;
+        config.token_expires_at = db_token_expires_at;
+    }
+
     // Check if token is expired or about to expire (within 5 minutes)
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -17,7 +33,17 @@ pub async fn ensure_valid_token(mut config: AccountConfig) -> Result<AccountConf
 
     let needs_refresh = config
         .token_expires_at
-        .map(|expires_at| now >= expires_at - 300)
+        .map(|expires_at| {
+            let time_until_expiry = expires_at - now;
+            println!(
+                "🔍 Token check: expires_at={}, now={}, time_until_expiry={}s ({}min)",
+                expires_at,
+                now,
+                time_until_expiry,
+                time_until_expiry / 60
+            );
+            now >= expires_at - 300
+        })
         .unwrap_or(true); // If no expiry time, assume we need to refresh
 
     if !needs_refresh {
