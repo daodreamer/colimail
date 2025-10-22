@@ -257,17 +257,6 @@ impl OAuth2Provider {
         Ok((access_token, refresh_token, expires_at))
     }
 
-    /// Check if credentials are configured (for UI validation)
-    pub fn are_credentials_configured(provider: &str) -> bool {
-        let provider_obj = match Self::get_provider(provider) {
-            Ok(p) => p,
-            Err(_) => return false,
-        };
-
-        !provider_obj.client_id.starts_with("YOUR_")
-            && !provider_obj.client_secret.starts_with("YOUR_")
-    }
-
     /// Refresh an access token using a refresh token
     pub async fn refresh_access_token(
         &self,
