@@ -308,6 +308,76 @@
       }
   }
 
+  // Helper function to check if current folder is a trash/deleted folder
+  function isTrashFolder(folderName: string): boolean {
+      const lowerName = folderName.toLowerCase();
+      return lowerName.includes("trash") ||
+             lowerName.includes("deleted") ||
+             lowerName.includes("垃圾") ||
+             lowerName.includes("bin");
+  }
+
+  async function handleDeleteEmail() {
+      if (!selectedAccountId || !selectedEmailUid) {
+          error = "Please select an email first.";
+          return;
+      }
+
+      const selectedEmail = emails.find(email => email.uid === selectedEmailUid);
+      if (!selectedEmail) {
+          error = "Could not find selected email.";
+          return;
+      }
+
+      const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+      if (!selectedConfig) {
+          error = "Could not find selected account configuration.";
+          return;
+      }
+
+      const isInTrash = isTrashFolder(selectedFolderName);
+
+      // Different confirmation messages based on whether we're in trash or not
+      const confirmMessage = isInTrash
+          ? `Are you sure you want to PERMANENTLY delete this email?\n\nThis action cannot be undone.\n\nSubject: ${selectedEmail.subject}`
+          : `Move this email to trash?\n\nSubject: ${selectedEmail.subject}`;
+
+      if (!confirm(confirmMessage)) {
+          return;
+      }
+
+      error = null;
+
+      try {
+          if (isInTrash) {
+              // If already in trash, permanently delete
+              await invoke("delete_email", {
+                  config: selectedConfig,
+                  uid: selectedEmailUid,
+                  folder: selectedFolderName
+              });
+              alert("Email permanently deleted!");
+          } else {
+              // Otherwise, move to trash
+              await invoke("move_email_to_trash", {
+                  config: selectedConfig,
+                  uid: selectedEmailUid,
+                  folder: selectedFolderName
+              });
+              alert("Email moved to trash!");
+          }
+
+          // Clear the selected email and body
+          selectedEmailUid = null;
+          emailBody = null;
+
+          // Reload the email list
+          await loadEmailsForFolder(selectedFolderName);
+      } catch (e) {
+          error = `Failed to delete email: ${e}`;
+      }
+  }
+
 </script>
 
 <div class="main-layout">
@@ -425,6 +495,9 @@
                     </button>
                     <button class="action-button forward-button" onclick={handleForwardClick}>
                         ➡ Forward
+                    </button>
+                    <button class="action-button delete-email-button" onclick={handleDeleteEmail}>
+                        🗑 Delete
                     </button>
                 </div>
             </div>
@@ -862,6 +935,14 @@
 
   .forward-button:hover {
       background-color: #218838;
+  }
+
+  .delete-email-button {
+      background-color: #dc3545;
+  }
+
+  .delete-email-button:hover {
+      background-color: #c82333;
   }
 
   .email-body {

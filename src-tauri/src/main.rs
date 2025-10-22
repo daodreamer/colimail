@@ -6,9 +6,10 @@ mod models;
 mod oauth2_config;
 
 use commands::{
-    complete_oauth2_flow, delete_account, fetch_email_body, fetch_emails, fetch_folders,
-    forward_email, listen_for_oauth_callback, load_account_configs, load_folders, reply_email,
-    save_account_config, send_email, start_oauth2_flow, sync_folders,
+    complete_oauth2_flow, delete_account, delete_email, fetch_email_body, fetch_emails,
+    fetch_folders, forward_email, listen_for_oauth_callback, load_account_configs, load_folders,
+    move_email_to_trash, reply_email, save_account_config, send_email, start_oauth2_flow,
+    sync_folders,
 };
 
 #[tokio::main]
@@ -31,6 +32,8 @@ async fn main() {
             delete_account,
             fetch_emails,
             fetch_email_body,
+            move_email_to_trash,
+            delete_email,
             send_email,
             reply_email,
             forward_email,
