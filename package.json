@@ -1,7 +1,7 @@
 {
-  "name": "maildesk",
+  "name": "colimail",
   "version": "0.1.0",
-  "description": "",
+  "description": "Colimail - A Lightweight Email Client",
   "type": "module",
   "scripts": {
     "dev": "vite dev",

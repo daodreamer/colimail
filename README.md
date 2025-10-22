@@ -1,6 +1,8 @@
-# Tauri + SvelteKit + TypeScript
+# Colimail
 
-This template should help get you started developing with Tauri, SvelteKit and TypeScript in Vite.
+A lightweight, cross-platform desktop email client built with Tauri 2, SvelteKit, and Rust.
+
+Colimail is designed to be a high-performance alternative to traditional email clients, with support for multiple accounts, OAuth2 authentication, and a clean, modern interface.
 
 ## Recommended IDE Setup
 

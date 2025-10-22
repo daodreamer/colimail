@@ -6,11 +6,11 @@ static POOL: OnceLock<Arc<SqlitePool>> = OnceLock::new();
 
 /// Initialize the database connection pool and schema.
 pub async fn init() -> Result<(), sqlx::Error> {
-    let proj_dirs = ProjectDirs::from("com", "MailDesk", "MailDesk")
+    let proj_dirs = ProjectDirs::from("com", "Colimail", "Colimail")
         .expect("Failed to determine project directories");
     let data_dir = proj_dirs.data_dir();
     std::fs::create_dir_all(data_dir).expect("Failed to create data directory");
-    let db_path = data_dir.join("maildesk.db");
+    let db_path = data_dir.join("colimail.db");
 
     println!("Database path: {}", db_path.display());
 

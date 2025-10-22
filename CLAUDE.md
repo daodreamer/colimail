@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**MailDesk** is a cross-platform desktop email client built with Tauri 2, SvelteKit, and Rust. The goal is to create a lightweight, high-performance alternative to Thunderbird that handles large email volumes without performance degradation.
+**Colimail** is a cross-platform desktop email client built with Tauri 2, SvelteKit, and Rust. The goal is to create a lightweight, high-performance alternative to Thunderbird that handles large email volumes without performance degradation.
 
 - **Frontend**: SvelteKit (Svelte 5 with runes) + TypeScript
 - **Backend**: Rust with Tauri 2

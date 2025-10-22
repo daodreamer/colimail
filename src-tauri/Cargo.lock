@@ -520,6 +520,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "colimail"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "directories",
+ "html-escape",
+ "imap",
+ "lazy_static",
+ "lettre",
+ "mail-parser",
+ "native-tls",
+ "oauth2",
+ "once_cell",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sqlx",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-opener",
+ "tauri-plugin-shell",
+ "tokio",
+ "url",
+ "utf7-imap",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2387,33 +2414,6 @@ checksum = "dcf4390741c4e6fa330bdeccdfb580815dbb462952de91838b723357985119a3"
 dependencies = [
  "encoding_rs",
  "hashify",
-]
-
-[[package]]
-name = "maildesk"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "directories",
- "html-escape",
- "imap",
- "lazy_static",
- "lettre",
- "mail-parser",
- "native-tls",
- "oauth2",
- "once_cell",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tauri",
- "tauri-build",
- "tauri-plugin-opener",
- "tauri-plugin-shell",
- "tokio",
- "url",
- "utf7-imap",
 ]
 
 [[package]]
