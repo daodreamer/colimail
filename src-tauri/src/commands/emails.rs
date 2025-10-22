@@ -1,7 +1,54 @@
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType, EmailHeader};
+use mail_parser::parsers::MessageStream;
 use native_tls::TlsConnector;
 use tauri::command;
+
+// Helper function to decode RFC 2047 encoded words (e.g., "=?UTF-8?Q?...?=")
+fn decode_header(encoded: &str) -> String {
+    // Check if the string contains RFC 2047 encoded words
+    if !encoded.contains("=?") {
+        return encoded.to_string();
+    }
+
+    // Use mail-parser's MessageStream to decode RFC 2047 encoded words
+    // RFC 2047 format: =?charset?encoding?encoded-text?=
+    // The decode_rfc2047 expects: ?charset?encoding?encoded-text?=
+    let mut result = String::new();
+    let mut remaining = encoded;
+
+    while let Some(start_pos) = remaining.find("=?") {
+        // Add any text before the encoded word
+        result.push_str(&remaining[..start_pos]);
+
+        // Find the end of the encoded word
+        if let Some(end_pos) = remaining[start_pos + 2..].find("?=") {
+            // Extract the encoded part: ?charset?encoding?encoded-text?=
+            let encoded_part = &remaining[start_pos + 1..start_pos + 2 + end_pos + 2];
+
+            // Decode using mail-parser's MessageStream
+            match MessageStream::new(encoded_part.as_bytes()).decode_rfc2047() {
+                Some(decoded) => {
+                    result.push_str(&decoded);
+                }
+                None => {
+                    // If decoding fails, keep the original
+                    result.push_str(&remaining[start_pos..start_pos + 2 + end_pos + 2]);
+                }
+            }
+
+            remaining = &remaining[start_pos + 2 + end_pos + 2..];
+        } else {
+            // No proper end found, keep the rest as-is
+            result.push_str(&remaining[start_pos..]);
+            break;
+        }
+    }
+
+    // Add any remaining text
+    result.push_str(remaining);
+    result
+}
 
 // OAuth2 authenticator for IMAP
 struct OAuth2 {
@@ -107,7 +154,11 @@ pub async fn fetch_emails(
             let subject = envelope
                 .subject
                 .as_ref()
-                .map(|s| String::from_utf8_lossy(s).to_string())
+                .map(|s| {
+                    let raw_subject = String::from_utf8_lossy(s).to_string();
+                    // Decode RFC 2047 encoded words in subject
+                    decode_header(&raw_subject)
+                })
                 .unwrap_or_else(|| "(No Subject)".to_string());
 
             let from = envelope
@@ -117,6 +168,16 @@ pub async fn fetch_emails(
                     addrs
                         .iter()
                         .map(|addr| {
+                            // Try to get the display name first (e.g., "Lisa Stein von Stepstone")
+                            if let Some(name_bytes) = addr.name {
+                                let name = String::from_utf8_lossy(name_bytes).to_string();
+                                // Only use the name if it's not empty
+                                if !name.trim().is_empty() {
+                                    // Decode RFC 2047 encoded words (handles UTF-8, GB2312, etc.)
+                                    return decode_header(&name);
+                                }
+                            }
+                            // Fall back to email address if no display name
                             let mailbox = String::from_utf8_lossy(addr.mailbox.unwrap_or_default());
                             let host = String::from_utf8_lossy(addr.host.unwrap_or_default());
                             format!("{}@{}", mailbox, host)
@@ -139,6 +200,16 @@ pub async fn fetch_emails(
                     addrs
                         .iter()
                         .map(|addr| {
+                            // Try to get the display name first
+                            if let Some(name_bytes) = addr.name {
+                                let name = String::from_utf8_lossy(name_bytes).to_string();
+                                // Only use the name if it's not empty
+                                if !name.trim().is_empty() {
+                                    // Decode RFC 2047 encoded words
+                                    return decode_header(&name);
+                                }
+                            }
+                            // Fall back to email address if no display name
                             let mailbox = String::from_utf8_lossy(addr.mailbox.unwrap_or_default());
                             let host = String::from_utf8_lossy(addr.host.unwrap_or_default());
                             format!("{}@{}", mailbox, host)
