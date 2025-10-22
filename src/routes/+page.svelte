@@ -21,15 +21,27 @@
     date: string;
   }
 
+  interface Folder {
+    id: number | null;
+    account_id: number;
+    name: string;              // Original IMAP folder name (for operations)
+    display_name: string;      // User-friendly display name
+    delimiter: string | null;
+    flags: string | null;
+  }
+
   // --- 状态管理 ---
   let accounts = $state<AccountConfig[]>([]);
   let emails = $state<EmailHeader[]>([]);
+  let folders = $state<Folder[]>([]);
   let emailBody = $state<string | null>(null);
   let error = $state<string | null>(null);
   let selectedAccountId = $state<number | null>(null);
+  let selectedFolderName = $state<string>("INBOX");
   let selectedEmailUid = $state<number | null>(null);
   let isLoadingEmails = $state<boolean>(false);
   let isLoadingBody = $state<boolean>(false);
+  let isLoadingFolders = $state<boolean>(false);
 
   // Compose email state
   let showComposeDialog = $state<boolean>(false);
@@ -51,26 +63,62 @@
   // --- 事件处理 ---
   async function handleAccountClick(accountId: number) {
     selectedAccountId = accountId;
+    selectedFolderName = "INBOX";
     selectedEmailUid = null;
     emailBody = null;
     emails = [];
-    isLoadingEmails = true;
+    folders = [];
+    isLoadingFolders = true;
     error = null;
 
     const selectedConfig = accounts.find(acc => acc.id === accountId);
     if (!selectedConfig) {
         error = "Could not find selected account configuration.";
-        isLoadingEmails = false;
+        isLoadingFolders = false;
         return;
     }
 
     try {
-      emails = await invoke<EmailHeader[]>("fetch_emails", { config: selectedConfig });
+      // First sync folders from server
+      folders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+
+      // Then load emails from INBOX
+      await loadEmailsForFolder("INBOX");
+    } catch (e) {
+      error = `Failed to sync folders: ${e}`;
+    } finally {
+      isLoadingFolders = false;
+    }
+  }
+
+  async function loadEmailsForFolder(folderName: string) {
+    const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+    if (!selectedConfig) {
+        error = "Could not find selected account configuration.";
+        return;
+    }
+
+    isLoadingEmails = true;
+    selectedEmailUid = null;
+    emailBody = null;
+    emails = [];
+    error = null;
+
+    try {
+      emails = await invoke<EmailHeader[]>("fetch_emails", {
+        config: selectedConfig,
+        folder: folderName
+      });
     } catch (e) {
       error = `Failed to fetch emails: ${e}`;
     } finally {
       isLoadingEmails = false;
     }
+  }
+
+  async function handleFolderClick(folderName: string) {
+    selectedFolderName = folderName;
+    await loadEmailsForFolder(folderName);
   }
 
   async function handleEmailClick(uid: number) {
@@ -87,7 +135,11 @@
       }
 
       try {
-          emailBody = await invoke<string>("fetch_email_body", { config: selectedConfig, uid });
+          emailBody = await invoke<string>("fetch_email_body", {
+            config: selectedConfig,
+            uid,
+            folder: selectedFolderName
+          });
       } catch (e) {
           error = `Failed to fetch email body: ${e}`;
       } finally {
@@ -211,7 +263,7 @@
 </script>
 
 <div class="main-layout">
-  <!-- ACOUNTS SIDEBAR -->
+  <!-- ACCOUNTS SIDEBAR -->
   <aside class="sidebar accounts-sidebar">
     <h2>Accounts</h2>
     <ul>
@@ -244,6 +296,33 @@
       ✉️ Compose
     </button>
     <a href="/settings" class="settings-link">+ Add Account</a>
+  </aside>
+
+  <!-- FOLDERS SIDEBAR -->
+  <aside class="sidebar folders-sidebar">
+    <h2>Folders</h2>
+    {#if isLoadingFolders}
+      <p class="loading-text">Loading folders...</p>
+    {:else if folders.length > 0}
+      <ul>
+        {#each folders as folder (folder.name)}
+          <li>
+            <button
+              class="folder-item"
+              class:selected={folder.name === selectedFolderName}
+              onclick={() => handleFolderClick(folder.name)}
+              title={folder.name}
+            >
+              📁 {folder.display_name}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else if selectedAccountId}
+      <p class="no-folders">No folders found.</p>
+    {:else}
+      <p class="no-folders">Select an account to view folders.</p>
+    {/if}
   </aside>
 
   <!-- EMAIL LIST PANE -->
@@ -383,7 +462,7 @@
 
   .main-layout {
     display: grid;
-    grid-template-columns: 240px 320px 1fr;
+    grid-template-columns: 240px 200px 320px 1fr;
     height: 100vh;
     width: 100vw;
     font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
@@ -397,7 +476,7 @@
       padding: 1rem;
   }
 
-  .accounts-sidebar {
+  .accounts-sidebar, .folders-sidebar {
     background-color: var(--sidebar-bg);
     border-right: 1px solid var(--border-color);
     display: flex;
@@ -406,21 +485,29 @@
     padding: 1rem;
   }
 
-  .accounts-sidebar h2 {
+  .accounts-sidebar h2, .folders-sidebar h2 {
     margin-top: 0;
     border-bottom: 1px solid var(--border-color);
     padding-bottom: 0.5rem;
+    font-size: 1rem;
   }
 
-  .accounts-sidebar ul {
+  .accounts-sidebar ul, .folders-sidebar ul {
     list-style: none;
     padding: 0;
     margin: 0;
     flex-grow: 1;
   }
-  
-  .accounts-sidebar li {
+
+  .accounts-sidebar li, .folders-sidebar li {
       margin-bottom: 4px;
+  }
+
+  .loading-text, .no-folders {
+    text-align: center;
+    color: #666;
+    font-size: 0.875rem;
+    padding: 1rem;
   }
 
   .account-item-wrapper {
@@ -448,6 +535,28 @@
   }
 
   .account-item.selected {
+    background-color: var(--selected-bg);
+    color: var(--selected-text);
+  }
+
+  .folder-item {
+    background: none; border: none; font: inherit; color: inherit; text-align: left;
+    width: 100%;
+    padding: 0.75rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: background-color 0.2s, color 0.2s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .folder-item:hover {
+    background-color: var(--hover-bg);
+  }
+
+  .folder-item.selected {
     background-color: var(--selected-bg);
     color: var(--selected-text);
   }

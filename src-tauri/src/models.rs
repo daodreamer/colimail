@@ -47,3 +47,67 @@ pub struct EmailHeader {
     pub to: String,
     pub date: String,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Folder {
+    pub id: Option<i32>,
+    pub account_id: i32,
+    pub name: String,         // Original IMAP folder name (for IMAP operations)
+    pub display_name: String, // User-friendly display name
+    pub delimiter: Option<String>,
+    pub flags: Option<String>,
+}
+
+impl Folder {
+    /// Check if the folder is selectable (not marked with \Noselect flag)
+    pub fn is_selectable(&self) -> bool {
+        if let Some(ref flags) = self.flags {
+            // Check if flags contain "Noselect" (case-insensitive)
+            !flags.to_lowercase().contains("noselect")
+        } else {
+            true // If no flags, assume it's selectable
+        }
+    }
+
+    /// Check if this folder should be shown to the user
+    /// Filters out system folders that users typically don't need to access
+    pub fn should_show_to_user(&self) -> bool {
+        // First check if it's selectable
+        if !self.is_selectable() {
+            return false;
+        }
+
+        // Filter out known system/troubleshooting folders by display name
+        let system_folder_patterns = [
+            "同步问题",                      // Outlook sync issues (Chinese)
+            "Sync Issues",                   // Outlook sync issues (English)
+            "Recoverable Items",             // Outlook recoverable items
+            "Conversation History",          // Skype/Teams conversation history
+            "RSS Feeds",                     // RSS subscriptions
+            "Social Activity Notifications", // Social updates
+            "Suggested Contacts",            // Auto-discovered contacts
+        ];
+
+        let lower_display_name = self.display_name.to_lowercase();
+
+        // Check if display name starts with any system folder pattern
+        for pattern in &system_folder_patterns {
+            if lower_display_name.starts_with(&pattern.to_lowercase()) {
+                return false;
+            }
+        }
+
+        // Check if it's a subfolder of a filtered folder
+        // (e.g., "同步问题/本地故障" should also be filtered)
+        for pattern in &system_folder_patterns {
+            let pattern_lower = pattern.to_lowercase();
+            if lower_display_name.contains(&format!("{}/", pattern_lower))
+                || lower_display_name.contains(&format!("{}", pattern_lower))
+            {
+                return false;
+            }
+        }
+
+        true
+    }
+}

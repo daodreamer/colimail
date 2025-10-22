@@ -2413,6 +2413,7 @@ dependencies = [
  "tauri-plugin-shell",
  "tokio",
  "url",
+ "utf7-imap",
 ]
 
 [[package]]
@@ -5602,6 +5603,17 @@ name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "09cc8ee72d2a9becf2f2febe0205bbed8fc6615b7cb429ad062dc7b7ddd036a9"
+
+[[package]]
+name = "utf7-imap"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d79cef0a8df71a9b1c8091d66b75aaddae40d0192b5a2c8d7fd6592eab81ee68"
+dependencies = [
+ "base64 0.13.1",
+ "encoding_rs",
+ "regex",
+]
 
 [[package]]
 name = "utf8-width"

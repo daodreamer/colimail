@@ -20,12 +20,17 @@ impl imap::Authenticator for OAuth2 {
 }
 
 #[command]
-pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, String> {
-    println!("Fetching emails for {}", config.email);
+pub async fn fetch_emails(
+    config: AccountConfig,
+    folder: Option<String>,
+) -> Result<Vec<EmailHeader>, String> {
+    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    println!("Fetching emails from {} for {}", folder_name, config.email);
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
     let email_for_log = config.email.clone();
+    let folder_for_log = folder_name.clone();
 
     let emails = tokio::task::spawn_blocking(move || -> Result<Vec<EmailHeader>, String> {
         let domain = config.imap_server.as_str();
@@ -73,16 +78,24 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
 
         println!("IMAP authentication successful");
 
-        let mailbox = imap_session.select("INBOX").map_err(|e| e.to_string())?;
-        println!("INBOX selected with {} messages", mailbox.exists);
+        let mailbox = imap_session.select(&folder_name).map_err(|e| {
+            eprintln!("❌ Failed to SELECT folder '{}': {}", folder_name, e);
+            eprintln!("   This folder may be inaccessible or require special permissions.");
+            format!("Cannot access folder '{}': {}", folder_name, e)
+        })?;
+        println!("{} selected with {} messages", folder_name, mailbox.exists);
 
         let total = mailbox.exists;
         if total == 0 {
             return Ok(Vec::new());
         }
 
-        let start = total.saturating_sub(19);
+        // IMAP sequence numbers start at 1, not 0
+        // Get last 20 messages (or all if less than 20)
+        let start = total.saturating_sub(19).max(1);
         let seq_range = format!("{}:{}", start, total);
+
+        println!("Fetching messages with sequence range: {}", seq_range);
 
         let messages = imap_session
             .fetch(seq_range, "(UID ENVELOPE)")
@@ -151,16 +164,22 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
     .map_err(|e| e.to_string())??;
 
     println!(
-        "✅ Fetched {} email headers for {}",
+        "✅ Fetched {} email headers from {} for {}",
         emails.len(),
+        folder_for_log,
         email_for_log
     );
     Ok(emails)
 }
 
 #[command]
-pub async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String, String> {
-    println!("Fetching body for UID {}", uid);
+pub async fn fetch_email_body(
+    config: AccountConfig,
+    uid: u32,
+    folder: Option<String>,
+) -> Result<String, String> {
+    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    println!("Fetching body for UID {} from {}", uid, folder_name);
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
@@ -209,7 +228,13 @@ pub async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String,
             }
         };
 
-        imap_session.select("INBOX").map_err(|e| e.to_string())?;
+        imap_session.select(&folder_name).map_err(|e| {
+            eprintln!(
+                "❌ Failed to SELECT folder '{}' for UID {}: {}",
+                folder_name, uid, e
+            );
+            format!("Cannot access folder '{}': {}", folder_name, e)
+        })?;
 
         let messages = imap_session
             .uid_fetch(uid.to_string(), "BODY[]")

@@ -41,6 +41,36 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create folders table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS folders (
+            id INTEGER PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            delimiter TEXT,
+            flags TEXT,
+            UNIQUE(account_id, name),
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Migration: Add display_name column to existing folders table if it doesn't exist
+    // This is safe because SQLite ignores ADD COLUMN if the column already exists
+    let _ = sqlx::query("ALTER TABLE folders ADD COLUMN display_name TEXT DEFAULT ''")
+        .execute(&pool)
+        .await;
+
+    // If display_name was just added and is empty, populate it from name
+    // (for existing folders that were created before this migration)
+    sqlx::query(
+        "UPDATE folders SET display_name = name WHERE display_name = '' OR display_name IS NULL",
+    )
+    .execute(&pool)
+    .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");
