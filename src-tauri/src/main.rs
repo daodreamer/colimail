@@ -7,7 +7,7 @@ mod oauth2_config;
 
 use commands::{
     complete_oauth2_flow, delete_account, fetch_email_body, fetch_emails,
-    listen_for_oauth_callback, load_account_configs, save_account_config, send_email,
+    listen_for_oauth_callback, load_account_configs, reply_email, save_account_config, send_email,
     start_oauth2_flow,
 };
 
@@ -32,6 +32,7 @@ async fn main() {
             fetch_emails,
             fetch_email_body,
             send_email,
+            reply_email,
             start_oauth2_flow,
             listen_for_oauth_callback,
             complete_oauth2_flow

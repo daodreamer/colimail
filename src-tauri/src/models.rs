@@ -44,5 +44,6 @@ pub struct EmailHeader {
     pub uid: u32,
     pub subject: String,
     pub from: String,
+    pub to: String,
     pub date: String,
 }

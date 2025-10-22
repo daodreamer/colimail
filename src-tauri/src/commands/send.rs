@@ -80,3 +80,80 @@ pub async fn send_email(
 
     Ok("Started sending email.".into())
 }
+
+#[command]
+pub async fn reply_email(
+    config: AccountConfig,
+    to: String,
+    original_subject: String,
+    body: String,
+) -> Result<String, String> {
+    println!("Replying to email: {}", to);
+
+    // Ensure we have a valid access token (refresh if needed)
+    let config = ensure_valid_token(config).await?;
+
+    let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
+    let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
+
+    // Add "Re: " prefix to subject if not already present
+    let reply_subject = if original_subject.to_lowercase().starts_with("re:") {
+        original_subject
+    } else {
+        format!("Re: {}", original_subject)
+    };
+
+    let email = Message::builder()
+        .from(from)
+        .to(to_mailbox)
+        .subject(reply_subject)
+        .body(body)
+        .map_err(|e| e.to_string())?;
+
+    let mailer = match config.auth_type {
+        Some(AuthType::OAuth2) => {
+            let access_token = config
+                .access_token
+                .clone()
+                .ok_or("Access token is required for OAuth2 authentication")?;
+
+            println!(
+                "🔐 Building SMTP transport with XOAUTH2 for {}",
+                config.email
+            );
+            println!("   Server: {}:{}", config.smtp_server, config.smtp_port);
+            println!("   Token length: {} chars", access_token.len());
+
+            let creds = Credentials::new(config.email.clone(), access_token);
+
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
+                .map_err(|e| e.to_string())?
+                .credentials(creds)
+                .authentication(vec![Mechanism::Xoauth2])
+                .build()
+        }
+        _ => {
+            let password = config
+                .password
+                .clone()
+                .ok_or("Password is required for basic authentication")?;
+
+            let creds = Credentials::new(config.email.clone(), password);
+
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
+                .map_err(|e| e.to_string())?
+                .credentials(creds)
+                .build()
+        }
+    };
+
+    tokio::spawn(async move {
+        if let Err(e) = mailer.send(email).await {
+            eprintln!("Could not send reply email: {:?}", e);
+        } else {
+            println!("Reply email sent successfully!");
+        }
+    });
+
+    Ok("Started sending reply email.".into())
+}

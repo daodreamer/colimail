@@ -104,10 +104,9 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
                     addrs
                         .iter()
                         .map(|addr| {
-                            format!(
-                                "{}",
-                                String::from_utf8_lossy(addr.mailbox.unwrap_or_default())
-                            )
+                            let mailbox = String::from_utf8_lossy(addr.mailbox.unwrap_or_default());
+                            let host = String::from_utf8_lossy(addr.host.unwrap_or_default());
+                            format!("{}@{}", mailbox, host)
                         })
                         .collect::<Vec<_>>()
                         .join(", ")
@@ -120,10 +119,27 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
                 .map(|d| String::from_utf8_lossy(d).to_string())
                 .unwrap_or_else(|| "(No Date)".to_string());
 
+            let to = envelope
+                .to
+                .as_ref()
+                .map(|addrs| {
+                    addrs
+                        .iter()
+                        .map(|addr| {
+                            let mailbox = String::from_utf8_lossy(addr.mailbox.unwrap_or_default());
+                            let host = String::from_utf8_lossy(addr.host.unwrap_or_default());
+                            format!("{}@{}", mailbox, host)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_else(|| "(Unknown Recipient)".to_string());
+
             headers.push(EmailHeader {
                 uid: msg.uid.unwrap_or(0),
                 subject,
                 from,
+                to,
                 date,
             });
         }

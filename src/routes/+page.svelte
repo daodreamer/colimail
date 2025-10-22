@@ -17,6 +17,7 @@
     uid: number;
     subject: string;
     from: string;
+    to: string;
     date: string;
   }
 
@@ -36,6 +37,7 @@
   let composeSubject = $state<string>("");
   let composeBody = $state<string>("");
   let isSending = $state<boolean>(false);
+  let isReplyMode = $state<boolean>(false);
 
   // --- 生命周期 ---
   onMount(async () => {
@@ -122,8 +124,31 @@
           return;
       }
       showComposeDialog = true;
+      isReplyMode = false;
       composeTo = "";
       composeSubject = "";
+      composeBody = "";
+      error = null;
+  }
+
+  function handleReplyClick() {
+      if (!selectedAccountId || !selectedEmailUid) {
+          error = "Please select an email first.";
+          return;
+      }
+
+      const selectedEmail = emails.find(email => email.uid === selectedEmailUid);
+      if (!selectedEmail) {
+          error = "Could not find selected email.";
+          return;
+      }
+
+      showComposeDialog = true;
+      isReplyMode = true;
+      composeTo = selectedEmail.from;
+      composeSubject = selectedEmail.subject.toLowerCase().startsWith("re:")
+          ? selectedEmail.subject
+          : `Re: ${selectedEmail.subject}`;
       composeBody = "";
       error = null;
   }
@@ -157,12 +182,22 @@
       error = null;
 
       try {
-          const result = await invoke<string>("send_email", {
-              config: selectedConfig,
-              to: composeTo,
-              subject: composeSubject,
-              body: composeBody
-          });
+          let result: string;
+          if (isReplyMode) {
+              result = await invoke<string>("reply_email", {
+                  config: selectedConfig,
+                  to: composeTo,
+                  originalSubject: composeSubject,
+                  body: composeBody
+              });
+          } else {
+              result = await invoke<string>("send_email", {
+                  config: selectedConfig,
+                  to: composeTo,
+                  subject: composeSubject,
+                  body: composeBody
+              });
+          }
           console.log("Send result:", result);
           handleCloseCompose();
           alert("Email sent successfully!");
@@ -239,6 +274,11 @@
     {#if isLoadingBody}
         <p>Loading email content...</p>
     {:else if emailBody}
+        <div class="email-header-actions">
+            <button class="reply-button" onclick={handleReplyClick}>
+                ↩ Reply
+            </button>
+        </div>
         <div class="email-body">
             {@html emailBody}
         </div>
@@ -257,7 +297,7 @@
   <div class="modal-overlay" onclick={handleCloseCompose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()} role="dialog" aria-modal="true" tabindex="-1">
       <div class="modal-header">
-        <h2>Compose Email</h2>
+        <h2>{isReplyMode ? "Reply to Email" : "Compose Email"}</h2>
         <button class="close-button" onclick={handleCloseCompose}>×</button>
       </div>
 
@@ -529,6 +569,27 @@
 
   .content-pane {
       padding: 0;
+  }
+
+  .email-header-actions {
+      padding: 1rem 2rem;
+      border-bottom: 1px solid var(--border-color);
+      background-color: var(--sidebar-bg);
+  }
+
+  .reply-button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background-color 0.2s;
+  }
+
+  .reply-button:hover {
+      background-color: #0056b3;
   }
 
   .email-body {
