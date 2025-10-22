@@ -50,6 +50,7 @@
   let composeBody = $state<string>("");
   let isSending = $state<boolean>(false);
   let isReplyMode = $state<boolean>(false);
+  let isForwardMode = $state<boolean>(false);
 
   // --- 生命周期 ---
   onMount(async () => {
@@ -177,6 +178,7 @@
       }
       showComposeDialog = true;
       isReplyMode = false;
+      isForwardMode = false;
       composeTo = "";
       composeSubject = "";
       composeBody = "";
@@ -197,10 +199,34 @@
 
       showComposeDialog = true;
       isReplyMode = true;
+      isForwardMode = false;
       composeTo = selectedEmail.from;
       composeSubject = selectedEmail.subject.toLowerCase().startsWith("re:")
           ? selectedEmail.subject
           : `Re: ${selectedEmail.subject}`;
+      composeBody = "";
+      error = null;
+  }
+
+  function handleForwardClick() {
+      if (!selectedAccountId || !selectedEmailUid) {
+          error = "Please select an email first.";
+          return;
+      }
+
+      const selectedEmail = emails.find(email => email.uid === selectedEmailUid);
+      if (!selectedEmail) {
+          error = "Could not find selected email.";
+          return;
+      }
+
+      showComposeDialog = true;
+      isReplyMode = false;
+      isForwardMode = true;
+      composeTo = "";
+      composeSubject = selectedEmail.subject.toLowerCase().startsWith("fwd:")
+          ? selectedEmail.subject
+          : `Fwd: ${selectedEmail.subject}`;
       composeBody = "";
       error = null;
   }
@@ -219,8 +245,8 @@
           return;
       }
 
-      if (!composeTo || !composeSubject || !composeBody) {
-          error = "Please fill in all fields.";
+      if (!composeTo || !composeSubject) {
+          error = "Please fill in recipient and subject fields.";
           return;
       }
 
@@ -242,7 +268,29 @@
                   originalSubject: composeSubject,
                   body: composeBody
               });
+          } else if (isForwardMode) {
+              const selectedEmail = emails.find(email => email.uid === selectedEmailUid);
+              if (!selectedEmail) {
+                  error = "Could not find selected email.";
+                  isSending = false;
+                  return;
+              }
+              result = await invoke<string>("forward_email", {
+                  config: selectedConfig,
+                  to: composeTo,
+                  originalSubject: selectedEmail.subject,
+                  originalFrom: selectedEmail.from,
+                  originalTo: selectedEmail.to,
+                  originalDate: selectedEmail.date,
+                  originalBody: emailBody || "",
+                  additionalMessage: composeBody
+              });
           } else {
+              if (!composeBody) {
+                  error = "Please fill in the message body.";
+                  isSending = false;
+                  return;
+              }
               result = await invoke<string>("send_email", {
                   config: selectedConfig,
                   to: composeTo,
@@ -352,15 +400,38 @@
   <main class="content-pane">
     {#if isLoadingBody}
         <p>Loading email content...</p>
-    {:else if emailBody}
-        <div class="email-header-actions">
-            <button class="reply-button" onclick={handleReplyClick}>
-                ↩ Reply
-            </button>
-        </div>
-        <div class="email-body">
-            {@html emailBody}
-        </div>
+    {:else if emailBody && selectedEmailUid}
+        {@const selectedEmail = emails.find(email => email.uid === selectedEmailUid)}
+        {#if selectedEmail}
+            <div class="email-header-section">
+                <h2 class="email-subject">{selectedEmail.subject}</h2>
+                <div class="email-meta">
+                    <div class="meta-row">
+                        <span class="meta-label">From:</span>
+                        <span class="meta-value">{selectedEmail.from}</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-label">To:</span>
+                        <span class="meta-value">{selectedEmail.to}</span>
+                    </div>
+                    <div class="meta-row">
+                        <span class="meta-label">Date:</span>
+                        <span class="meta-value">{selectedEmail.date}</span>
+                    </div>
+                </div>
+                <div class="email-actions">
+                    <button class="action-button reply-button" onclick={handleReplyClick}>
+                        ↩ Reply
+                    </button>
+                    <button class="action-button forward-button" onclick={handleForwardClick}>
+                        ➡ Forward
+                    </button>
+                </div>
+            </div>
+            <div class="email-body">
+                {@html emailBody}
+            </div>
+        {/if}
     {:else if selectedEmailUid}
         <p class="error-message">{error}</p>
     {:else}
@@ -376,7 +447,7 @@
   <div class="modal-overlay" onclick={handleCloseCompose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()}>
     <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()} role="dialog" aria-modal="true" tabindex="-1">
       <div class="modal-header">
-        <h2>{isReplyMode ? "Reply to Email" : "Compose Email"}</h2>
+        <h2>{isReplyMode ? "Reply to Email" : isForwardMode ? "Forward Email" : "Compose Email"}</h2>
         <button class="close-button" onclick={handleCloseCompose}>×</button>
       </div>
 
@@ -724,14 +795,52 @@
       padding: 0;
   }
 
-  .email-header-actions {
-      padding: 1rem 2rem;
+  .email-header-section {
+      padding: 1.5rem 2rem;
       border-bottom: 1px solid var(--border-color);
       background-color: var(--sidebar-bg);
       flex-shrink: 0; /* Fixed header */
   }
 
-  .reply-button {
+  .email-subject {
+      margin: 0 0 1rem 0;
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-color);
+  }
+
+  .email-meta {
+      margin-bottom: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+  }
+
+  .meta-row {
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      font-size: 0.9rem;
+  }
+
+  .meta-label {
+      font-weight: 600;
+      color: #666;
+      min-width: 60px;
+  }
+
+  .meta-value {
+      color: var(--text-color);
+      word-break: break-word;
+  }
+
+  .email-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 1rem;
+  }
+
+  .action-button {
       background-color: #007bff;
       color: white;
       border: none;
@@ -740,10 +849,19 @@
       cursor: pointer;
       font-weight: 500;
       transition: background-color 0.2s;
+      font-size: 0.9rem;
   }
 
-  .reply-button:hover {
+  .action-button:hover {
       background-color: #0056b3;
+  }
+
+  .forward-button {
+      background-color: #28a745;
+  }
+
+  .forward-button:hover {
+      background-color: #218838;
   }
 
   .email-body {
