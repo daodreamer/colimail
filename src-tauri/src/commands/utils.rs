@@ -45,9 +45,7 @@ pub async fn ensure_valid_token(mut config: AccountConfig) -> Result<AccountConf
     let provider = OAuth2Provider::get_provider(provider_name)?;
 
     // Refresh the token
-    let (new_access_token, new_expires_at) = provider
-        .refresh_access_token(refresh_token)
-        .await?;
+    let (new_access_token, new_expires_at) = provider.refresh_access_token(refresh_token).await?;
 
     println!("✓ Access token refreshed successfully");
 
@@ -57,15 +55,13 @@ pub async fn ensure_valid_token(mut config: AccountConfig) -> Result<AccountConf
 
     // Update database
     let pool = pool();
-    sqlx::query(
-        "UPDATE accounts SET access_token = ?, token_expires_at = ? WHERE email = ?",
-    )
-    .bind(&config.access_token)
-    .bind(config.token_expires_at)
-    .bind(&config.email)
-    .execute(&*pool)
-    .await
-    .map_err(|e| format!("Failed to update token in database: {}", e))?;
+    sqlx::query("UPDATE accounts SET access_token = ?, token_expires_at = ? WHERE email = ?")
+        .bind(&config.access_token)
+        .bind(config.token_expires_at)
+        .bind(&config.email)
+        .execute(&*pool)
+        .await
+        .map_err(|e| format!("Failed to update token in database: {}", e))?;
 
     println!("✓ Token updated in database");
 

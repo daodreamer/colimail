@@ -52,16 +52,14 @@ pub async fn fetch_emails(config: AccountConfig) -> Result<Vec<EmailHeader>, Str
                     access_token: access_token.clone(),
                 };
 
-                client
-                    .authenticate("XOAUTH2", &oauth2)
-                    .map_err(|e| {
-                        eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                        eprintln!("   Possible causes:");
-                        eprintln!("   1. Expired or invalid access token");
-                        eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
-                        eprintln!("   3. IMAP not enabled for this mailbox");
-                        format!("OAuth2 authentication failed: {}", e.0)
-                    })?
+                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
+                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
+                    eprintln!("   Possible causes:");
+                    eprintln!("   1. Expired or invalid access token");
+                    eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
+                    eprintln!("   3. IMAP not enabled for this mailbox");
+                    format!("OAuth2 authentication failed: {}", e.0)
+                })?
             }
             _ => {
                 let password = config
@@ -176,16 +174,14 @@ pub async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String,
                     access_token: access_token.clone(),
                 };
 
-                client
-                    .authenticate("XOAUTH2", &oauth2)
-                    .map_err(|e| {
-                        eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                        eprintln!("   Possible causes:");
-                        eprintln!("   1. Expired or invalid access token");
-                        eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
-                        eprintln!("   3. IMAP not enabled for this mailbox");
-                        format!("OAuth2 authentication failed: {}", e.0)
-                    })?
+                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
+                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
+                    eprintln!("   Possible causes:");
+                    eprintln!("   1. Expired or invalid access token");
+                    eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
+                    eprintln!("   3. IMAP not enabled for this mailbox");
+                    format!("OAuth2 authentication failed: {}", e.0)
+                })?
             }
             _ => {
                 let password = config
@@ -205,30 +201,16 @@ pub async fn fetch_email_body(config: AccountConfig, uid: u32) -> Result<String,
         let message = messages.first().ok_or("No message found for UID")?;
 
         let raw_body = message.body().unwrap_or_default();
-        let parsed_mail = mailparse::parse_mail(raw_body).map_err(|e| e.to_string())?;
+        let parsed_mail = mail_parser::MessageParser::default()
+            .parse(raw_body)
+            .ok_or("Failed to parse email message")?;
 
-        let mut html_body = None;
-        let mut text_body = None;
-
-        if parsed_mail.ctype.mimetype == "text/html" {
-            html_body = Some(parsed_mail.get_body().unwrap_or_default());
-        } else if parsed_mail.ctype.mimetype == "text/plain" {
-            text_body = Some(parsed_mail.get_body().unwrap_or_default());
-        }
-
-        for part in &parsed_mail.subparts {
-            if part.ctype.mimetype == "text/html" {
-                html_body = Some(part.get_body().unwrap_or_default());
-                break;
-            } else if part.ctype.mimetype == "text/plain" {
-                text_body = Some(part.get_body().unwrap_or_default());
-            }
-        }
-
-        let final_body = if let Some(body) = html_body {
-            body
-        } else if let Some(body) = text_body {
-            format!("<pre>{}</pre>", html_escape::encode_text(&body))
+        // mail-parser automatically handles multipart messages and provides
+        // body_html() and body_text() methods that extract the appropriate content
+        let final_body = if let Some(html_body) = parsed_mail.body_html(0) {
+            html_body.to_string()
+        } else if let Some(text_body) = parsed_mail.body_text(0) {
+            format!("<pre>{}</pre>", html_escape::encode_text(&text_body))
         } else {
             "(No readable body found)".to_string()
         };
