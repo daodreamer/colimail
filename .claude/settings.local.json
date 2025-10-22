@@ -5,7 +5,9 @@
       "Bash(cargo check:*)",
       "Bash(npm run check:*)",
       "WebSearch",
-      "WebFetch(domain:docs.rs)"
+      "WebFetch(domain:docs.rs)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:developers.google.com)"
     ],
     "deny": [],
     "ask": []

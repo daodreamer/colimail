@@ -30,6 +30,13 @@
   let isLoadingEmails = $state<boolean>(false);
   let isLoadingBody = $state<boolean>(false);
 
+  // Compose email state
+  let showComposeDialog = $state<boolean>(false);
+  let composeTo = $state<string>("");
+  let composeSubject = $state<string>("");
+  let composeBody = $state<string>("");
+  let isSending = $state<boolean>(false);
+
   // --- 生命周期 ---
   onMount(async () => {
     try {
@@ -109,6 +116,63 @@
       }
   }
 
+  function handleComposeClick() {
+      if (!selectedAccountId) {
+          error = "Please select an account first.";
+          return;
+      }
+      showComposeDialog = true;
+      composeTo = "";
+      composeSubject = "";
+      composeBody = "";
+      error = null;
+  }
+
+  function handleCloseCompose() {
+      showComposeDialog = false;
+      composeTo = "";
+      composeSubject = "";
+      composeBody = "";
+      error = null;
+  }
+
+  async function handleSendEmail() {
+      if (!selectedAccountId) {
+          error = "Please select an account first.";
+          return;
+      }
+
+      if (!composeTo || !composeSubject || !composeBody) {
+          error = "Please fill in all fields.";
+          return;
+      }
+
+      const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+      if (!selectedConfig) {
+          error = "Could not find selected account configuration.";
+          return;
+      }
+
+      isSending = true;
+      error = null;
+
+      try {
+          const result = await invoke<string>("send_email", {
+              config: selectedConfig,
+              to: composeTo,
+              subject: composeSubject,
+              body: composeBody
+          });
+          console.log("Send result:", result);
+          handleCloseCompose();
+          alert("Email sent successfully!");
+      } catch (e) {
+          error = `Failed to send email: ${e}`;
+      } finally {
+          isSending = false;
+      }
+  }
+
 </script>
 
 <div class="main-layout">
@@ -141,6 +205,9 @@
         <li class="no-accounts">No accounts configured.</li>
       {/if}
     </ul>
+    <button class="compose-button" onclick={handleComposeClick} disabled={!selectedAccountId}>
+      ✉️ Compose
+    </button>
     <a href="/settings" class="settings-link">+ Add Account</a>
   </aside>
 
@@ -184,6 +251,66 @@
     {/if}
   </main>
 </div>
+
+<!-- Compose Email Dialog -->
+{#if showComposeDialog}
+  <div class="modal-overlay" onclick={handleCloseCompose} role="button" tabindex="0" onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()}>
+    <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.key === 'Escape' && handleCloseCompose()} role="dialog" aria-modal="true" tabindex="-1">
+      <div class="modal-header">
+        <h2>Compose Email</h2>
+        <button class="close-button" onclick={handleCloseCompose}>×</button>
+      </div>
+
+      <div class="modal-body">
+        {#if error}
+          <div class="error-banner">{error}</div>
+        {/if}
+
+        <div class="form-group">
+          <label for="compose-to">To:</label>
+          <input
+            type="email"
+            id="compose-to"
+            bind:value={composeTo}
+            placeholder="recipient@example.com"
+            disabled={isSending}
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="compose-subject">Subject:</label>
+          <input
+            type="text"
+            id="compose-subject"
+            bind:value={composeSubject}
+            placeholder="Email subject"
+            disabled={isSending}
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="compose-body">Body:</label>
+          <textarea
+            id="compose-body"
+            bind:value={composeBody}
+            placeholder="Write your message here..."
+            rows="10"
+            disabled={isSending}
+          ></textarea>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button class="cancel-button" onclick={handleCloseCompose} disabled={isSending}>
+          Cancel
+        </button>
+        <button class="send-button" onclick={handleSendEmail} disabled={isSending}>
+          {isSending ? "Sending..." : "Send"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 <style>
   :root {
@@ -312,6 +439,32 @@
     opacity: 1;
   }
 
+  .compose-button {
+      display: block;
+      width: 100%;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 6px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      font-weight: 500;
+      margin-top: 1rem;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+  }
+
+  .compose-button:hover:not(:disabled) {
+      background-color: #218838;
+  }
+
+  .compose-button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+      opacity: 0.6;
+  }
+
   .settings-link {
       display: block;
       text-align: center;
@@ -321,7 +474,7 @@
       color: var(--link-text);
       text-decoration: none;
       font-weight: 500;
-      margin-top: 1rem;
+      margin-top: 0.5rem;
       flex-shrink: 0;
   }
 
@@ -393,6 +546,156 @@
     color: #d9534f;
     text-align: center;
     padding: 2rem;
+  }
+
+  /* Modal Styles */
+  .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+  }
+
+  .modal-content {
+      background-color: var(--app-bg);
+      border-radius: 8px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+
+  .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border-color);
+  }
+
+  .modal-header h2 {
+      margin: 0;
+      font-size: 1.25rem;
+  }
+
+  .close-button {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      color: #999;
+      cursor: pointer;
+      padding: 0;
+      width: 30px;
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+  }
+
+  .close-button:hover {
+      background-color: #ff4444;
+      color: white;
+  }
+
+  .modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+      flex: 1;
+  }
+
+  .error-banner {
+      background-color: #f8d7da;
+      color: #721c24;
+      padding: 0.75rem;
+      border-radius: 4px;
+      margin-bottom: 1rem;
+      border: 1px solid #f5c6cb;
+  }
+
+  .form-group {
+      margin-bottom: 1rem;
+  }
+
+  .form-group label {
+      display: block;
+      margin-bottom: 0.5rem;
+      font-weight: 500;
+  }
+
+  .form-group input,
+  .form-group textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 1rem;
+      background-color: var(--app-bg);
+      color: var(--text-color);
+  }
+
+  .form-group input:focus,
+  .form-group textarea:focus {
+      outline: none;
+      border-color: var(--selected-bg);
+  }
+
+  .form-group textarea {
+      resize: vertical;
+      min-height: 150px;
+  }
+
+  .modal-footer {
+      padding: 1rem 1.5rem;
+      border-top: 1px solid var(--border-color);
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+  }
+
+  .cancel-button,
+  .send-button {
+      padding: 0.5rem 1.5rem;
+      border-radius: 4px;
+      border: none;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background-color 0.2s;
+  }
+
+  .cancel-button {
+      background-color: #6c757d;
+      color: white;
+  }
+
+  .cancel-button:hover:not(:disabled) {
+      background-color: #5a6268;
+  }
+
+  .send-button {
+      background-color: #007bff;
+      color: white;
+  }
+
+  .send-button:hover:not(:disabled) {
+      background-color: #0056b3;
+  }
+
+  .cancel-button:disabled,
+  .send-button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
   }
 
 </style>

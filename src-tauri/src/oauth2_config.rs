@@ -101,7 +101,7 @@ impl OAuth2Provider {
             imap_server: "imap.gmail.com".to_string(),
             imap_port: 993,
             smtp_server: "smtp.gmail.com".to_string(),
-            smtp_port: 465,
+            smtp_port: 587, // Use STARTTLS port instead of 465
         }
     }
 
