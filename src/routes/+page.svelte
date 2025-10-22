@@ -43,6 +43,9 @@
   let isLoadingEmails = $state<boolean>(false);
   let isLoadingBody = $state<boolean>(false);
   let isLoadingFolders = $state<boolean>(false);
+  let isSyncing = $state<boolean>(false);
+  let lastSyncTime = $state<number>(0);
+  let syncInterval = $state<number>(300); // Default 5 minutes
 
   // Compose email state
   let showComposeDialog = $state<boolean>(false);
@@ -54,41 +57,175 @@
   let isForwardMode = $state<boolean>(false);
 
   // --- 生命周期 ---
-  onMount(async () => {
-    try {
-      accounts = await invoke<AccountConfig[]>("load_account_configs");
-    } catch (e) {
-      error = `Failed to load accounts: ${e}`;
-    }
+  onMount(() => {
+    (async () => {
+      try {
+        accounts = await invoke<AccountConfig[]>("load_account_configs");
+        // Load sync interval setting
+        syncInterval = await invoke<number>("get_sync_interval");
+
+        // Start automatic sync timer
+        startAutoSyncTimer();
+      } catch (e) {
+        error = `Failed to load accounts: ${e}`;
+      }
+    })();
+
+    // Cleanup timer on unmount
+    return () => {
+      if (autoSyncTimer) {
+        clearInterval(autoSyncTimer);
+        autoSyncTimer = null;
+      }
+    };
   });
+
+  // Reload sync interval when returning from settings page
+  $effect(() => {
+    // Check if we need to reload sync interval
+    // This runs when the component becomes visible again
+    const handleVisibilityChange = async () => {
+      if (document.visibilityState === 'visible') {
+        try {
+          const newInterval = await invoke<number>("get_sync_interval");
+          if (newInterval !== syncInterval) {
+            console.log(`Sync interval changed from ${syncInterval} to ${newInterval}`);
+            syncInterval = newInterval;
+            startAutoSyncTimer();
+          }
+        } catch (e) {
+          console.error("Failed to reload sync interval:", e);
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleVisibilityChange);
+    };
+  });
+
+  // Automatic sync timer
+  let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startAutoSyncTimer() {
+    // Clear any existing timer
+    if (autoSyncTimer) {
+      clearInterval(autoSyncTimer);
+      autoSyncTimer = null;
+    }
+
+    // Don't start timer if sync is disabled
+    if (syncInterval <= 0) {
+      console.log("Auto-sync disabled (interval:", syncInterval, ")");
+      return;
+    }
+
+    console.log(`Starting auto-sync timer with interval: ${syncInterval} seconds`);
+
+    // Check and sync every minute (we'll check if sync is needed based on interval)
+    autoSyncTimer = setInterval(async () => {
+      // Only sync if we have a selected account
+      if (!selectedAccountId) {
+        return;
+      }
+
+      const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+      if (!selectedConfig) {
+        return;
+      }
+
+      try {
+        // Check if sync is needed based on interval
+        const needsSync = await invoke<boolean>("should_sync", {
+          accountId: selectedAccountId,
+          folder: selectedFolderName,
+          syncInterval
+        });
+
+        if (needsSync && !isSyncing) {
+          console.log(`Auto-sync triggered for ${selectedFolderName}`);
+          isSyncing = true;
+
+          // Sync folders
+          const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+          folders = syncedFolders;
+
+          // Sync emails for current folder
+          const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+            config: selectedConfig,
+            folder: selectedFolderName
+          });
+
+          emails = syncedEmails;
+          lastSyncTime = Math.floor(Date.now() / 1000);
+          isSyncing = false;
+
+          console.log(`Auto-sync completed for ${selectedFolderName}`);
+        }
+      } catch (e) {
+        console.error("Auto-sync failed:", e);
+        isSyncing = false;
+      }
+    }, 60000); // Check every minute
+  }
 
   // --- 事件处理 ---
   async function handleAccountClick(accountId: number) {
+    // If clicking the same account that's already selected, do nothing
+    if (selectedAccountId === accountId) {
+      console.log("Same account already selected, ignoring click");
+      return;
+    }
+
     selectedAccountId = accountId;
     selectedFolderName = "INBOX";
     selectedEmailUid = null;
     emailBody = null;
     emails = [];
-    folders = [];
-    isLoadingFolders = true;
     error = null;
 
     const selectedConfig = accounts.find(acc => acc.id === accountId);
     if (!selectedConfig) {
         error = "Could not find selected account configuration.";
-        isLoadingFolders = false;
         return;
     }
 
-    try {
-      // First sync folders from server
-      folders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+    isLoadingFolders = true;
 
-      // Then load emails from INBOX
+    try {
+      // First, load folders from cache for instant display
+      const cachedFolders = await invoke<Folder[]>("load_folders", { accountId });
+      folders = cachedFolders;
+      isLoadingFolders = false;
+
+      console.log(`Loaded ${cachedFolders.length} folders from cache`);
+
+      // Then load emails from INBOX using cache-first strategy
       await loadEmailsForFolder("INBOX");
+
+      // Check if we should sync folders (based on sync interval)
+      const needsFolderSync = await invoke<boolean>("should_sync", {
+        accountId: accountId,
+        folder: "__folders__",  // Special folder name for folders sync
+        syncInterval
+      });
+
+      if (needsFolderSync) {
+        // Sync folders in the background to get updates
+        console.log("Syncing folders in background...");
+        const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+        folders = syncedFolders;
+        console.log(`Synced ${syncedFolders.length} folders from server`);
+      } else {
+        console.log("Using cached folders, sync not needed yet");
+      }
+
     } catch (e) {
-      error = `Failed to sync folders: ${e}`;
-    } finally {
+      error = `Failed to load folders: ${e}`;
       isLoadingFolders = false;
     }
   }
@@ -100,21 +237,64 @@
         return;
     }
 
+    if (!selectedAccountId) {
+        error = "No account selected.";
+        return;
+    }
+
     isLoadingEmails = true;
     selectedEmailUid = null;
     emailBody = null;
-    emails = [];
     error = null;
 
     try {
-      emails = await invoke<EmailHeader[]>("fetch_emails", {
-        config: selectedConfig,
+      // First, load from cache for instant display
+      const cachedEmails = await invoke<EmailHeader[]>("load_emails_from_cache", {
+        accountId: selectedAccountId,
         folder: folderName
       });
-    } catch (e) {
-      error = `Failed to fetch emails: ${e}`;
-    } finally {
+
+      // Display cached emails immediately
+      emails = cachedEmails;
       isLoadingEmails = false;
+
+      console.log(`Loaded ${cachedEmails.length} emails from cache`);
+
+      // Get last sync time
+      lastSyncTime = await invoke<number>("get_last_sync_time", {
+        accountId: selectedAccountId,
+        folder: folderName
+      });
+
+      // Check if sync is needed based on interval
+      const needsSync = await invoke<boolean>("should_sync", {
+        accountId: selectedAccountId,
+        folder: folderName,
+        syncInterval
+      });
+
+      if (needsSync) {
+        // Sync in the background to get updates
+        console.log("Sync needed, syncing emails in background...");
+        isSyncing = true;
+        const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+          config: selectedConfig,
+          folder: folderName
+        });
+
+        // Update with fresh data from server
+        emails = syncedEmails;
+        lastSyncTime = Math.floor(Date.now() / 1000);
+        isSyncing = false;
+        console.log(`Synced ${syncedEmails.length} emails from server`);
+      } else {
+        console.log("Using cache, sync not needed yet");
+      }
+
+    } catch (e) {
+      error = `Failed to load emails: ${e}`;
+      isLoadingEmails = false;
+      isSyncing = false;
     }
   }
 
@@ -137,7 +317,8 @@
       }
 
       try {
-          emailBody = await invoke<string>("fetch_email_body", {
+          // Use cached body if available
+          emailBody = await invoke<string>("fetch_email_body_cached", {
             config: selectedConfig,
             uid,
             folder: selectedFolderName
@@ -146,6 +327,45 @@
           error = `Failed to fetch email body: ${e}`;
       } finally {
           isLoadingBody = false;
+      }
+  }
+
+  // Manual refresh function
+  async function handleManualRefresh() {
+      if (!selectedAccountId) {
+          error = "Please select an account first.";
+          return;
+      }
+
+      const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+      if (!selectedConfig) {
+          error = "Could not find selected account configuration.";
+          return;
+      }
+
+      isSyncing = true;
+      error = null;
+
+      try {
+          // Sync folders
+          console.log("Manual refresh: syncing folders...");
+          folders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+
+          // Sync emails for current folder
+          console.log("Manual refresh: syncing emails...");
+          const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+              config: selectedConfig,
+              folder: selectedFolderName
+          });
+
+          emails = syncedEmails;
+          lastSyncTime = Math.floor(Date.now() / 1000);
+
+          console.log("Manual refresh completed");
+      } catch (e) {
+          error = `Failed to refresh: ${e}`;
+      } finally {
+          isSyncing = false;
       }
   }
 
@@ -307,6 +527,20 @@
       } finally {
           isSending = false;
       }
+  }
+
+  // Helper function to format time since last sync
+  function formatTimeSince(timestamp: number): string {
+      const now = Math.floor(Date.now() / 1000);
+      const seconds = now - timestamp;
+
+      if (seconds < 60) return "just now";
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}m ago`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}h ago`;
+      const days = Math.floor(hours / 24);
+      return `${days}d ago`;
   }
 
   // Helper function to format timestamp to local time (compact for list view)
@@ -475,7 +709,16 @@
     <button class="compose-button" onclick={handleComposeClick} disabled={!selectedAccountId}>
       ✉️ Compose
     </button>
-    <a href="/settings" class="settings-link">+ Add Account</a>
+    <button class="refresh-button" onclick={handleManualRefresh} disabled={!selectedAccountId || isSyncing}>
+      {isSyncing ? "🔄 Syncing..." : "🔄 Refresh"}
+    </button>
+    {#if selectedAccountId && lastSyncTime > 0}
+      <div class="sync-status">
+        Last sync: {formatTimeSince(lastSyncTime)}
+      </div>
+    {/if}
+    <a href="/account" class="add-account-link">+ Add Account</a>
+    <a href="/settings" class="settings-link">⚙️ Settings</a>
   </aside>
 
   <!-- FOLDERS SIDEBAR -->
@@ -855,17 +1098,75 @@
       opacity: 0.6;
   }
 
-  .settings-link {
+  .refresh-button {
+      display: block;
+      width: calc(100% - 2rem);
+      text-align: center;
+      padding: 0.75rem;
+      margin: 0.5rem 1rem;
+      border-radius: 6px;
+      background-color: #17a2b8;
+      color: white;
+      border: none;
+      font-weight: 500;
+      flex-shrink: 0;
+      cursor: pointer;
+      transition: background-color 0.2s;
+  }
+
+  .refresh-button:hover:not(:disabled) {
+      background-color: #138496;
+  }
+
+  .refresh-button:disabled {
+      background-color: #6c757d;
+      cursor: not-allowed;
+      opacity: 0.6;
+  }
+
+  .sync-status {
+      text-align: center;
+      font-size: 0.75rem;
+      color: #666;
+      padding: 0.25rem 1rem;
+      margin: 0 1rem 0.5rem 1rem;
+      flex-shrink: 0;
+  }
+
+  .add-account-link {
       display: block;
       text-align: center;
       padding: 0.75rem;
-      margin: 0 1rem 1rem 1rem;
+      margin: 0 1rem 0.5rem 1rem;
       border-radius: 6px;
       background-color: var(--link-bg);
       color: var(--link-text);
       text-decoration: none;
       font-weight: 500;
       flex-shrink: 0;
+      transition: background-color 0.2s;
+  }
+
+  .add-account-link:hover {
+      background-color: var(--link-hover-bg);
+  }
+
+  .settings-link {
+      display: block;
+      text-align: center;
+      padding: 0.75rem;
+      margin: 0 1rem 1rem 1rem;
+      border-radius: 6px;
+      background-color: #6c757d;
+      color: white;
+      text-decoration: none;
+      font-weight: 500;
+      flex-shrink: 0;
+      transition: background-color 0.2s;
+  }
+
+  .settings-link:hover {
+      background-color: #5a6268;
   }
 
   .email-list-pane {

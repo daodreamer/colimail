@@ -197,6 +197,18 @@ pub async fn sync_folders(config: AccountConfig) -> Result<Vec<Folder>, String> 
             .map_err(|e| e.to_string())?;
     }
 
+    // Update last sync time for folders
+    let current_time = chrono::Utc::now().timestamp();
+    sqlx::query(
+        "INSERT OR REPLACE INTO sync_status (account_id, folder_name, last_sync_time)
+        VALUES (?, '__folders__', ?)",
+    )
+    .bind(account_id)
+    .bind(current_time)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to update folders sync time: {}", e))?;
+
     println!("✅ Synced {} folders to database", folders.len());
     Ok(folders)
 }

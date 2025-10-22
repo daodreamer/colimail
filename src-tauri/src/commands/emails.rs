@@ -1,4 +1,5 @@
 use crate::commands::utils::ensure_valid_token;
+use crate::db;
 use crate::models::{AccountConfig, AuthType, EmailHeader};
 use chrono::{DateTime, Utc};
 use encoding_rs::Encoding;
@@ -659,6 +660,7 @@ pub async fn move_email_to_trash(
     .map_err(|e| e.to_string())??;
 
     println!("✅ Successfully moved email UID {} to trash", uid);
+
     Ok(())
 }
 
@@ -747,5 +749,277 @@ pub async fn delete_email(
     .map_err(|e| e.to_string())??;
 
     println!("✅ Successfully deleted email UID {} from server", uid);
+
+    Ok(())
+}
+
+// Save emails to database cache
+async fn save_emails_to_cache(
+    account_id: i32,
+    folder_name: &str,
+    emails: &[EmailHeader],
+) -> Result<(), String> {
+    let pool = db::pool();
+    let current_time = Utc::now().timestamp();
+
+    for email in emails {
+        // Use INSERT OR REPLACE to update existing emails
+        sqlx::query(
+            "INSERT OR REPLACE INTO emails
+            (account_id, folder_name, uid, subject, from_addr, to_addr, date, timestamp, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        )
+        .bind(account_id)
+        .bind(folder_name)
+        .bind(email.uid as i64)
+        .bind(&email.subject)
+        .bind(&email.from)
+        .bind(&email.to)
+        .bind(&email.date)
+        .bind(email.timestamp)
+        .bind(current_time)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to save email to cache: {}", e))?;
+    }
+
+    println!(
+        "✅ Saved {} emails to cache for folder {}",
+        emails.len(),
+        folder_name
+    );
+    Ok(())
+}
+
+// Load emails from database cache
+#[command]
+pub async fn load_emails_from_cache(
+    account_id: i32,
+    folder: Option<String>,
+) -> Result<Vec<EmailHeader>, String> {
+    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    println!(
+        "Loading emails from cache for account {} folder {}",
+        account_id, folder_name
+    );
+
+    let pool = db::pool();
+
+    let rows = sqlx::query_as::<_, (i64, String, String, String, String, i64)>(
+        "SELECT uid, subject, from_addr, to_addr, date, timestamp
+        FROM emails
+        WHERE account_id = ? AND folder_name = ?
+        ORDER BY timestamp DESC",
+    )
+    .bind(account_id)
+    .bind(&folder_name)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to load emails from cache: {}", e))?;
+
+    let emails: Vec<EmailHeader> = rows
+        .into_iter()
+        .map(|(uid, subject, from, to, date, timestamp)| EmailHeader {
+            uid: uid as u32,
+            subject,
+            from,
+            to,
+            date,
+            timestamp,
+        })
+        .collect();
+
+    println!(
+        "✅ Loaded {} emails from cache for folder {}",
+        emails.len(),
+        folder_name
+    );
+    Ok(emails)
+}
+
+// Sync emails from server and update cache
+#[command]
+pub async fn sync_emails(
+    config: AccountConfig,
+    folder: Option<String>,
+) -> Result<Vec<EmailHeader>, String> {
+    let account_id = config.id.ok_or("Account ID is required")?;
+    let folder_name = folder.clone().unwrap_or_else(|| "INBOX".to_string());
+
+    println!(
+        "Syncing emails from server for account {} folder {}",
+        account_id, folder_name
+    );
+
+    // Fetch emails from server
+    let emails = fetch_emails(config, folder).await?;
+
+    // Save to cache
+    save_emails_to_cache(account_id, &folder_name, &emails).await?;
+
+    // Update last sync time
+    update_last_sync_time(account_id, &folder_name).await?;
+
+    Ok(emails)
+}
+
+// Update last sync time for a folder
+async fn update_last_sync_time(account_id: i32, folder_name: &str) -> Result<(), String> {
+    let pool = db::pool();
+    let current_time = Utc::now().timestamp();
+
+    sqlx::query(
+        "INSERT OR REPLACE INTO sync_status (account_id, folder_name, last_sync_time)
+        VALUES (?, ?, ?)",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .bind(current_time)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to update sync time: {}", e))?;
+
+    Ok(())
+}
+
+// Get last sync time for a folder
+#[command]
+pub async fn get_last_sync_time(account_id: i32, folder: Option<String>) -> Result<i64, String> {
+    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    let pool = db::pool();
+
+    let result = sqlx::query_as::<_, (i64,)>(
+        "SELECT last_sync_time FROM sync_status WHERE account_id = ? AND folder_name = ?",
+    )
+    .bind(account_id)
+    .bind(&folder_name)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to get last sync time: {}", e))?;
+
+    Ok(result.map(|(time,)| time).unwrap_or(0))
+}
+
+// Check if sync is needed based on interval
+#[command]
+pub async fn should_sync(
+    account_id: i32,
+    folder: Option<String>,
+    sync_interval: i64,
+) -> Result<bool, String> {
+    // sync_interval in seconds, 0 = manual, -1 = never
+    if sync_interval == -1 {
+        return Ok(false); // Never sync
+    }
+    if sync_interval == 0 {
+        return Ok(false); // Manual only
+    }
+
+    let last_sync = get_last_sync_time(account_id, folder).await?;
+    let current_time = Utc::now().timestamp();
+    let elapsed = current_time - last_sync;
+
+    Ok(elapsed >= sync_interval)
+}
+
+// Save email body to cache
+async fn save_email_body_to_cache(
+    account_id: i32,
+    folder_name: &str,
+    uid: u32,
+    body: &str,
+) -> Result<(), String> {
+    let pool = db::pool();
+
+    sqlx::query("UPDATE emails SET body = ? WHERE account_id = ? AND folder_name = ? AND uid = ?")
+        .bind(body)
+        .bind(account_id)
+        .bind(folder_name)
+        .bind(uid as i64)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to save body to cache: {}", e))?;
+
+    println!("✅ Saved body to cache for UID {}", uid);
+    Ok(())
+}
+
+// Load email body from cache
+async fn load_email_body_from_cache(
+    account_id: i32,
+    folder_name: &str,
+    uid: u32,
+) -> Result<Option<String>, String> {
+    let pool = db::pool();
+
+    let result = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT body FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .bind(uid as i64)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to load body from cache: {}", e))?;
+
+    Ok(result.and_then(|(body,)| body))
+}
+
+// Fetch email body with caching
+#[command]
+pub async fn fetch_email_body_cached(
+    config: AccountConfig,
+    uid: u32,
+    folder: Option<String>,
+) -> Result<String, String> {
+    let account_id = config.id.ok_or("Account ID is required")?;
+    let folder_name = folder.clone().unwrap_or_else(|| "INBOX".to_string());
+
+    // Try to load from cache first
+    if let Some(cached_body) = load_email_body_from_cache(account_id, &folder_name, uid).await? {
+        println!("✅ Loaded body from cache for UID {}", uid);
+        return Ok(cached_body);
+    }
+
+    println!("📥 Fetching body from server for UID {}", uid);
+
+    // Not in cache, fetch from server
+    let body = fetch_email_body(config, uid, folder).await?;
+
+    // Save to cache
+    save_email_body_to_cache(account_id, &folder_name, uid, &body).await?;
+
+    Ok(body)
+}
+
+// Get sync interval setting
+#[command]
+pub async fn get_sync_interval() -> Result<i64, String> {
+    let pool = db::pool();
+
+    let result =
+        sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE key = 'sync_interval'")
+            .fetch_optional(pool.as_ref())
+            .await
+            .map_err(|e| format!("Failed to get sync interval: {}", e))?;
+
+    let interval_str = result.map(|(v,)| v).unwrap_or_else(|| "300".to_string());
+    interval_str
+        .parse::<i64>()
+        .map_err(|e| format!("Failed to parse sync interval: {}", e))
+}
+
+// Set sync interval setting
+#[command]
+pub async fn set_sync_interval(interval: i64) -> Result<(), String> {
+    let pool = db::pool();
+
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('sync_interval', ?)")
+        .bind(interval.to_string())
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to set sync interval: {}", e))?;
+
+    println!("✅ Set sync interval to {} seconds", interval);
     Ok(())
 }

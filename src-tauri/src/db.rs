@@ -71,6 +71,64 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create emails cache table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS emails (
+            id INTEGER PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            folder_name TEXT NOT NULL,
+            uid INTEGER NOT NULL,
+            subject TEXT NOT NULL,
+            from_addr TEXT NOT NULL,
+            to_addr TEXT NOT NULL,
+            date TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            body TEXT,
+            synced_at INTEGER NOT NULL,
+            UNIQUE(account_id, folder_name, uid),
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create index for faster queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_emails_account_folder
+        ON emails(account_id, folder_name, timestamp DESC)",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create sync_status table to track last sync times
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS sync_status (
+            id INTEGER PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            folder_name TEXT NOT NULL,
+            last_sync_time INTEGER NOT NULL,
+            UNIQUE(account_id, folder_name),
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create settings table for user preferences
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Set default sync interval if not exists
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('sync_interval', '300')")
+        .execute(&pool)
+        .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");
