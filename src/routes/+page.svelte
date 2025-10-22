@@ -19,6 +19,7 @@
     from: string;
     to: string;
     date: string;
+    timestamp: number; // Unix timestamp in seconds
   }
 
   interface Folder {
@@ -308,6 +309,67 @@
       }
   }
 
+  // Helper function to format timestamp to local time (compact for list view)
+  function formatLocalDateTime(timestamp: number): string {
+      const date = new Date(timestamp * 1000); // Convert seconds to milliseconds
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const emailDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+
+      // Format time as HH:MM
+      const timeStr = date.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+      });
+
+      // If today, show time only
+      if (emailDate.getTime() === today.getTime()) {
+          return timeStr;
+      }
+
+      // If yesterday, show "Yesterday HH:MM"
+      if (emailDate.getTime() === yesterday.getTime()) {
+          return `Yesterday ${timeStr}`;
+      }
+
+      // If within this year, show "MMM DD HH:MM"
+      if (date.getFullYear() === now.getFullYear()) {
+          const monthDay = date.toLocaleDateString(undefined, {
+              month: 'short',
+              day: 'numeric'
+          });
+          return `${monthDay} ${timeStr}`;
+      }
+
+      // Otherwise show full date "MMM DD, YYYY HH:MM"
+      return date.toLocaleDateString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          year: 'numeric'
+      }) + ` ${timeStr}`;
+  }
+
+  // Helper function to format timestamp to full local time (for detail view)
+  function formatFullLocalDateTime(timestamp: number): string {
+      const date = new Date(timestamp * 1000); // Convert seconds to milliseconds
+
+      // Format: "Day, Month DD, YYYY at HH:MM:SS"
+      return date.toLocaleDateString(undefined, {
+          weekday: 'long',
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
+      }) + ' at ' + date.toLocaleTimeString(undefined, {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+      });
+  }
+
   // Helper function to check if current folder is a trash/deleted folder
   function isTrashFolder(folderName: string): boolean {
       const lowerName = folderName.toLowerCase();
@@ -456,7 +518,7 @@
                     <button class="email-item" class:selected={email.uid === selectedEmailUid} onclick={() => handleEmailClick(email.uid)}>
                         <div class="from">{email.from}</div>
                         <div class="subject">{email.subject}</div>
-                        <div class="date">{email.date}</div>
+                        <div class="date">{formatLocalDateTime(email.timestamp)}</div>
                     </button>
                 </li>
             {/each}
@@ -486,7 +548,7 @@
                     </div>
                     <div class="meta-row">
                         <span class="meta-label">Date:</span>
-                        <span class="meta-value">{selectedEmail.date}</span>
+                        <span class="meta-value">{formatFullLocalDateTime(selectedEmail.timestamp)}</span>
                     </div>
                 </div>
                 <div class="email-actions">

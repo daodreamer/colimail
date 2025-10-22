@@ -46,6 +46,7 @@ pub struct EmailHeader {
     pub from: String,
     pub to: String,
     pub date: String,
+    pub timestamp: i64, // Unix timestamp in seconds for sorting and conversion
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

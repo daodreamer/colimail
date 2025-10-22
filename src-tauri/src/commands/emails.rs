@@ -1,5 +1,6 @@
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType, EmailHeader};
+use chrono::{DateTime, Utc};
 use encoding_rs::Encoding;
 use native_tls::TlsConnector;
 use tauri::command;
@@ -185,6 +186,30 @@ fn decode_bytes_to_string(bytes: &[u8]) -> String {
             String::from_utf8_lossy(bytes).to_string()
         }
     }
+}
+
+// Parse RFC 2822 date string to Unix timestamp
+// Email dates are in format like: "Mon, 15 Jan 2024 14:30:00 +0800"
+fn parse_email_date(date_str: &str) -> i64 {
+    // Try to parse the RFC 2822 format date
+    if let Ok(dt) = DateTime::parse_from_rfc2822(date_str) {
+        return dt.timestamp();
+    }
+
+    // Try alternative RFC 3339 format (ISO 8601)
+    if let Ok(dt) = DateTime::parse_from_rfc3339(date_str) {
+        return dt.timestamp();
+    }
+
+    // If parsing fails, try to extract timestamp from various formats
+    // Some servers might send non-standard date formats
+    if let Ok(dt) = chrono::DateTime::parse_from_str(date_str, "%a, %d %b %Y %H:%M:%S %z") {
+        return dt.timestamp();
+    }
+
+    // If all parsing fails, return current timestamp as fallback
+    eprintln!("⚠️ Failed to parse date: {}", date_str);
+    Utc::now().timestamp()
 }
 
 // OAuth2 authenticator for IMAP
@@ -387,6 +412,9 @@ pub async fn fetch_emails(
                 .map(|d| decode_bytes_to_string(d))
                 .unwrap_or_else(|| "(No Date)".to_string());
 
+            // Parse date to timestamp for sorting and local time conversion
+            let timestamp = parse_email_date(&date);
+
             let to = envelope
                 .to
                 .as_ref()
@@ -419,8 +447,12 @@ pub async fn fetch_emails(
                 from,
                 to,
                 date,
+                timestamp,
             });
         }
+
+        // Sort emails by timestamp in descending order (newest first)
+        headers.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
         let _ = imap_session.logout();
         Ok(headers)
