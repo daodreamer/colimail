@@ -1,11 +1,18 @@
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
 use lettre::{
-    message::{Mailbox, MultiPart, SinglePart},
+    message::{Attachment as LettreAttachment, Body, Mailbox, MultiPart, SinglePart},
     transport::smtp::authentication::{Credentials, Mechanism},
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use tauri::command;
+
+#[derive(serde::Deserialize)]
+pub struct AttachmentData {
+    pub filename: String,
+    pub content_type: String,
+    pub data: Vec<u8>,
+}
 
 #[command]
 pub async fn send_email(
@@ -13,6 +20,7 @@ pub async fn send_email(
     to: String,
     subject: String,
     body: String,
+    attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Sending email to {}", to);
 
@@ -22,12 +30,34 @@ pub async fn send_email(
     let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
-    let email = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
-        .subject(subject)
-        .body(body)
-        .map_err(|e| e.to_string())?;
+        .subject(subject);
+
+    // Build multipart message if there are attachments
+    let email = if let Some(attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            let mut multipart = MultiPart::mixed().singlepart(SinglePart::html(body));
+
+            for attachment_data in attachment_list {
+                let attachment_body = Body::new(attachment_data.data);
+                let attachment = LettreAttachment::new(attachment_data.filename).body(
+                    attachment_body,
+                    attachment_data.content_type.parse().unwrap(),
+                );
+                multipart = multipart.singlepart(attachment);
+            }
+
+            email_builder
+                .multipart(multipart)
+                .map_err(|e| e.to_string())?
+        } else {
+            email_builder.body(body).map_err(|e| e.to_string())?
+        }
+    } else {
+        email_builder.body(body).map_err(|e| e.to_string())?
+    };
 
     let mailer = match config.auth_type {
         Some(AuthType::OAuth2) => {
@@ -87,6 +117,7 @@ pub async fn reply_email(
     to: String,
     original_subject: String,
     body: String,
+    attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Replying to email: {}", to);
 
@@ -103,12 +134,34 @@ pub async fn reply_email(
         format!("Re: {}", original_subject)
     };
 
-    let email = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
-        .subject(reply_subject)
-        .body(body)
-        .map_err(|e| e.to_string())?;
+        .subject(reply_subject);
+
+    // Build multipart message if there are attachments
+    let email = if let Some(attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            let mut multipart = MultiPart::mixed().singlepart(SinglePart::html(body));
+
+            for attachment_data in attachment_list {
+                let attachment_body = Body::new(attachment_data.data);
+                let attachment = LettreAttachment::new(attachment_data.filename).body(
+                    attachment_body,
+                    attachment_data.content_type.parse().unwrap(),
+                );
+                multipart = multipart.singlepart(attachment);
+            }
+
+            email_builder
+                .multipart(multipart)
+                .map_err(|e| e.to_string())?
+        } else {
+            email_builder.body(body).map_err(|e| e.to_string())?
+        }
+    } else {
+        email_builder.body(body).map_err(|e| e.to_string())?
+    };
 
     let mailer = match config.auth_type {
         Some(AuthType::OAuth2) => {
@@ -168,6 +221,7 @@ pub async fn forward_email(
     original_date: String,
     original_body: String,
     additional_message: String,
+    attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Forwarding email to: {}", to);
 
@@ -222,12 +276,38 @@ pub async fn forward_email(
         )
     };
 
-    let email = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
-        .subject(forward_subject)
-        .multipart(MultiPart::alternative().singlepart(SinglePart::html(combined_body)))
-        .map_err(|e| e.to_string())?;
+        .subject(forward_subject);
+
+    // Build multipart message with attachments if present
+    let email = if let Some(attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            let mut multipart = MultiPart::mixed().singlepart(SinglePart::html(combined_body));
+
+            for attachment_data in attachment_list {
+                let attachment_body = Body::new(attachment_data.data);
+                let attachment = LettreAttachment::new(attachment_data.filename).body(
+                    attachment_body,
+                    attachment_data.content_type.parse().unwrap(),
+                );
+                multipart = multipart.singlepart(attachment);
+            }
+
+            email_builder
+                .multipart(multipart)
+                .map_err(|e| e.to_string())?
+        } else {
+            email_builder
+                .multipart(MultiPart::alternative().singlepart(SinglePart::html(combined_body)))
+                .map_err(|e| e.to_string())?
+        }
+    } else {
+        email_builder
+            .multipart(MultiPart::alternative().singlepart(SinglePart::html(combined_body)))
+            .map_err(|e| e.to_string())?
+    };
 
     let mailer = match config.auth_type {
         Some(AuthType::OAuth2) => {

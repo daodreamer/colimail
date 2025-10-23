@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { save } from "@tauri-apps/plugin-dialog";
 
   // --- 类型定义 ---
   interface AccountConfig {
@@ -20,6 +21,22 @@
     to: string;
     date: string;
     timestamp: number; // Unix timestamp in seconds
+    has_attachments?: boolean; // Whether email has attachments
+  }
+
+  interface AttachmentInfo {
+    id: number;
+    filename: string;
+    content_type: string;
+    size: number;
+  }
+
+  interface Attachment {
+    id?: number;
+    filename: string;
+    content_type: string;
+    size: number;
+    data?: number[]; // Uint8Array as number array for JSON
   }
 
   interface Folder {
@@ -56,6 +73,11 @@
   let isSending = $state<boolean>(false);
   let isReplyMode = $state<boolean>(false);
   let isForwardMode = $state<boolean>(false);
+
+  // Attachment state
+  let attachments = $state<AttachmentInfo[]>([]);
+  let isLoadingAttachments = $state<boolean>(false);
+  let composeAttachments = $state<File[]>([]); // Attachments to send
 
   // --- 生命周期 ---
   onMount(() => {
@@ -314,6 +336,7 @@
       selectedEmailUid = uid;
       isLoadingBody = true;
       emailBody = null;
+      attachments = [];
       error = null;
 
       const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
@@ -330,11 +353,60 @@
             uid,
             folder: selectedFolderName
           });
+
+          // Load attachments if available
+          if (selectedAccountId) {
+              loadAttachmentsForEmail(selectedAccountId, uid);
+          }
       } catch (e) {
           error = `Failed to fetch email body: ${e}`;
       } finally {
           isLoadingBody = false;
       }
+  }
+
+  async function loadAttachmentsForEmail(accountId: number, uid: number) {
+      isLoadingAttachments = true;
+      try {
+          attachments = await invoke<AttachmentInfo[]>("load_attachments_info", {
+              accountId,
+              folderName: selectedFolderName,
+              uid
+          });
+      } catch (e) {
+          console.error("Failed to load attachments:", e);
+      } finally {
+          isLoadingAttachments = false;
+      }
+  }
+
+  async function downloadAttachment(attachmentId: number, filename: string) {
+      try {
+          // Show save dialog to user
+          const filePath = await save({
+              defaultPath: filename,
+              title: "Save Attachment"
+          });
+
+          if (filePath) {
+              // Save the attachment directly to the selected path
+              await invoke("save_attachment_to_file", {
+                  attachmentId,
+                  filePath
+              });
+              console.log("Attachment saved successfully:", filePath);
+          }
+      } catch (e) {
+          console.error("Failed to save attachment:", e);
+          error = `Failed to download attachment: ${e}`;
+      }
+  }
+
+  function formatFileSize(bytes: number): string {
+      if (bytes < 1024) return bytes + " B";
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+      return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
   }
 
   // Manual refresh function
@@ -812,6 +884,35 @@
                     </button>
                 </div>
             </div>
+
+            <!-- Attachments Section (between header and body) -->
+            {#if isLoadingAttachments}
+                <div class="attachments-section">
+                    <h3>Attachments</h3>
+                    <p class="loading-text">Loading attachments...</p>
+                </div>
+            {:else if attachments.length > 0}
+                <div class="attachments-section">
+                    <h3>📎 Attachments ({attachments.length})</h3>
+                    <div class="attachments-list">
+                        {#each attachments as attachment (attachment.id)}
+                            <button
+                                type="button"
+                                class="attachment-item"
+                                onclick={() => downloadAttachment(attachment.id, attachment.filename)}
+                            >
+                                <span class="attachment-icon">📎</span>
+                                <div class="attachment-info">
+                                    <span class="attachment-name">{attachment.filename}</span>
+                                    <span class="attachment-size">{formatFileSize(attachment.size)}</span>
+                                </div>
+                                <span class="download-icon">⬇</span>
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
+
             <div class="email-body">
                 {@html emailBody}
             </div>
@@ -1482,6 +1583,85 @@
   .send-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+  }
+
+  /* Attachments Styles */
+  .attachments-section {
+      padding: 1rem 2rem;
+      background-color: var(--sidebar-bg);
+      border-bottom: 1px solid var(--border-color);
+      flex-shrink: 0;
+  }
+
+  .attachments-section h3 {
+      margin: 0 0 0.75rem 0;
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-color);
+  }
+
+  .attachments-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+  }
+
+  .attachment-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background-color: var(--app-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background-color 0.2s, border-color 0.2s;
+      text-align: left;
+      font: inherit;
+      color: inherit;
+      width: 100%;
+      position: relative;
+      z-index: 1;
+  }
+
+  .attachment-item:hover {
+      background-color: var(--hover-bg);
+      border-color: var(--selected-bg);
+  }
+
+  .attachment-item:active {
+      transform: scale(0.98);
+  }
+
+  .attachment-icon {
+      font-size: 1.5rem;
+      flex-shrink: 0;
+  }
+
+  .attachment-info {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      min-width: 0;
+  }
+
+  .attachment-name {
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+  }
+
+  .attachment-size {
+      font-size: 0.875rem;
+      color: #666;
+  }
+
+  .download-icon {
+      font-size: 1.25rem;
+      color: var(--selected-bg);
+      flex-shrink: 0;
   }
 
 </style>

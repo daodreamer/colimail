@@ -47,6 +47,26 @@ pub struct EmailHeader {
     pub to: String,
     pub date: String,
     pub timestamp: i64, // Unix timestamp in seconds for sorting and conversion
+    #[serde(default)]
+    pub has_attachments: bool, // Indicates if email has attachments
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Attachment {
+    pub id: Option<i64>,
+    pub filename: String,
+    pub content_type: String,
+    pub size: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<Vec<u8>>, // Optional: only included when downloading
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct AttachmentInfo {
+    pub id: i64,
+    pub filename: String,
+    pub content_type: String,
+    pub size: i64,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

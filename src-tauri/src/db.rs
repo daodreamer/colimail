@@ -71,6 +71,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Migration: Add has_attachments column to emails table if it doesn't exist
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN has_attachments INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+
     // Create emails cache table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS emails (
@@ -128,6 +133,29 @@ pub async fn init() -> Result<(), sqlx::Error> {
     sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('sync_interval', '300')")
         .execute(&pool)
         .await?;
+
+    // Create attachments table for storing email attachments
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS attachments (
+            id INTEGER PRIMARY KEY,
+            email_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            content_type TEXT NOT NULL,
+            size INTEGER NOT NULL,
+            data BLOB NOT NULL,
+            FOREIGN KEY(email_id) REFERENCES emails(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create index for faster attachment queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_attachments_email_id
+        ON attachments(email_id)",
+    )
+    .execute(&pool)
+    .await?;
 
     // Store pool globally
     POOL.set(Arc::new(pool))

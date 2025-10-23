@@ -6,11 +6,12 @@ mod models;
 mod oauth2_config;
 
 use commands::{
-    complete_oauth2_flow, delete_account, delete_email, fetch_email_body, fetch_email_body_cached,
-    fetch_emails, fetch_folders, forward_email, get_last_sync_time, get_sync_interval,
-    listen_for_oauth_callback, load_account_configs, load_emails_from_cache, load_folders,
-    move_email_to_trash, reply_email, save_account_config, send_email, set_sync_interval,
-    should_sync, start_oauth2_flow, sync_emails, sync_folders,
+    complete_oauth2_flow, delete_account, delete_email, download_attachment, fetch_email_body,
+    fetch_email_body_cached, fetch_emails, fetch_folders, forward_email, get_last_sync_time,
+    get_sync_interval, listen_for_oauth_callback, load_account_configs, load_attachments_info,
+    load_emails_from_cache, load_folders, move_email_to_trash, reply_email, save_account_config,
+    save_attachment_to_file, send_email, set_sync_interval, should_sync, start_oauth2_flow,
+    sync_emails, sync_folders,
 };
 
 #[tokio::main]
@@ -27,6 +28,8 @@ async fn main() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             save_account_config,
             load_account_configs,
@@ -50,7 +53,10 @@ async fn main() {
             load_folders,
             start_oauth2_flow,
             listen_for_oauth_callback,
-            complete_oauth2_flow
+            complete_oauth2_flow,
+            load_attachments_info,
+            download_attachment,
+            save_attachment_to_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

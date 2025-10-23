@@ -1,8 +1,9 @@
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
-use crate::models::{AccountConfig, AuthType, EmailHeader};
+use crate::models::{AccountConfig, Attachment, AttachmentInfo, AuthType, EmailHeader};
 use chrono::{DateTime, Utc};
 use encoding_rs::Encoding;
+use mail_parser::MimeHeaders;
 use native_tls::TlsConnector;
 use tauri::command;
 
@@ -449,6 +450,7 @@ pub async fn fetch_emails(
                 to,
                 date,
                 timestamp,
+                has_attachments: false, // Will be updated when body is fetched
             });
         }
 
@@ -470,97 +472,138 @@ pub async fn fetch_emails(
     Ok(emails)
 }
 
-#[command]
-pub async fn fetch_email_body(
+// Internal function that returns both body and attachments
+async fn fetch_email_body_with_attachments(
     config: AccountConfig,
     uid: u32,
     folder: Option<String>,
-) -> Result<String, String> {
+) -> Result<(String, Vec<Attachment>), String> {
     let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
     println!("Fetching body for UID {} from {}", uid, folder_name);
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
-    let body = tokio::task::spawn_blocking(move || -> Result<String, String> {
-        let domain = config.imap_server.as_str();
-        let port = config.imap_port;
-        let email = config.email.as_str();
+    let (body, attachments) =
+        tokio::task::spawn_blocking(move || -> Result<(String, Vec<Attachment>), String> {
+            let domain = config.imap_server.as_str();
+            let port = config.imap_port;
+            let email = config.email.as_str();
 
-        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
+            let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
+            let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
 
-        let mut imap_session = match config.auth_type {
-            Some(AuthType::OAuth2) => {
-                let access_token = config
-                    .access_token
-                    .as_ref()
-                    .ok_or("Access token is required for OAuth2 authentication")?;
+            let mut imap_session = match config.auth_type {
+                Some(AuthType::OAuth2) => {
+                    let access_token = config
+                        .access_token
+                        .as_ref()
+                        .ok_or("Access token is required for OAuth2 authentication")?;
 
-                println!("🔐 Attempting OAuth2 authentication for: {}", email);
-                println!("   Server: {}:{}", domain, port);
-                println!("   Token length: {} chars", access_token.len());
+                    println!("🔐 Attempting OAuth2 authentication for: {}", email);
+                    println!("   Server: {}:{}", domain, port);
+                    println!("   Token length: {} chars", access_token.len());
 
-                // OAuth2 XOAUTH2 authentication
-                let oauth2 = OAuth2 {
-                    user: email.to_string(),
-                    access_token: access_token.clone(),
-                };
+                    // OAuth2 XOAUTH2 authentication
+                    let oauth2 = OAuth2 {
+                        user: email.to_string(),
+                        access_token: access_token.clone(),
+                    };
 
-                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
-                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                    eprintln!("   Possible causes:");
-                    eprintln!("   1. Expired or invalid access token");
-                    eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
-                    eprintln!("   3. IMAP not enabled for this mailbox");
-                    format!("OAuth2 authentication failed: {}", e.0)
-                })?
+                    client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
+                        eprintln!("❌ OAuth2 authentication failed: {}", e.0);
+                        eprintln!("   Possible causes:");
+                        eprintln!("   1. Expired or invalid access token");
+                        eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
+                        eprintln!("   3. IMAP not enabled for this mailbox");
+                        format!("OAuth2 authentication failed: {}", e.0)
+                    })?
+                }
+                _ => {
+                    let password = config
+                        .password
+                        .as_ref()
+                        .ok_or("Password is required for basic authentication")?;
+
+                    client.login(email, password).map_err(|e| e.0.to_string())?
+                }
+            };
+
+            imap_session.select(&folder_name).map_err(|e| {
+                eprintln!(
+                    "❌ Failed to SELECT folder '{}' for UID {}: {}",
+                    folder_name, uid, e
+                );
+                format!("Cannot access folder '{}': {}", folder_name, e)
+            })?;
+
+            let messages = imap_session
+                .uid_fetch(uid.to_string(), "BODY[]")
+                .map_err(|e| e.to_string())?;
+            let message = messages.first().ok_or("No message found for UID")?;
+
+            let raw_body = message.body().unwrap_or_default();
+            let parsed_mail = mail_parser::MessageParser::default()
+                .parse(raw_body)
+                .ok_or("Failed to parse email message")?;
+
+            // mail-parser automatically handles multipart messages and provides
+            // body_html() and body_text() methods that extract the appropriate content
+            let final_body = if let Some(html_body) = parsed_mail.body_html(0) {
+                html_body.to_string()
+            } else if let Some(text_body) = parsed_mail.body_text(0) {
+                format!("<pre>{}</pre>", html_escape::encode_text(&text_body))
+            } else {
+                "(No readable body found)".to_string()
+            };
+
+            // Extract attachments from the email
+            let mut attachments = Vec::new();
+            for attachment in parsed_mail.attachments() {
+                let filename = attachment
+                    .attachment_name()
+                    .unwrap_or("unnamed_attachment")
+                    .to_string();
+
+                let content_type = attachment
+                    .content_type()
+                    .map(|ct| ct.c_type.to_string())
+                    .unwrap_or_else(|| "application/octet-stream".to_string());
+
+                let data = attachment.contents().to_vec();
+                let size = data.len() as i64;
+
+                attachments.push(Attachment {
+                    id: None,
+                    filename,
+                    content_type,
+                    size,
+                    data: Some(data),
+                });
             }
-            _ => {
-                let password = config
-                    .password
-                    .as_ref()
-                    .ok_or("Password is required for basic authentication")?;
 
-                client.login(email, password).map_err(|e| e.0.to_string())?
-            }
-        };
+            let _ = imap_session.logout();
+            Ok((final_body, attachments))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
-        imap_session.select(&folder_name).map_err(|e| {
-            eprintln!(
-                "❌ Failed to SELECT folder '{}' for UID {}: {}",
-                folder_name, uid, e
-            );
-            format!("Cannot access folder '{}': {}", folder_name, e)
-        })?;
+    println!(
+        "✅ Fetched and parsed body for UID {} with {} attachments",
+        uid,
+        attachments.len()
+    );
+    Ok((body, attachments))
+}
 
-        let messages = imap_session
-            .uid_fetch(uid.to_string(), "BODY[]")
-            .map_err(|e| e.to_string())?;
-        let message = messages.first().ok_or("No message found for UID")?;
-
-        let raw_body = message.body().unwrap_or_default();
-        let parsed_mail = mail_parser::MessageParser::default()
-            .parse(raw_body)
-            .ok_or("Failed to parse email message")?;
-
-        // mail-parser automatically handles multipart messages and provides
-        // body_html() and body_text() methods that extract the appropriate content
-        let final_body = if let Some(html_body) = parsed_mail.body_html(0) {
-            html_body.to_string()
-        } else if let Some(text_body) = parsed_mail.body_text(0) {
-            format!("<pre>{}</pre>", html_escape::encode_text(&text_body))
-        } else {
-            "(No readable body found)".to_string()
-        };
-
-        let _ = imap_session.logout();
-        Ok(final_body)
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-
-    println!("✅ Fetched and parsed body for UID {}", uid);
+// Public command that only returns the body (for backward compatibility)
+#[command]
+pub async fn fetch_email_body(
+    config: AccountConfig,
+    uid: u32,
+    folder: Option<String>,
+) -> Result<String, String> {
+    let (body, _) = fetch_email_body_with_attachments(config, uid, folder).await?;
     Ok(body)
 }
 
@@ -812,8 +855,8 @@ pub async fn load_emails_from_cache(
 
     let pool = db::pool();
 
-    let rows = sqlx::query_as::<_, (i64, String, String, String, String, i64)>(
-        "SELECT uid, subject, from_addr, to_addr, date, timestamp
+    let rows = sqlx::query_as::<_, (i64, String, String, String, String, i64, i64)>(
+        "SELECT uid, subject, from_addr, to_addr, date, timestamp, COALESCE(has_attachments, 0)
         FROM emails
         WHERE account_id = ? AND folder_name = ?
         ORDER BY timestamp DESC",
@@ -826,14 +869,17 @@ pub async fn load_emails_from_cache(
 
     let emails: Vec<EmailHeader> = rows
         .into_iter()
-        .map(|(uid, subject, from, to, date, timestamp)| EmailHeader {
-            uid: uid as u32,
-            subject,
-            from,
-            to,
-            date,
-            timestamp,
-        })
+        .map(
+            |(uid, subject, from, to, date, timestamp, has_attachments)| EmailHeader {
+                uid: uid as u32,
+                subject,
+                from,
+                to,
+                date,
+                timestamp,
+                has_attachments: has_attachments != 0,
+            },
+        )
         .collect();
 
     println!(
@@ -991,10 +1037,36 @@ pub async fn fetch_email_body_cached(
     println!("📥 Fetching body from server for UID {}", uid);
 
     // Not in cache, fetch from server
-    let body = fetch_email_body(config, uid, folder).await?;
+    let (body, attachments) = fetch_email_body_with_attachments(config, uid, folder).await?;
 
-    // Save to cache
+    // Save body to cache
     save_email_body_to_cache(account_id, &folder_name, uid, &body).await?;
+
+    // Save attachments to cache if any
+    if !attachments.is_empty() {
+        // Get email database ID
+        let pool = db::pool();
+        let email_id_result = sqlx::query_as::<_, (i64,)>(
+            "SELECT id FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?",
+        )
+        .bind(account_id)
+        .bind(&folder_name)
+        .bind(uid as i64)
+        .fetch_optional(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to get email id: {}", e))?;
+
+        if let Some((email_id,)) = email_id_result {
+            save_attachments_to_cache(email_id, &attachments).await?;
+
+            // Update has_attachments flag
+            sqlx::query("UPDATE emails SET has_attachments = 1 WHERE id = ?")
+                .bind(email_id)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("Failed to update has_attachments flag: {}", e))?;
+        }
+    }
 
     Ok(body)
 }
@@ -1028,5 +1100,140 @@ pub async fn set_sync_interval(interval: i64) -> Result<(), String> {
         .map_err(|e| format!("Failed to set sync interval: {}", e))?;
 
     println!("✅ Set sync interval to {} seconds", interval);
+    Ok(())
+}
+
+// Save attachments to database
+async fn save_attachments_to_cache(
+    email_id: i64,
+    attachments: &[Attachment],
+) -> Result<(), String> {
+    let pool = db::pool();
+
+    for attachment in attachments {
+        if let Some(ref data) = attachment.data {
+            sqlx::query(
+                "INSERT INTO attachments (email_id, filename, content_type, size, data)
+                VALUES (?, ?, ?, ?, ?)",
+            )
+            .bind(email_id)
+            .bind(&attachment.filename)
+            .bind(&attachment.content_type)
+            .bind(attachment.size)
+            .bind(data)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|e| format!("Failed to save attachment: {}", e))?;
+        }
+    }
+
+    println!("✅ Saved {} attachments to cache", attachments.len());
+    Ok(())
+}
+
+// Load attachment info from cache (without data)
+#[command]
+pub async fn load_attachments_info(
+    account_id: i32,
+    folder_name: String,
+    uid: u32,
+) -> Result<Vec<AttachmentInfo>, String> {
+    let pool = db::pool();
+
+    // First get the email_id
+    let email_id_result = sqlx::query_as::<_, (i64,)>(
+        "SELECT id FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?",
+    )
+    .bind(account_id)
+    .bind(&folder_name)
+    .bind(uid as i64)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to get email id: {}", e))?;
+
+    let email_id = match email_id_result {
+        Some((id,)) => id,
+        None => return Ok(Vec::new()), // Email not in cache yet
+    };
+
+    // Load attachment info
+    let rows = sqlx::query_as::<_, (i64, String, String, i64)>(
+        "SELECT id, filename, content_type, size FROM attachments WHERE email_id = ?",
+    )
+    .bind(email_id)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to load attachments: {}", e))?;
+
+    let attachments: Vec<AttachmentInfo> = rows
+        .into_iter()
+        .map(|(id, filename, content_type, size)| AttachmentInfo {
+            id,
+            filename,
+            content_type,
+            size,
+        })
+        .collect();
+
+    if !attachments.is_empty() {
+        println!(
+            "✅ Loaded {} attachments for UID {}",
+            attachments.len(),
+            uid
+        );
+    }
+
+    Ok(attachments)
+}
+
+// Download a specific attachment
+#[command]
+pub async fn download_attachment(attachment_id: i64) -> Result<Attachment, String> {
+    let pool = db::pool();
+
+    let row = sqlx::query_as::<_, (String, String, i64, Vec<u8>)>(
+        "SELECT filename, content_type, size, data FROM attachments WHERE id = ?",
+    )
+    .bind(attachment_id)
+    .fetch_one(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to load attachment: {}", e))?;
+
+    Ok(Attachment {
+        id: Some(attachment_id),
+        filename: row.0,
+        content_type: row.1,
+        size: row.2,
+        data: Some(row.3),
+    })
+}
+
+// Save attachment to a file path (for direct file system save)
+#[command]
+pub async fn save_attachment_to_file(attachment_id: i64, file_path: String) -> Result<(), String> {
+    use std::fs::File;
+    use std::io::Write;
+
+    let pool = db::pool();
+
+    // Load attachment data from database
+    let row = sqlx::query_as::<_, (Vec<u8>,)>("SELECT data FROM attachments WHERE id = ?")
+        .bind(attachment_id)
+        .fetch_one(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to load attachment: {}", e))?;
+
+    let data = row.0;
+
+    // Write to file
+    let mut file = File::create(&file_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(&data)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+
+    println!(
+        "✅ Saved attachment ({} bytes) to: {}",
+        data.len(),
+        file_path
+    );
     Ok(())
 }
