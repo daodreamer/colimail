@@ -837,8 +837,15 @@
             {#each emails as email (email.uid)}
                 <li>
                     <button class="email-item" class:selected={email.uid === selectedEmailUid} onclick={() => handleEmailClick(email.uid)}>
-                        <div class="from">{email.from}</div>
-                        <div class="subject">{email.subject}</div>
+                        <div class="email-item-content">
+                            {#if email.has_attachments}
+                                <span class="attachment-indicator" title="This email has attachments">📎</span>
+                            {/if}
+                            <div class="email-text">
+                                <div class="from">{email.from}</div>
+                                <div class="subject">{email.subject}</div>
+                            </div>
+                        </div>
                         <div class="date">{formatLocalDateTime(email.timestamp)}</div>
                     </button>
                 </li>
@@ -1308,6 +1315,10 @@
       padding: 0.75rem;
       cursor: pointer;
       transition: background-color 0.2s;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
   }
 
   .email-item:hover {
@@ -1317,6 +1328,26 @@
   .email-item.selected {
       border-left: 4px solid var(--selected-bg);
       background-color: var(--sidebar-bg);
+  }
+
+  .email-item-content {
+      flex: 1;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+      min-width: 0;
+  }
+
+  .attachment-indicator {
+      font-size: 1rem;
+      flex-shrink: 0;
+      margin-top: 2px;
+      opacity: 0.7;
+  }
+
+  .email-text {
+      flex: 1;
+      min-width: 0;
   }
 
   .email-item .from {
@@ -1332,6 +1363,8 @@
   .email-item .date {
       font-size: 0.8rem;
       color: #666;
+      flex-shrink: 0;
+      margin-top: 2px;
   }
 
   .content-pane {

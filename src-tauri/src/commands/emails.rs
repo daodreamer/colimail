@@ -7,6 +7,15 @@ use mail_parser::MimeHeaders;
 use native_tls::TlsConnector;
 use tauri::command;
 
+// Helper function to check if a BODYSTRUCTURE contains attachments
+// We use Debug format as a simple way to detect attachment keywords
+fn check_for_attachments<T: std::fmt::Debug>(body: &T) -> bool {
+    let debug_str = format!("{:?}", body);
+    let lower = debug_str.to_lowercase();
+    // Check for common attachment indicators in BODYSTRUCTURE
+    lower.contains("attachment") || lower.contains("filename")
+}
+
 // Helper function to decode RFC 2047 encoded words (e.g., "=?UTF-8?Q?...?=")
 // RFC 2047 format: =?charset?encoding?encoded-text?=
 // where encoding can be Q (Quoted-Printable) or B (Base64)
@@ -365,7 +374,7 @@ pub async fn fetch_emails(
         println!("Fetching messages with sequence range: {}", seq_range);
 
         let messages = imap_session
-            .fetch(seq_range, "(UID ENVELOPE)")
+            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
             .map_err(|e| e.to_string())?;
 
         let mut headers = Vec::new();
@@ -443,6 +452,12 @@ pub async fn fetch_emails(
                 })
                 .unwrap_or_else(|| "(Unknown Recipient)".to_string());
 
+            // Check if email has attachments by examining BODYSTRUCTURE
+            let has_attachments = msg
+                .bodystructure()
+                .map(|bs| check_for_attachments(bs))
+                .unwrap_or(false);
+
             headers.push(EmailHeader {
                 uid: msg.uid.unwrap_or(0),
                 subject,
@@ -450,7 +465,7 @@ pub async fn fetch_emails(
                 to,
                 date,
                 timestamp,
-                has_attachments: false, // Will be updated when body is fetched
+                has_attachments,
             });
         }
 
