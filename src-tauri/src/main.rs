@@ -66,6 +66,20 @@ async fn stop_all_idle(
     Ok(())
 }
 
+#[command]
+fn is_idle_active(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+    account_id: i32,
+    folder_name: String,
+) -> Result<bool, String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        Ok(mgr.is_active(account_id, &folder_name))
+    } else {
+        Ok(false)
+    }
+}
+
 #[tokio::main]
 async fn main() {
     db::init().await.expect("Failed to initialize database");
@@ -120,7 +134,8 @@ async fn main() {
             save_attachment_to_file,
             start_idle,
             stop_idle,
-            stop_all_idle
+            stop_all_idle,
+            is_idle_active
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

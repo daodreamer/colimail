@@ -125,8 +125,13 @@
           const idleEvent = event.payload;
           console.log("📬 Received IDLE event:", idleEvent);
 
-          if (idleEvent.event_type.type === "NewMessages") {
-            console.log(`✨ New message(s) in account ${idleEvent.account_id} folder ${idleEvent.folder_name}`);
+          // Handle different event types
+          const eventType = idleEvent.event_type.type;
+          console.log(`📬 Event: ${eventType} for account ${idleEvent.account_id} folder ${idleEvent.folder_name}`);
+
+          if (eventType === "NewMessages") {
+            // New messages arrived
+            console.log(`✨ ${idleEvent.event_type.count} new message(s) detected`);
 
             // If it's for the currently viewing account/folder, update UI immediately
             if (
@@ -169,7 +174,53 @@
                 }
               }
             }
-          } else if (idleEvent.event_type.type === "ConnectionLost") {
+          } else if (eventType === "Expunge") {
+            // Messages deleted
+            console.log("🗑️ Message(s) deleted, refreshing...");
+
+            if (
+              idleEvent.account_id === selectedAccountId &&
+              idleEvent.folder_name === selectedFolderName
+            ) {
+              // Refresh current view
+              const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+              if (selectedConfig) {
+                try {
+                  const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+                    config: selectedConfig,
+                    folder: selectedFolderName
+                  });
+                  emails = syncedEmails;
+                  console.log("✅ Refreshed after deletion");
+                } catch (e) {
+                  console.error("Failed to refresh after deletion:", e);
+                }
+              }
+            }
+          } else if (eventType === "FlagsChanged") {
+            // Flags changed (read/unread, starred, etc.)
+            console.log("🏴 Message flags changed, refreshing...");
+
+            if (
+              idleEvent.account_id === selectedAccountId &&
+              idleEvent.folder_name === selectedFolderName
+            ) {
+              // Refresh current view to update flags
+              const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+              if (selectedConfig) {
+                try {
+                  const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+                    config: selectedConfig,
+                    folder: selectedFolderName
+                  });
+                  emails = syncedEmails;
+                  console.log("✅ Refreshed after flag change");
+                } catch (e) {
+                  console.error("Failed to refresh after flag change:", e);
+                }
+              }
+            }
+          } else if (eventType === "ConnectionLost") {
             console.warn(`⚠️ IDLE connection lost for account ${idleEvent.account_id}, will reconnect automatically`);
           }
         });
@@ -928,7 +979,18 @@
               class:selected={account.id === selectedAccountId}
               onclick={() => handleAccountClick(account.id)}
             >
-              {account.email}
+              <span class="account-email">{account.email}</span>
+              {#await invoke("is_idle_active", { accountId: account.id, folderName: "INBOX" })}
+                <span class="status-indicator" title="Checking...">⚪</span>
+              {:then isActive}
+                {#if isActive}
+                  <span class="status-indicator status-active" title="Real-time sync active">🟢</span>
+                {:else}
+                  <span class="status-indicator status-inactive" title="Offline">🔴</span>
+                {/if}
+              {:catch}
+                <span class="status-indicator" title="Unknown">⚪</span>
+              {/await}
             </button>
             <button
               class="delete-button"
@@ -1323,9 +1385,35 @@
     cursor: pointer;
     font-weight: 500;
     transition: background-color 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .account-email {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1;
+  }
+
+  .status-indicator {
+    font-size: 0.75rem;
+    flex-shrink: 0;
+  }
+
+  .status-active {
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  .status-inactive {
+    opacity: 0.5;
   }
 
   .account-item:hover {

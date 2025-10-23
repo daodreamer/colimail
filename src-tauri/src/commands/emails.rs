@@ -943,6 +943,7 @@ async fn incremental_sync(
     let sync_state = get_sync_state(account_id, folder_name).await?;
     let sync_state_for_task = sync_state.clone();
     let folder_name_owned = folder_name.to_string();
+    let config_for_uid_check = config.clone();
 
     // Connect to IMAP and check current state
     let (server_uidvalidity, _server_exists, new_emails) =
@@ -1073,6 +1074,17 @@ async fn incremental_sync(
     // Save new emails to cache
     if !new_emails.is_empty() {
         save_emails_to_cache(account_id, folder_name, &new_emails).await?;
+    }
+
+    // Get all UIDs currently on server to detect deletions
+    println!("🔍 Checking for deleted emails...");
+    let server_uids = get_all_server_uids(config_for_uid_check, folder_name).await?;
+
+    // Delete emails from cache that no longer exist on server
+    let deleted_count =
+        delete_missing_emails_from_cache(account_id, folder_name, &server_uids).await?;
+    if deleted_count > 0 {
+        println!("🗑️ Removed {} deleted email(s) from cache", deleted_count);
     }
 
     // Update sync state with new UIDVALIDITY and highest UID
@@ -1248,6 +1260,115 @@ async fn update_sync_state(
     );
 
     Ok(())
+}
+
+// Get all UIDs currently on server
+async fn get_all_server_uids(config: AccountConfig, folder_name: &str) -> Result<Vec<u32>, String> {
+    let config = ensure_valid_token(config).await?;
+    let folder_name_owned = folder_name.to_string();
+
+    tokio::task::spawn_blocking(move || -> Result<Vec<u32>, String> {
+        let domain = config.imap_server.as_str();
+        let port = config.imap_port;
+        let email = config.email.as_str();
+
+        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
+        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
+
+        let mut imap_session = match config.auth_type {
+            Some(AuthType::OAuth2) => {
+                let access_token = config
+                    .access_token
+                    .as_ref()
+                    .ok_or("Access token is required for OAuth2 authentication")?;
+
+                let oauth2 = OAuth2 {
+                    user: email.to_string(),
+                    access_token: access_token.clone(),
+                };
+
+                client
+                    .authenticate("XOAUTH2", &oauth2)
+                    .map_err(|e| format!("OAuth2 authentication failed: {}", e.0))?
+            }
+            _ => {
+                let password = config
+                    .password
+                    .as_ref()
+                    .ok_or("Password is required for basic authentication")?;
+
+                client.login(email, password).map_err(|e| e.0.to_string())?
+            }
+        };
+
+        // SELECT the folder
+        imap_session
+            .select(&folder_name_owned)
+            .map_err(|e| format!("Cannot select folder: {}", e))?;
+
+        // Search for all messages to get UIDs
+        let uid_results = imap_session
+            .uid_search("ALL")
+            .map_err(|e| format!("Failed to search UIDs: {}", e))?;
+
+        let uids: Vec<u32> = uid_results.iter().copied().collect();
+
+        let _ = imap_session.logout();
+        Ok(uids)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+// Delete emails from cache that no longer exist on server
+async fn delete_missing_emails_from_cache(
+    account_id: i32,
+    folder_name: &str,
+    server_uids: &[u32],
+) -> Result<u64, String> {
+    let pool = db::pool();
+
+    // Get all cached UIDs for this folder
+    let cached_uids: Vec<u32> = sqlx::query_as::<_, (i64,)>(
+        "SELECT uid FROM emails WHERE account_id = ? AND folder_name = ?",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .fetch_all(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to get cached UIDs: {}", e))?
+    .into_iter()
+    .map(|(uid,)| uid as u32)
+    .collect();
+
+    // Find UIDs that exist in cache but not on server
+    let uids_to_delete: Vec<u32> = cached_uids
+        .into_iter()
+        .filter(|uid| !server_uids.contains(uid))
+        .collect();
+
+    if uids_to_delete.is_empty() {
+        return Ok(0);
+    }
+
+    println!("🗑️ Deleting UIDs from cache: {:?}", uids_to_delete);
+
+    // Delete emails with these UIDs
+    let mut deleted_count = 0u64;
+    for uid in uids_to_delete {
+        let result =
+            sqlx::query("DELETE FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?")
+                .bind(account_id)
+                .bind(folder_name)
+                .bind(uid as i64)
+                .execute(pool.as_ref())
+                .await
+                .map_err(|e| format!("Failed to delete email UID {}: {}", uid, e))?;
+
+        deleted_count += result.rows_affected();
+    }
+
+    Ok(deleted_count)
 }
 
 // Get last sync time for a folder

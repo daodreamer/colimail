@@ -275,6 +275,10 @@ impl IdleManager {
             let idle_duration = Duration::from_secs(15 * 60);
             let start = std::time::Instant::now();
 
+            // Track previous mailbox state to detect changes
+            let mut prev_exists: u32 = _mailbox.exists;
+            let mut prev_recent: u32 = _mailbox.recent;
+
             loop {
                 // Check if we should refresh IDLE (every 15 minutes)
                 if start.elapsed() >= idle_duration {
@@ -287,27 +291,50 @@ impl IdleManager {
                     .idle()
                     .map_err(|e| format!("Failed to enter IDLE: {}", e))?;
 
-                // Wait for notifications with 5-minute timeout
+                // Wait for notifications with keep-alive
                 let idle_result = idle_handle.wait_keepalive();
 
                 match idle_result {
                     Ok(()) => {
                         println!("📬 Received IDLE notification");
 
-                        // Exit IDLE to process changes
-                        // The idle handle will automatically exit when dropped
+                        // Re-examine the mailbox to see what changed
+                        let mailbox = imap_session
+                            .examine(&folder_name_owned)
+                            .map_err(|e| format!("Failed to examine mailbox: {}", e))?;
 
-                        // Emit event to frontend to trigger sync
-                        let _ = app_handle_clone.emit(
-                            "idle-event",
-                            IdleEvent {
-                                account_id,
-                                folder_name: folder_name_owned.clone(),
-                                event_type: IdleEventType::NewMessages { count: 1 },
-                            },
+                        let curr_exists = mailbox.exists;
+                        let curr_recent = mailbox.recent;
+
+                        println!(
+                            "📊 Mailbox state: EXISTS {} (was {}), RECENT {} (was {})",
+                            curr_exists, prev_exists, curr_recent, prev_recent
                         );
 
-                        println!("✨ Emitted IDLE event to frontend");
+                        // Detect different types of changes
+                        let events = detect_mailbox_changes(
+                            prev_exists,
+                            curr_exists,
+                            prev_recent,
+                            curr_recent,
+                        );
+
+                        for event_type in events {
+                            let _ = app_handle_clone.emit(
+                                "idle-event",
+                                IdleEvent {
+                                    account_id,
+                                    folder_name: folder_name_owned.clone(),
+                                    event_type,
+                                },
+                            );
+                        }
+
+                        // Update tracked state
+                        prev_exists = curr_exists;
+                        prev_recent = curr_recent;
+
+                        println!("✨ IDLE notification processed");
                     }
                     Err(e) => {
                         eprintln!("⚠️ IDLE wait error: {}", e);
@@ -333,4 +360,47 @@ impl IdleManager {
             .unwrap()
             .contains_key(&(account_id, folder_name.to_string()))
     }
+}
+
+/// Detect mailbox changes by comparing previous and current state
+fn detect_mailbox_changes(
+    prev_exists: u32,
+    curr_exists: u32,
+    prev_recent: u32,
+    curr_recent: u32,
+) -> Vec<IdleEventType> {
+    let mut events = Vec::new();
+
+    // Check for new messages
+    if curr_exists > prev_exists {
+        let new_count = curr_exists - prev_exists;
+        println!("📨 Detected {} new message(s)", new_count);
+        events.push(IdleEventType::NewMessages { count: new_count });
+    }
+
+    // Check for deleted messages (EXPUNGE)
+    if curr_exists < prev_exists {
+        let deleted_count = prev_exists - curr_exists;
+        println!("🗑️ Detected {} message(s) deleted", deleted_count);
+        // Emit a generic expunge event (we don't know which specific UIDs)
+        events.push(IdleEventType::Expunge { uid: 0 });
+    }
+
+    // Check for flags changed (e.g., marked as read)
+    // RECENT count decreasing without EXISTS changing means flags changed
+    if curr_recent != prev_recent && curr_exists == prev_exists {
+        println!(
+            "🏴 Detected FLAGS change (RECENT: {} -> {})",
+            prev_recent, curr_recent
+        );
+        events.push(IdleEventType::FlagsChanged { uid: 0 });
+    }
+
+    // If nothing specific detected but IDLE triggered, treat as generic update
+    if events.is_empty() {
+        println!("📬 Mailbox changed (no specific event detected)");
+        events.push(IdleEventType::NewMessages { count: 1 });
+    }
+
+    events
 }
