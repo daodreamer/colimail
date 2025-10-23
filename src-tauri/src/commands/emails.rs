@@ -763,11 +763,18 @@ async fn save_emails_to_cache(
     let current_time = Utc::now().timestamp();
 
     for email in emails {
-        // Use INSERT OR REPLACE to update existing emails
+        // Use INSERT with ON CONFLICT to preserve cached body
         sqlx::query(
-            "INSERT OR REPLACE INTO emails
+            "INSERT INTO emails
             (account_id, folder_name, uid, subject, from_addr, to_addr, date, timestamp, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(account_id, folder_name, uid) DO UPDATE SET
+                subject = excluded.subject,
+                from_addr = excluded.from_addr,
+                to_addr = excluded.to_addr,
+                date = excluded.date,
+                timestamp = excluded.timestamp,
+                synced_at = excluded.synced_at",
         )
         .bind(account_id)
         .bind(folder_name)

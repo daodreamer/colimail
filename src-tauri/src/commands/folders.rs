@@ -210,7 +210,9 @@ pub async fn sync_folders(config: AccountConfig) -> Result<Vec<Folder>, String> 
     .map_err(|e| format!("Failed to update folders sync time: {}", e))?;
 
     println!("✅ Synced {} folders to database", folders.len());
-    Ok(folders)
+
+    // Load folders from database to ensure consistent sorting
+    load_folders(account_id).await
 }
 
 #[command]
