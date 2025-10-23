@@ -78,6 +78,10 @@
   let attachments = $state<AttachmentInfo[]>([]);
   let isLoadingAttachments = $state<boolean>(false);
   let composeAttachments = $state<File[]>([]); // Attachments to send
+  let attachmentSizeLimit = $state<number>(10 * 1024 * 1024); // Default 10MB
+  let totalAttachmentSize = $derived<number>(
+    composeAttachments.reduce((sum, file) => sum + file.size, 0)
+  );
 
   // --- 生命周期 ---
   onMount(() => {
@@ -471,7 +475,7 @@
       }
   }
 
-  function handleComposeClick() {
+  async function handleComposeClick() {
       if (!selectedAccountId) {
           error = "Please select an account first.";
           return;
@@ -482,10 +486,12 @@
       composeTo = "";
       composeSubject = "";
       composeBody = "";
+      composeAttachments = [];
       error = null;
+      await updateAttachmentSizeLimit();
   }
 
-  function handleReplyClick() {
+  async function handleReplyClick() {
       if (!selectedAccountId || !selectedEmailUid) {
           error = "Please select an email first.";
           return;
@@ -505,10 +511,12 @@
           ? selectedEmail.subject
           : `Re: ${selectedEmail.subject}`;
       composeBody = "";
+      composeAttachments = [];
       error = null;
+      await updateAttachmentSizeLimit();
   }
 
-  function handleForwardClick() {
+  async function handleForwardClick() {
       if (!selectedAccountId || !selectedEmailUid) {
           error = "Please select an email first.";
           return;
@@ -528,7 +536,9 @@
           ? selectedEmail.subject
           : `Fwd: ${selectedEmail.subject}`;
       composeBody = "";
+      composeAttachments = [];
       error = null;
+      await updateAttachmentSizeLimit();
   }
 
   function handleCloseCompose() {
@@ -536,7 +546,51 @@
       composeTo = "";
       composeSubject = "";
       composeBody = "";
+      composeAttachments = [];
       error = null;
+  }
+
+  function handleAttachmentSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files) return;
+
+    const newFiles = Array.from(input.files);
+    const allFiles = [...composeAttachments, ...newFiles];
+
+    // Check if total size exceeds limit
+    const totalSize = allFiles.reduce((sum, file) => sum + file.size, 0);
+    if (totalSize > attachmentSizeLimit) {
+      const limitMB = (attachmentSizeLimit / (1024 * 1024)).toFixed(2);
+      const totalMB = (totalSize / (1024 * 1024)).toFixed(2);
+      error = `Total attachment size (${totalMB} MB) exceeds the limit for your email provider (${limitMB} MB)`;
+      input.value = ""; // Reset input
+      return;
+    }
+
+    composeAttachments = allFiles;
+    input.value = ""; // Reset input so same file can be selected again
+    error = null;
+  }
+
+  function removeAttachment(index: number) {
+    composeAttachments = composeAttachments.filter((_, i) => i !== index);
+  }
+
+  async function updateAttachmentSizeLimit() {
+    if (!selectedAccountId) return;
+
+    const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+    if (!selectedConfig) return;
+
+    try {
+      const limit = await invoke<number>("get_attachment_size_limit", {
+        email: selectedConfig.email
+      });
+      attachmentSizeLimit = limit;
+    } catch (e) {
+      console.error("Failed to get attachment size limit:", e);
+      // Keep default limit
+    }
   }
 
   async function handleSendEmail() {
@@ -560,13 +614,31 @@
       error = null;
 
       try {
+          // Prepare attachments data
+          let attachmentsData: Array<{filename: string, content_type: string, data: number[]}> | null = null;
+          if (composeAttachments.length > 0) {
+              attachmentsData = [];
+              for (const file of composeAttachments) {
+                  const arrayBuffer = await file.arrayBuffer();
+                  const uint8Array = new Uint8Array(arrayBuffer);
+                  const dataArray = Array.from(uint8Array);
+
+                  attachmentsData.push({
+                      filename: file.name,
+                      content_type: file.type || "application/octet-stream",
+                      data: dataArray
+                  });
+              }
+          }
+
           let result: string;
           if (isReplyMode) {
               result = await invoke<string>("reply_email", {
                   config: selectedConfig,
                   to: composeTo,
                   originalSubject: composeSubject,
-                  body: composeBody
+                  body: composeBody,
+                  attachments: attachmentsData
               });
           } else if (isForwardMode) {
               const selectedEmail = emails.find(email => email.uid === selectedEmailUid);
@@ -583,7 +655,8 @@
                   originalTo: selectedEmail.to,
                   originalDate: selectedEmail.date,
                   originalBody: emailBody || "",
-                  additionalMessage: composeBody
+                  additionalMessage: composeBody,
+                  attachments: attachmentsData
               });
           } else {
               if (!composeBody) {
@@ -595,7 +668,8 @@
                   config: selectedConfig,
                   to: composeTo,
                   subject: composeSubject,
-                  body: composeBody
+                  body: composeBody,
+                  attachments: attachmentsData
               });
           }
           console.log("Send result:", result);
@@ -979,6 +1053,45 @@
             rows="10"
             disabled={isSending}
           ></textarea>
+        </div>
+
+        <div class="form-group">
+          <label for="compose-attachments">
+            Attachments:
+            <span class="attachment-limit-info">
+              (Max: {formatFileSize(attachmentSizeLimit)})
+            </span>
+          </label>
+          <input
+            type="file"
+            id="compose-attachments"
+            multiple
+            onchange={handleAttachmentSelect}
+            disabled={isSending}
+            style="margin-bottom: 0.5rem;"
+          />
+
+          {#if composeAttachments.length > 0}
+            <div class="attachments-list">
+              {#each composeAttachments as file, index}
+                <div class="attachment-item">
+                  <span class="attachment-name">{file.name}</span>
+                  <span class="attachment-size">({formatFileSize(file.size)})</span>
+                  <button
+                    class="remove-attachment-button"
+                    onclick={() => removeAttachment(index)}
+                    disabled={isSending}
+                    title="Remove attachment"
+                  >
+                    ×
+                  </button>
+                </div>
+              {/each}
+              <div class="attachment-total">
+                Total: {formatFileSize(totalAttachmentSize)} / {formatFileSize(attachmentSizeLimit)}
+              </div>
+            </div>
+          {/if}
         </div>
       </div>
 
@@ -1616,6 +1729,49 @@
   .send-button:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+  }
+
+  /* Compose Attachments Styles */
+  .attachment-limit-info {
+      font-size: 0.85rem;
+      color: #666;
+      font-weight: normal;
+  }
+
+  .remove-attachment-button {
+      background-color: #dc3545;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 24px;
+      height: 24px;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s;
+  }
+
+  .remove-attachment-button:hover:not(:disabled) {
+      background-color: #c82333;
+  }
+
+  .remove-attachment-button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+  }
+
+  .attachment-total {
+      margin-top: 0.5rem;
+      padding: 0.5rem;
+      background-color: var(--sidebar-bg);
+      border-radius: 4px;
+      font-weight: 500;
+      font-size: 0.9rem;
+      text-align: right;
   }
 
   /* Attachments Styles */

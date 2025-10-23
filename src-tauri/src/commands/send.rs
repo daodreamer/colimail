@@ -1,3 +1,4 @@
+use crate::attachment_limits::{get_limit_for_email, validate_attachment_sizes};
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
 use lettre::{
@@ -34,6 +35,13 @@ pub async fn send_email(
         .from(from)
         .to(to_mailbox)
         .subject(subject);
+
+    // Validate attachment sizes if attachments are present
+    if let Some(ref attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            validate_attachment_sizes(&config.email, attachment_list)?;
+        }
+    }
 
     // Build multipart message if there are attachments
     let email = if let Some(attachment_list) = attachments {
@@ -138,6 +146,13 @@ pub async fn reply_email(
         .from(from)
         .to(to_mailbox)
         .subject(reply_subject);
+
+    // Validate attachment sizes if attachments are present
+    if let Some(ref attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            validate_attachment_sizes(&config.email, attachment_list)?;
+        }
+    }
 
     // Build multipart message if there are attachments
     let email = if let Some(attachment_list) = attachments {
@@ -281,6 +296,13 @@ pub async fn forward_email(
         .to(to_mailbox)
         .subject(forward_subject);
 
+    // Validate attachment sizes if attachments are present
+    if let Some(ref attachment_list) = attachments {
+        if !attachment_list.is_empty() {
+            validate_attachment_sizes(&config.email, attachment_list)?;
+        }
+    }
+
     // Build multipart message with attachments if present
     let email = if let Some(attachment_list) = attachments {
         if !attachment_list.is_empty() {
@@ -355,4 +377,9 @@ pub async fn forward_email(
     });
 
     Ok("Started forwarding email.".into())
+}
+
+#[command]
+pub fn get_attachment_size_limit(email: String) -> Result<u64, String> {
+    Ok(get_limit_for_email(&email))
 }

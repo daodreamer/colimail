@@ -13,4 +13,4 @@ pub use emails::{
 };
 pub use folders::{fetch_folders, load_folders, sync_folders};
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
-pub use send::{forward_email, reply_email, send_email};
+pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};

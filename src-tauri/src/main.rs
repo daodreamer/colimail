@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod attachment_limits;
 mod commands;
 mod db;
 mod models;
@@ -7,11 +8,11 @@ mod oauth2_config;
 
 use commands::{
     complete_oauth2_flow, delete_account, delete_email, download_attachment, fetch_email_body,
-    fetch_email_body_cached, fetch_emails, fetch_folders, forward_email, get_last_sync_time,
-    get_sync_interval, listen_for_oauth_callback, load_account_configs, load_attachments_info,
-    load_emails_from_cache, load_folders, move_email_to_trash, reply_email, save_account_config,
-    save_attachment_to_file, send_email, set_sync_interval, should_sync, start_oauth2_flow,
-    sync_emails, sync_folders,
+    fetch_email_body_cached, fetch_emails, fetch_folders, forward_email, get_attachment_size_limit,
+    get_last_sync_time, get_sync_interval, listen_for_oauth_callback, load_account_configs,
+    load_attachments_info, load_emails_from_cache, load_folders, move_email_to_trash, reply_email,
+    save_account_config, save_attachment_to_file, send_email, set_sync_interval, should_sync,
+    start_oauth2_flow, sync_emails, sync_folders,
 };
 
 #[tokio::main]
@@ -48,6 +49,7 @@ async fn main() {
             send_email,
             reply_email,
             forward_email,
+            get_attachment_size_limit,
             fetch_folders,
             sync_folders,
             load_folders,
