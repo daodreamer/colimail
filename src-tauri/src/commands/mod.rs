@@ -3,7 +3,7 @@ pub mod emails;
 pub mod folders;
 pub mod oauth2;
 pub mod send;
-pub mod utils;
+pub mod utils; // Public so idle_manager can access ensure_valid_token
 
 pub use accounts::{delete_account, load_account_configs, save_account_config};
 pub use emails::{

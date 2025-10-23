@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { save } from "@tauri-apps/plugin-dialog";
 
   // --- 类型定义 ---
@@ -48,6 +49,16 @@
     flags: string | null;
   }
 
+  interface IdleEvent {
+    account_id: number;
+    folder_name: string;
+    event_type: {
+      type: "NewMessages" | "Expunge" | "FlagsChanged" | "ConnectionLost";
+      count?: number;
+      uid?: number;
+    };
+  }
+
   // --- 状态管理 ---
   let accounts = $state<AccountConfig[]>([]);
   let emails = $state<EmailHeader[]>([]);
@@ -93,6 +104,85 @@
 
         // Start automatic sync timer
         startAutoSyncTimer();
+
+        // Start IDLE connections for ALL accounts' INBOX
+        console.log("🔔 Starting IDLE connections for all accounts...");
+        for (const account of accounts) {
+          try {
+            await invoke("start_idle", {
+              accountId: account.id,
+              folderName: "INBOX",
+              config: account
+            });
+            console.log(`✅ IDLE enabled for account ${account.id} (${account.email})`);
+          } catch (e) {
+            console.warn(`Failed to start IDLE for account ${account.id}:`, e);
+          }
+        }
+
+        // Listen for IDLE push notifications from ANY account
+        const unlisten = await listen<IdleEvent>("idle-event", async (event) => {
+          const idleEvent = event.payload;
+          console.log("📬 Received IDLE event:", idleEvent);
+
+          if (idleEvent.event_type.type === "NewMessages") {
+            console.log(`✨ New message(s) in account ${idleEvent.account_id} folder ${idleEvent.folder_name}`);
+
+            // If it's for the currently viewing account/folder, update UI immediately
+            if (
+              idleEvent.account_id === selectedAccountId &&
+              idleEvent.folder_name === selectedFolderName
+            ) {
+              console.log("🔄 Syncing currently displayed folder...");
+
+              const selectedConfig = accounts.find(acc => acc.id === selectedAccountId);
+              if (selectedConfig) {
+                try {
+                  isSyncing = true;
+                  const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+                    config: selectedConfig,
+                    folder: selectedFolderName
+                  });
+                  emails = syncedEmails;
+                  lastSyncTime = Math.floor(Date.now() / 1000);
+                  isSyncing = false;
+
+                  console.log("✅ Auto-sync completed via IDLE push");
+                } catch (e) {
+                  console.error("Failed to sync after IDLE event:", e);
+                  isSyncing = false;
+                }
+              }
+            } else {
+              // For other accounts/folders, just sync in background (update cache)
+              console.log("📥 Background sync for non-displayed folder");
+              const affectedConfig = accounts.find(acc => acc.id === idleEvent.account_id);
+              if (affectedConfig) {
+                try {
+                  await invoke<EmailHeader[]>("sync_emails", {
+                    config: affectedConfig,
+                    folder: idleEvent.folder_name
+                  });
+                  console.log(`✅ Background sync completed for account ${idleEvent.account_id}`);
+                } catch (e) {
+                  console.error("Background sync failed:", e);
+                }
+              }
+            }
+          } else if (idleEvent.event_type.type === "ConnectionLost") {
+            console.warn(`⚠️ IDLE connection lost for account ${idleEvent.account_id}, will reconnect automatically`);
+          }
+        });
+
+        // Store unlisten function for cleanup
+        return () => {
+          unlisten();
+          if (autoSyncTimer) {
+            clearInterval(autoSyncTimer);
+            autoSyncTimer = null;
+          }
+          clearInterval(timeUpdateTimer);
+        };
       } catch (e) {
         error = `Failed to load accounts: ${e}`;
       }
@@ -102,15 +192,6 @@
     const timeUpdateTimer = setInterval(() => {
       currentTime = Math.floor(Date.now() / 1000);
     }, 60000); // Update every 60 seconds
-
-    // Cleanup timers on unmount
-    return () => {
-      if (autoSyncTimer) {
-        clearInterval(autoSyncTimer);
-        autoSyncTimer = null;
-      }
-      clearInterval(timeUpdateTimer);
-    };
   });
 
   // Reload sync interval when returning from settings page
@@ -257,6 +338,9 @@
         console.log("Using cached folders, sync not needed yet");
       }
 
+      // Note: IDLE connections are managed globally at app startup,
+      // no need to start/stop when switching accounts
+
     } catch (e) {
       error = `Failed to load folders: ${e}`;
       isLoadingFolders = false;
@@ -334,6 +418,9 @@
   async function handleFolderClick(folderName: string) {
     selectedFolderName = folderName;
     await loadEmailsForFolder(folderName);
+
+    // Note: Currently IDLE only monitors INBOX for all accounts
+    // TODO: Add support for monitoring non-INBOX folders
   }
 
   async function handleEmailClick(uid: number) {

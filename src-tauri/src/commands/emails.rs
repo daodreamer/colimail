@@ -905,7 +905,7 @@ pub async fn load_emails_from_cache(
     Ok(emails)
 }
 
-// Sync emails from server and update cache
+// Sync emails from server and update cache (incremental sync)
 #[command]
 pub async fn sync_emails(
     config: AccountConfig,
@@ -915,37 +915,337 @@ pub async fn sync_emails(
     let folder_name = folder.clone().unwrap_or_else(|| "INBOX".to_string());
 
     println!(
-        "Syncing emails from server for account {} folder {}",
+        "🔄 Starting incremental sync for account {} folder {}",
         account_id, folder_name
     );
 
-    // Fetch emails from server
-    let emails = fetch_emails(config, folder).await?;
+    // Perform incremental sync
+    let emails = incremental_sync(config, account_id, &folder_name).await?;
 
-    // Save to cache
-    save_emails_to_cache(account_id, &folder_name, &emails).await?;
-
-    // Update last sync time
-    update_last_sync_time(account_id, &folder_name).await?;
+    println!(
+        "✅ Incremental sync completed: {} emails in cache",
+        emails.len()
+    );
 
     Ok(emails)
 }
 
-// Update last sync time for a folder
-async fn update_last_sync_time(account_id: i32, folder_name: &str) -> Result<(), String> {
+// Perform incremental synchronization using UIDVALIDITY and UIDs
+async fn incremental_sync(
+    config: AccountConfig,
+    account_id: i32,
+    folder_name: &str,
+) -> Result<Vec<EmailHeader>, String> {
+    // Ensure we have a valid access token
+    let config = ensure_valid_token(config).await?;
+
+    // Get cached sync state (UIDVALIDITY and highest UID)
+    let sync_state = get_sync_state(account_id, folder_name).await?;
+    let sync_state_for_task = sync_state.clone();
+    let folder_name_owned = folder_name.to_string();
+
+    // Connect to IMAP and check current state
+    let (server_uidvalidity, _server_exists, new_emails) =
+        tokio::task::spawn_blocking(move || -> Result<(u32, u32, Vec<EmailHeader>), String> {
+            let domain = config.imap_server.as_str();
+            let port = config.imap_port;
+            let email = config.email.as_str();
+
+            let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
+            let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
+
+            let mut imap_session = match config.auth_type {
+                Some(AuthType::OAuth2) => {
+                    let access_token = config
+                        .access_token
+                        .as_ref()
+                        .ok_or("Access token is required for OAuth2 authentication")?;
+
+                    println!("🔐 OAuth2 authentication for incremental sync: {}", email);
+
+                    let oauth2 = OAuth2 {
+                        user: email.to_string(),
+                        access_token: access_token.clone(),
+                    };
+
+                    client
+                        .authenticate("XOAUTH2", &oauth2)
+                        .map_err(|e| format!("OAuth2 authentication failed: {}", e.0))?
+                }
+                _ => {
+                    let password = config
+                        .password
+                        .as_ref()
+                        .ok_or("Password is required for basic authentication")?;
+
+                    client.login(email, password).map_err(|e| e.0.to_string())?
+                }
+            };
+
+            println!("✅ IMAP authentication successful");
+
+            // SELECT the folder and get UIDVALIDITY
+            let mailbox = imap_session
+                .select(&folder_name_owned)
+                .map_err(|e| format!("Cannot access folder '{}': {}", folder_name_owned, e))?;
+
+            let server_uidvalidity = mailbox.uid_validity.unwrap_or(0);
+            let server_exists = mailbox.exists;
+
+            println!(
+                "📊 Server state: UIDVALIDITY={}, EXISTS={}",
+                server_uidvalidity, server_exists
+            );
+
+            // Determine sync strategy based on UIDVALIDITY
+            let new_emails = if sync_state_for_task.is_none()
+                || sync_state_for_task.as_ref().unwrap().uidvalidity
+                    != Some(server_uidvalidity as i64)
+            {
+                // Full sync needed: no previous state or UIDVALIDITY changed
+                if sync_state_for_task.is_some() {
+                    println!("⚠️ UIDVALIDITY changed! Full resync required.");
+                } else {
+                    println!("🆕 First sync for this folder.");
+                }
+
+                // Fetch recent emails (last 100)
+                if server_exists == 0 {
+                    Vec::new()
+                } else {
+                    let start = server_exists.saturating_sub(99).max(1);
+                    let seq_range = format!("{}:{}", start, server_exists);
+
+                    println!("📥 Fetching messages: {}", seq_range);
+
+                    let messages = imap_session
+                        .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
+                        .map_err(|e| e.to_string())?;
+
+                    parse_email_headers(messages.iter().rev())
+                }
+            } else {
+                // Incremental sync: fetch only new messages
+                let highest_uid = sync_state_for_task
+                    .as_ref()
+                    .unwrap()
+                    .highest_uid
+                    .unwrap_or(0);
+
+                println!("🔄 Incremental sync from UID > {}", highest_uid);
+
+                if highest_uid == 0 || server_exists == 0 {
+                    // No previous emails or empty folder
+                    Vec::new()
+                } else {
+                    // Fetch new messages: UID > highest_uid
+                    let uid_range = format!("{}:*", highest_uid + 1);
+
+                    println!("📥 Fetching new messages: UID {}", uid_range);
+
+                    match imap_session.uid_fetch(uid_range, "(UID ENVELOPE BODYSTRUCTURE)") {
+                        Ok(messages) => {
+                            let count = messages.len();
+                            if count > 0 {
+                                println!("✨ Found {} new message(s)", count);
+                                parse_email_headers(messages.iter().rev())
+                            } else {
+                                println!("✅ No new messages");
+                                Vec::new()
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ Failed to fetch new messages: {}", e);
+                            Vec::new()
+                        }
+                    }
+                }
+            };
+
+            let _ = imap_session.logout();
+            Ok((server_uidvalidity, server_exists, new_emails))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+
+    println!("✅ Fetched {} new email(s) from server", new_emails.len());
+
+    // Save new emails to cache
+    if !new_emails.is_empty() {
+        save_emails_to_cache(account_id, folder_name, &new_emails).await?;
+    }
+
+    // Update sync state with new UIDVALIDITY and highest UID
+    let new_highest_uid = new_emails
+        .iter()
+        .map(|e| e.uid)
+        .max()
+        .or(sync_state
+            .as_ref()
+            .and_then(|s| s.highest_uid.map(|u| u as u32)))
+        .unwrap_or(0);
+
+    update_sync_state(
+        account_id,
+        folder_name,
+        server_uidvalidity as i64,
+        new_highest_uid as i64,
+    )
+    .await?;
+
+    // Return all cached emails (for display)
+    load_emails_from_cache(account_id, Some(folder_name.to_string())).await
+}
+
+// Helper function to parse IMAP fetch results into EmailHeader
+fn parse_email_headers<'a, I>(messages: I) -> Vec<EmailHeader>
+where
+    I: Iterator<Item = &'a imap::types::Fetch>,
+{
+    let mut headers = Vec::new();
+
+    for msg in messages {
+        let envelope = match msg.envelope() {
+            Some(e) => e,
+            None => continue,
+        };
+
+        let subject = envelope
+            .subject
+            .as_ref()
+            .map(|s| {
+                let raw_subject = decode_bytes_to_string(s);
+                decode_header(&raw_subject)
+            })
+            .unwrap_or_else(|| "(No Subject)".to_string());
+
+        let from = envelope
+            .from
+            .as_ref()
+            .map(|addrs| {
+                addrs
+                    .iter()
+                    .map(|addr| {
+                        if let Some(name_bytes) = addr.name {
+                            let name = decode_bytes_to_string(name_bytes);
+                            if !name.trim().is_empty() {
+                                return decode_header(&name);
+                            }
+                        }
+                        let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
+                        let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                        format!("{}@{}", mailbox, host)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_else(|| "(Unknown Sender)".to_string());
+
+        let date = envelope
+            .date
+            .as_ref()
+            .map(|d| decode_bytes_to_string(d))
+            .unwrap_or_else(|| "(No Date)".to_string());
+
+        let timestamp = parse_email_date(&date);
+
+        let to = envelope
+            .to
+            .as_ref()
+            .map(|addrs| {
+                addrs
+                    .iter()
+                    .map(|addr| {
+                        if let Some(name_bytes) = addr.name {
+                            let name = decode_bytes_to_string(name_bytes);
+                            if !name.trim().is_empty() {
+                                return decode_header(&name);
+                            }
+                        }
+                        let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
+                        let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                        format!("{}@{}", mailbox, host)
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap_or_else(|| "(Unknown Recipient)".to_string());
+
+        let has_attachments = msg
+            .bodystructure()
+            .map(|bs| check_for_attachments(bs))
+            .unwrap_or(false);
+
+        headers.push(EmailHeader {
+            uid: msg.uid.unwrap_or(0),
+            subject,
+            from,
+            to,
+            date,
+            timestamp,
+            has_attachments,
+        });
+    }
+
+    // Sort by timestamp descending (newest first)
+    headers.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    headers
+}
+
+// Struct to hold sync state from database
+#[derive(Clone)]
+struct SyncState {
+    uidvalidity: Option<i64>,
+    highest_uid: Option<i64>,
+}
+
+// Get sync state for a folder
+async fn get_sync_state(account_id: i32, folder_name: &str) -> Result<Option<SyncState>, String> {
+    let pool = db::pool();
+
+    let result = sqlx::query_as::<_, (Option<i64>, Option<i64>)>(
+        "SELECT uidvalidity, highest_uid FROM sync_status WHERE account_id = ? AND folder_name = ?",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to get sync state: {}", e))?;
+
+    Ok(result.map(|(uidvalidity, highest_uid)| SyncState {
+        uidvalidity,
+        highest_uid,
+    }))
+}
+
+// Update sync state for a folder
+async fn update_sync_state(
+    account_id: i32,
+    folder_name: &str,
+    uidvalidity: i64,
+    highest_uid: i64,
+) -> Result<(), String> {
     let pool = db::pool();
     let current_time = Utc::now().timestamp();
 
     sqlx::query(
-        "INSERT OR REPLACE INTO sync_status (account_id, folder_name, last_sync_time)
-        VALUES (?, ?, ?)",
+        "INSERT OR REPLACE INTO sync_status (account_id, folder_name, last_sync_time, uidvalidity, highest_uid)
+        VALUES (?, ?, ?, ?, ?)",
     )
     .bind(account_id)
     .bind(folder_name)
     .bind(current_time)
+    .bind(uidvalidity)
+    .bind(highest_uid)
     .execute(pool.as_ref())
     .await
-    .map_err(|e| format!("Failed to update sync time: {}", e))?;
+    .map_err(|e| format!("Failed to update sync state: {}", e))?;
+
+    println!(
+        "✅ Updated sync state: UIDVALIDITY={}, highest_uid={}",
+        uidvalidity, highest_uid
+    );
 
     Ok(())
 }

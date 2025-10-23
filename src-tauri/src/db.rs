@@ -76,6 +76,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await;
 
+    // Migration: Add flags column to emails table for IMAP flags (Seen, Flagged, etc.)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN flags TEXT")
+        .execute(&pool)
+        .await;
+
     // Create emails cache table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS emails (
@@ -105,19 +110,29 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
-    // Create sync_status table to track last sync times
+    // Create sync_status table to track last sync times and incremental sync state
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS sync_status (
             id INTEGER PRIMARY KEY,
             account_id INTEGER NOT NULL,
             folder_name TEXT NOT NULL,
             last_sync_time INTEGER NOT NULL,
+            uidvalidity INTEGER,
+            highest_uid INTEGER,
             UNIQUE(account_id, folder_name),
             FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
         )",
     )
     .execute(&pool)
     .await?;
+
+    // Migration: Add uidvalidity and highest_uid columns if they don't exist
+    let _ = sqlx::query("ALTER TABLE sync_status ADD COLUMN uidvalidity INTEGER")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE sync_status ADD COLUMN highest_uid INTEGER")
+        .execute(&pool)
+        .await;
 
     // Create settings table for user preferences
     sqlx::query(

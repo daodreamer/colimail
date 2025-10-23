@@ -3,6 +3,7 @@
 mod attachment_limits;
 mod commands;
 mod db;
+mod idle_manager;
 mod models;
 mod oauth2_config;
 
@@ -14,6 +15,56 @@ use commands::{
     save_account_config, save_attachment_to_file, send_email, set_sync_interval, should_sync,
     start_oauth2_flow, sync_emails, sync_folders,
 };
+use idle_manager::{IdleCommand, IdleManager};
+use models::AccountConfig;
+use std::sync::{Arc, Mutex};
+use tauri::{command, Manager, State};
+
+// IDLE manager commands
+#[command]
+async fn start_idle(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+    account_id: i32,
+    folder_name: String,
+    config: AccountConfig,
+) -> Result<(), String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        mgr.send_command(IdleCommand::Start {
+            account_id,
+            folder_name,
+            config,
+        })?;
+    }
+    Ok(())
+}
+
+#[command]
+async fn stop_idle(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+    account_id: i32,
+    folder_name: String,
+) -> Result<(), String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        mgr.send_command(IdleCommand::Stop {
+            account_id,
+            folder_name,
+        })?;
+    }
+    Ok(())
+}
+
+#[command]
+async fn stop_all_idle(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+) -> Result<(), String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        mgr.send_command(IdleCommand::StopAll)?;
+    }
+    Ok(())
+}
 
 #[tokio::main]
 async fn main() {
@@ -31,6 +82,14 @@ async fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|app| {
+            // Initialize IDLE manager
+            let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
+            app.manage(idle_manager);
+
+            println!("✅ IDLE manager initialized");
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             save_account_config,
             load_account_configs,
@@ -58,7 +117,10 @@ async fn main() {
             complete_oauth2_flow,
             load_attachments_info,
             download_attachment,
-            save_attachment_to_file
+            save_attachment_to_file,
+            start_idle,
+            stop_idle,
+            stop_all_idle
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
