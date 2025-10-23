@@ -46,6 +46,7 @@
   let isSyncing = $state<boolean>(false);
   let lastSyncTime = $state<number>(0);
   let syncInterval = $state<number>(300); // Default 5 minutes
+  let currentTime = $state<number>(Math.floor(Date.now() / 1000)); // Current time for reactive updates
 
   // Compose email state
   let showComposeDialog = $state<boolean>(false);
@@ -71,12 +72,18 @@
       }
     })();
 
-    // Cleanup timer on unmount
+    // Update current time every minute to refresh "last sync" display
+    const timeUpdateTimer = setInterval(() => {
+      currentTime = Math.floor(Date.now() / 1000);
+    }, 60000); // Update every 60 seconds
+
+    // Cleanup timers on unmount
     return () => {
       if (autoSyncTimer) {
         clearInterval(autoSyncTimer);
         autoSyncTimer = null;
       }
+      clearInterval(timeUpdateTimer);
     };
   });
 
@@ -531,8 +538,7 @@
 
   // Helper function to format time since last sync
   function formatTimeSince(timestamp: number): string {
-      const now = Math.floor(Date.now() / 1000);
-      const seconds = now - timestamp;
+      const seconds = currentTime - timestamp;
 
       if (seconds < 60) return "just now";
       const minutes = Math.floor(seconds / 60);
