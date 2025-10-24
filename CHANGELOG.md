@@ -14,7 +14,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
-## [0.1.0] - 2025-01-24
+## [0.1.1] - 2025-01-24
+
+### Fixed
+- GitHub Actions permissions for automated releases
+- macOS Apple Silicon build artifact paths
+- Repository references updated to daodreamer/colimail
+
+### Changed
+- Streamlined release builds to Windows x64 and macOS Apple Silicon only
+- Removed Linux and macOS Intel builds from automated releases
+
+## [0.1.0] - 2025-01-24 [YANKED]
+
+**Note**: This release was yanked due to GitHub Actions configuration issues. Use v0.1.1 instead.
 
 ### Added
 - Initial beta release
