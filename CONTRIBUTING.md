@@ -38,7 +38,7 @@ git clone https://github.com/YOUR_USERNAME/colimail.git
 cd colimail
 
 # Add upstream remote
-git remote add upstream https://github.com/ORIGINAL_OWNER/colimail.git
+git remote add upstream https://github.com/daodreamer/colimail.git
 
 # Install dependencies
 npm install

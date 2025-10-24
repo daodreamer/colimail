@@ -4,11 +4,11 @@
 
 ### 准备工作(5分钟)
 
-1. **更新 README 中的 GitHub 链接**
-   - 将 `YOUR_USERNAME` 替换为你的 GitHub 用户名
-   - 文件位置: `README.md` 第46行, 第120行, 第192行
+1. **检查文档配置**
+   - 所有仓库链接已配置为 `daodreamer/colimail`
+   - 安全联系邮箱已配置
 
-2. **更新 SECURITY.md 中的联系方式**
+2. **更新 SECURITY.md 中的联系方式(如需修改)**
    - 替换 `[your-email@example.com]` 为真实的安全联系邮箱
    - 文件位置: `SECURITY.md` 第10行, 第174行
 
@@ -25,7 +25,7 @@
 
 ```bash
 # 如果还没有推送到 GitHub,创建仓库并推送
-git remote add origin https://github.com/YOUR_USERNAME/colimail.git
+git remote add origin https://github.com/daodreamer/colimail.git
 git branch -M main
 git push -u origin main
 ```
@@ -40,17 +40,15 @@ git push origin v0.1.0
 
 #### 第3步: 等待自动构建(约15-30分钟)
 
-1. 访问: `https://github.com/YOUR_USERNAME/colimail/actions`
+1. 访问: `https://github.com/daodreamer/colimail/actions`
 2. 查看 "Release Build" 工作流运行状态
-3. 等待所有平台构建完成:
+3. 等待所有平台构建完成(约10-15分钟):
    - ✅ Windows (x86_64)
-   - ✅ macOS Intel (x86_64)
    - ✅ macOS Apple Silicon (aarch64)
-   - ✅ Linux (x86_64)
 
 #### 第4步: 发布 Release
 
-1. 访问: `https://github.com/YOUR_USERNAME/colimail/releases`
+1. 访问: `https://github.com/daodreamer/colimail/releases`
 2. 找到自动创建的草稿 Release
 3. 编辑发布说明(可选,已有默认内容)
 4. 点击 "Publish release"
@@ -71,27 +69,12 @@ npm run tauri build
 # 输出: src-tauri/target/release/bundle/msi/Colimail_0.1.0_x64_en-US.msi
 ```
 
-#### macOS 构建(需要在 Mac 上)
+#### macOS Apple Silicon 构建(需要在 M1/M2/M3 Mac 上)
 
 ```bash
 npm install
-npm run tauri build
-# 输出: src-tauri/target/release/bundle/dmg/Colimail_0.1.0_xxx.dmg
-```
-
-#### Linux 构建(需要在 Ubuntu/Debian 上)
-
-```bash
-# 安装依赖
-sudo apt-get install -y libwebkit2gtk-4.0-dev \
-  build-essential libssl-dev libgtk-3-dev \
-  libayatana-appindicator3-dev librsvg2-dev
-
-npm install
-npm run tauri build
-# 输出:
-# - src-tauri/target/release/bundle/deb/colimail_0.1.0_amd64.deb
-# - src-tauri/target/release/bundle/appimage/colimail_0.1.0_amd64.AppImage
+npm run tauri build --target aarch64-apple-darwin
+# 输出: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Colimail_0.1.0_aarch64.dmg
 ```
 
 然后手动上传到 GitHub Releases。
@@ -127,7 +110,7 @@ npm run tauri build
 ✅ 使用 Rust + Tauri 2 + Svelte 5 构建
 ✅ 完全开源,本地存储,无数据收集
 
-下载试用: https://github.com/YOUR_USERNAME/colimail/releases
+下载试用: https://github.com/daodreamer/colimail/releases
 欢迎反馈和贡献! ⭐
 
 #EmailClient #Rust #Tauri #OpenSource
@@ -168,6 +151,10 @@ npm run tauri build
 **解决方案**(未来):
 - 申请 Apple Developer 账号($99/年)
 - 对应用进行代码签名和公证(notarization)
+
+### Q: Intel Mac 用户能用吗?
+
+**A**: 当前版本仅支持 Apple Silicon (M1/M2/M3)。如果有足够需求,可以在未来版本添加 Intel 支持,或者用户可以在本地自行构建 Intel 版本。
 
 ### Q: Windows SmartScreen 警告
 

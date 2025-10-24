@@ -12,8 +12,7 @@ Complete guide for releasing a new version of Colimail to the public.
 - [ ] No compiler warnings or errors
 - [ ] Manual testing on all target platforms:
   - [ ] Windows 10/11
-  - [ ] macOS (Intel & Apple Silicon)
-  - [ ] Ubuntu/Debian Linux
+  - [ ] macOS Apple Silicon (M1/M2/M3)
 - [ ] Test all core features:
   - [ ] Add/remove email accounts
   - [ ] Send/receive emails
@@ -79,17 +78,15 @@ git push origin v0.2.0
 
 #### Step 2: Monitor GitHub Actions
 
-1. Go to: `https://github.com/YOUR_USERNAME/colimail/actions`
+1. Go to: `https://github.com/daodreamer/colimail/actions`
 2. Watch the "Release Build" workflow
 3. Verify builds complete for all platforms:
    - Windows (x86_64)
-   - macOS (Intel x86_64)
-   - macOS (Apple Silicon aarch64)
-   - Linux (x86_64)
+   - macOS Apple Silicon (aarch64)
 
 #### Step 3: Review Draft Release
 
-1. Navigate to: `https://github.com/YOUR_USERNAME/colimail/releases`
+1. Navigate to: `https://github.com/daodreamer/colimail/releases`
 2. Find the draft release created by GitHub Actions
 3. Edit release notes:
    - Add highlights and breaking changes
@@ -97,10 +94,7 @@ git push origin v0.2.0
    - Add upgrade instructions if needed
 4. Verify all artifacts uploaded:
    - `Colimail_0.2.0_x64_en-US.msi` (Windows)
-   - `Colimail_0.2.0_x64.dmg` (macOS Intel)
    - `Colimail_0.2.0_aarch64.dmg` (macOS Apple Silicon)
-   - `colimail_0.2.0_amd64.deb` (Linux)
-   - `colimail_0.2.0_amd64.AppImage` (Linux)
 
 #### Step 4: Publish Release
 
@@ -121,25 +115,16 @@ npm run tauri build
 # Output: src-tauri/target/release/bundle/msi/
 ```
 
-**macOS**:
+**macOS Apple Silicon**:
 ```bash
 npm install
-npm run tauri build
-# For universal binary (both Intel & Apple Silicon):
-npm run tauri build -- --target universal-apple-darwin
-# Output: src-tauri/target/release/bundle/dmg/
-```
-
-**Linux (Ubuntu/Debian)**:
-```bash
-npm install
-npm run tauri build
-# Output: src-tauri/target/release/bundle/deb/ and bundle/appimage/
+npm run tauri build -- --target aarch64-apple-darwin
+# Output: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/
 ```
 
 #### Step 2: Create GitHub Release
 
-1. Go to: `https://github.com/YOUR_USERNAME/colimail/releases/new`
+1. Go to: `https://github.com/daodreamer/colimail/releases/new`
 2. Choose tag: `v0.2.0` (create new tag)
 3. Release title: `Colimail v0.2.0`
 4. Add release notes (see template below)
@@ -218,17 +203,12 @@ Released: 2025-01-24
 **Windows**:
 Download `Colimail_0.2.0_x64_en-US.msi` and run the installer.
 
-**macOS**:
-- Apple Silicon: `Colimail_0.2.0_aarch64.dmg`
-- Intel: `Colimail_0.2.0_x64.dmg`
-
-**Linux**:
-- Debian/Ubuntu: `colimail_0.2.0_amd64.deb`
-- Universal: `colimail_0.2.0_amd64.AppImage`
+**macOS Apple Silicon**:
+Download `Colimail_0.2.0_aarch64.dmg`, open and drag to Applications folder.
 
 ### 📝 Full Changelog
 
-See [CHANGELOG.md](https://github.com/YOUR_USERNAME/colimail/blob/main/CHANGELOG.md)
+See [CHANGELOG.md](https://github.com/daodreamer/colimail/blob/main/CHANGELOG.md)
 
 ### 🙏 Contributors
 

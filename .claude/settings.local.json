@@ -16,7 +16,8 @@
       "Bash(findstr:*)",
       "WebFetch(domain:v2.tauri.app)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:stackoverflow.com)"
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(git remote set-url:*)"
     ],
     "deny": [],
     "ask": []

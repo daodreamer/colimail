@@ -25,7 +25,7 @@ Colimail is a cross-platform desktop email client built with Tauri 2, SvelteKit,
 - **Fast**: Startup ≤ 1.5s, sync 100 emails in ≤ 3s, query latency ≤ 50ms
 - **Modern**: Built with Svelte 5 + Tauri 2 for native performance
 - **Secure**: Local SQLite storage, OAuth2 support for Gmail/Outlook
-- **Cross-platform**: Windows, macOS, Linux
+- **Platforms**: Windows, macOS Apple Silicon
 
 ## Features
 
@@ -46,8 +46,7 @@ Colimail is a cross-platform desktop email client built with Tauri 2, SvelteKit,
 Visit the [Releases page](https://github.com/daodreamer/colimail/releases) to download the latest version:
 
 - **Windows**: `Colimail_0.1.0_x64_en-US.msi`
-- **macOS**: `Colimail_0.1.0_aarch64.dmg` (Apple Silicon) or `Colimail_0.1.0_x64.dmg` (Intel)
-- **Linux**: `colimail_0.1.0_amd64.deb` or `colimail_0.1.0_amd64.AppImage`
+- **macOS Apple Silicon**: `Colimail_0.1.0_aarch64.dmg`
 
 ### Installation Instructions
 
@@ -57,22 +56,12 @@ Visit the [Releases page](https://github.com/daodreamer/colimail/releases) to do
 3. Follow the installation wizard
 4. Launch Colimail from the Start Menu
 
-#### macOS
+#### macOS (Apple Silicon)
 1. Download the `.dmg` file
 2. Open the DMG and drag Colimail to Applications
 3. First launch: Right-click → Open (to bypass Gatekeeper)
 
-#### Linux
-**Debian/Ubuntu (.deb)**:
-```bash
-sudo dpkg -i colimail_0.1.0_amd64.deb
-```
-
-**AppImage**:
-```bash
-chmod +x colimail_0.1.0_amd64.AppImage
-./colimail_0.1.0_amd64.AppImage
-```
+> **Note**: Currently only supporting Apple Silicon (M1/M2/M3) Macs. Intel Mac support may be added based on user demand.
 
 ## Usage
 
