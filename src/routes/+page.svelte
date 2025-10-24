@@ -245,9 +245,50 @@
     }
   }
 
+  async function syncSingleFolder() {
+    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+    if (!selectedConfig || !state.selectedAccountId) {
+      state.error = "No account selected.";
+      return;
+    }
+
+    const folderName = state.selectedFolderName;
+    console.log(`📂 User clicked current folder "${folderName}" - syncing this folder only...`);
+
+    state.isSyncing = true;
+    state.error = null;
+
+    try {
+      // Sync only this folder without affecting global sync timer
+      const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+        config: selectedConfig,
+        folder: folderName,
+      });
+
+      state.emails = syncedEmails;
+      // Note: We intentionally do NOT update state.lastSyncTime here
+      // because this is a user-triggered folder refresh, not a global sync
+
+      console.log(`✅ Synced ${syncedEmails.length} emails for folder "${folderName}"`);
+    } catch (e) {
+      state.error = `Failed to sync folder: ${e}`;
+    } finally {
+      state.isSyncing = false;
+    }
+  }
+
   async function handleFolderClick(folderName: string) {
+    const isSameFolder = state.selectedFolderName === folderName;
+
     state.selectedFolderName = folderName;
-    await loadEmailsForFolder(folderName);
+
+    if (isSameFolder) {
+      // User clicked the current folder - they want to check for updates
+      await syncSingleFolder();
+    } else {
+      // User clicked a different folder - load from cache
+      await loadEmailsForFolder(folderName);
+    }
   }
 
   async function handleEmailClick(uid: number) {
@@ -317,14 +358,8 @@
   }
 
   async function handleManualRefresh() {
-    if (!state.selectedAccountId) {
-      state.error = "Please select an account first.";
-      return;
-    }
-
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
-    if (!selectedConfig) {
-      state.error = "Could not find selected account configuration.";
+    if (state.accounts.length === 0) {
+      state.error = "No accounts configured.";
       return;
     }
 
@@ -332,19 +367,44 @@
     state.error = null;
 
     try {
-      console.log("Manual refresh: syncing folders...");
-      state.folders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
+      console.log("🔄 Global refresh: syncing all accounts and folders...");
 
-      console.log("Manual refresh: syncing emails...");
-      const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
-        config: selectedConfig,
-        folder: state.selectedFolderName,
-      });
+      // Sync all accounts
+      for (const account of state.accounts) {
+        console.log(`📧 Syncing account: ${account.email}`);
 
-      state.emails = syncedEmails;
+        try {
+          // Sync folders for this account
+          const syncedFolders = await invoke<Folder[]>("sync_folders", { config: account });
+
+          // Update folders if this is the currently selected account
+          if (account.id === state.selectedAccountId) {
+            state.folders = syncedFolders;
+          }
+
+          // Sync all folders for this account
+          for (const folder of syncedFolders) {
+            console.log(`  📂 Syncing folder: ${folder.name}`);
+            const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
+              config: account,
+              folder: folder.name,
+            });
+
+            // Update emails if this is the currently selected account and folder
+            if (account.id === state.selectedAccountId && folder.name === state.selectedFolderName) {
+              state.emails = syncedEmails;
+            }
+          }
+
+          console.log(`✅ Completed sync for account: ${account.email}`);
+        } catch (e) {
+          console.error(`❌ Failed to sync account ${account.email}:`, e);
+          // Continue with other accounts even if one fails
+        }
+      }
+
       state.lastSyncTime = Math.floor(Date.now() / 1000);
-
-      console.log("Manual refresh completed");
+      console.log("✅ Global refresh completed for all accounts");
     } catch (e) {
       state.error = `Failed to refresh: ${e}`;
     } finally {
