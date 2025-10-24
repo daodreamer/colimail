@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { save } from "@tauri-apps/plugin-dialog";
+  import { save, ask, message } from "@tauri-apps/plugin-dialog";
 
   // Components
   import AccountsSidebar from "./components/AccountsSidebar.svelte";
@@ -355,7 +355,12 @@
   async function handleDeleteAccount(email: string, event: MouseEvent) {
     event.stopPropagation();
 
-    if (!confirm(`确定要删除账户 ${email} 吗？`)) {
+    const confirmed = await ask(`Are you sure you want to delete account ${email}?`, {
+      title: "Delete Account",
+      kind: "warning",
+    });
+
+    if (!confirmed) {
       return;
     }
 
@@ -561,7 +566,7 @@
       }
       console.log("Send result:", result);
       handleCloseCompose();
-      alert("Email sent successfully!");
+      await message("Email sent successfully!", { title: "Success", kind: "info" });
     } catch (e) {
       state.error = `Failed to send email: ${e}`;
     } finally {
@@ -589,14 +594,23 @@
 
     const isInTrash = isTrashFolder(state.selectedFolderName);
 
+    const confirmTitle = isInTrash ? "Permanently Delete Email?" : "Move to Trash?";
     const confirmMessage = isInTrash
       ? `Are you sure you want to PERMANENTLY delete this email?\n\nThis action cannot be undone.\n\nSubject: ${selectedEmail.subject}`
       : `Move this email to trash?\n\nSubject: ${selectedEmail.subject}`;
 
-    if (!confirm(confirmMessage)) {
+    // IMPORTANT: Use Tauri's ask() dialog instead of native confirm()
+    // This properly blocks execution until user responds
+    const userConfirmed = await ask(confirmMessage, {
+      title: confirmTitle,
+      kind: "warning",
+    });
+
+    if (!userConfirmed) {
       return;
     }
 
+    // Only after user confirms, proceed with backend operations
     state.error = null;
 
     try {
@@ -606,14 +620,14 @@
           uid: state.selectedEmailUid,
           folder: state.selectedFolderName,
         });
-        alert("Email permanently deleted!");
+        await message("Email permanently deleted!", { title: "Success", kind: "info" });
       } else {
         await invoke("move_email_to_trash", {
           config: selectedConfig,
           uid: state.selectedEmailUid,
           folder: state.selectedFolderName,
         });
-        alert("Email moved to trash!");
+        await message("Email moved to trash!", { title: "Success", kind: "info" });
       }
 
       state.resetEmailState();
