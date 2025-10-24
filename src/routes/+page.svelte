@@ -44,6 +44,11 @@
         // Listen for IDLE push notifications
         const unlisten = await listen<IdleEvent>("idle-event", handleIdleEvent);
 
+        // Listen for notification sound event
+        const unlistenSound = await listen("play-notification-sound", () => {
+          playNotificationSound();
+        });
+
         // Update current time every minute
         const timeUpdateTimer = setInterval(() => {
           state.currentTime = Math.floor(Date.now() / 1000);
@@ -137,13 +142,16 @@
       return;
     }
 
-    state.selectedAccountId = accountId;
+    // Store the accountId locally to avoid race conditions
+    const targetAccountId = accountId;
+
+    state.selectedAccountId = targetAccountId;
     state.selectedFolderName = "INBOX";
     state.resetEmailState();
     state.emails = [];
     state.error = null;
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === accountId);
+    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
     if (!selectedConfig) {
       state.error = "Could not find selected account configuration.";
       return;
@@ -152,21 +160,38 @@
     state.isLoadingFolders = true;
 
     try {
-      const cachedFolders = await invoke<Folder[]>("load_folders", { accountId });
+      const cachedFolders = await invoke<Folder[]>("load_folders", { accountId: targetAccountId });
+
+      // Check if user switched accounts during the async operation
+      if (state.selectedAccountId !== targetAccountId) {
+        console.log("Account switched during folder load, aborting");
+        return;
+      }
+
       state.folders = cachedFolders;
       state.isLoadingFolders = false;
 
       await loadEmailsForFolder("INBOX");
 
+      // Check again after loading emails
+      if (state.selectedAccountId !== targetAccountId) {
+        console.log("Account switched during email load, aborting");
+        return;
+      }
+
       const needsFolderSync = await invoke<boolean>("should_sync", {
-        accountId: accountId,
+        accountId: targetAccountId,
         folder: "__folders__",
         syncInterval: state.syncInterval,
       });
 
-      if (needsFolderSync) {
+      if (needsFolderSync && state.selectedAccountId === targetAccountId) {
         const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
-        state.folders = syncedFolders;
+
+        // Final check before updating state
+        if (state.selectedAccountId === targetAccountId) {
+          state.folders = syncedFolders;
+        }
       }
     } catch (e) {
       state.error = `Failed to load folders: ${e}`;
@@ -175,8 +200,10 @@
   }
 
   async function loadEmailsForFolder(folderName: string) {
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
-    if (!selectedConfig || !state.selectedAccountId) {
+    const targetAccountId = state.selectedAccountId;
+    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+
+    if (!selectedConfig || !targetAccountId) {
       state.error = "No account selected.";
       return;
     }
@@ -187,33 +214,42 @@
 
     try {
       const cachedEmails = await invoke<EmailHeader[]>("load_emails_from_cache", {
-        accountId: state.selectedAccountId,
+        accountId: targetAccountId,
         folder: folderName,
       });
+
+      // Check if account or folder changed during async operation
+      if (state.selectedAccountId !== targetAccountId || state.selectedFolderName !== folderName) {
+        console.log("Account/folder changed during cache load, aborting");
+        return;
+      }
 
       state.emails = cachedEmails;
       state.isLoadingEmails = false;
 
       state.lastSyncTime = await invoke<number>("get_last_sync_time", {
-        accountId: state.selectedAccountId,
+        accountId: targetAccountId,
         folder: folderName,
       });
 
       const needsSync = await invoke<boolean>("should_sync", {
-        accountId: state.selectedAccountId,
+        accountId: targetAccountId,
         folder: folderName,
         syncInterval: state.syncInterval,
       });
 
-      if (needsSync) {
+      if (needsSync && state.selectedAccountId === targetAccountId && state.selectedFolderName === folderName) {
         state.isSyncing = true;
         const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
           config: selectedConfig,
           folder: folderName,
         });
 
-        state.emails = syncedEmails;
-        state.lastSyncTime = Math.floor(Date.now() / 1000);
+        // Final check before updating state
+        if (state.selectedAccountId === targetAccountId && state.selectedFolderName === folderName) {
+          state.emails = syncedEmails;
+          state.lastSyncTime = Math.floor(Date.now() / 1000);
+        }
         state.isSyncing = false;
       }
     } catch (e) {
@@ -224,13 +260,15 @@
   }
 
   async function syncSingleFolder() {
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
-    if (!selectedConfig || !state.selectedAccountId) {
+    const targetAccountId = state.selectedAccountId;
+    const targetFolderName = state.selectedFolderName;
+    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+
+    if (!selectedConfig || !targetAccountId) {
       state.error = "No account selected.";
       return;
     }
 
-    const folderName = state.selectedFolderName;
     state.isSyncing = true;
     state.error = null;
 
@@ -238,12 +276,17 @@
       // Sync only this folder without affecting global sync timer
       const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
         config: selectedConfig,
-        folder: folderName,
+        folder: targetFolderName,
       });
 
-      state.emails = syncedEmails;
-      // Note: We intentionally do NOT update state.lastSyncTime here
-      // because this is a user-triggered folder refresh, not a global sync
+      // Check if account/folder changed during sync
+      if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
+        state.emails = syncedEmails;
+        // Note: We intentionally do NOT update state.lastSyncTime here
+        // because this is a user-triggered folder refresh, not a global sync
+      } else {
+        console.log("Account/folder changed during sync, discarding result");
+      }
     } catch (e) {
       state.error = `Failed to sync folder: ${e}`;
     } finally {
@@ -680,6 +723,33 @@
     }
   }
 
+  // Play notification sound
+  function playNotificationSound() {
+    try {
+      // Create a simple beep sound using Web Audio API
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      oscillator.frequency.value = 440; // A4 note
+      oscillator.type = 'sine';
+
+      // Fade out
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.3);
+
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.3);
+
+      console.log("🔔 Played notification sound");
+    } catch (e) {
+      console.error("❌ Failed to play notification sound:", e);
+    }
+  }
+
   async function handleIdleEvent(event: { payload: IdleEvent }) {
     const idleEvent = event.payload;
     const eventType = idleEvent.event_type.type;
@@ -689,16 +759,25 @@
         idleEvent.account_id === state.selectedAccountId &&
         idleEvent.folder_name === state.selectedFolderName
       ) {
-        const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+        const targetAccountId = state.selectedAccountId;
+        const targetFolderName = state.selectedFolderName;
+        const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+
         if (selectedConfig) {
           try {
             state.isSyncing = true;
             const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
               config: selectedConfig,
-              folder: state.selectedFolderName,
+              folder: targetFolderName,
             });
-            state.emails = syncedEmails;
-            state.lastSyncTime = Math.floor(Date.now() / 1000);
+
+            // Check if still viewing same account/folder
+            if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
+              state.emails = syncedEmails;
+              state.lastSyncTime = Math.floor(Date.now() / 1000);
+            } else {
+              console.log("Account/folder changed during IDLE sync, discarding result");
+            }
             state.isSyncing = false;
           } catch (e) {
             console.error("❌ Failed to sync after IDLE event:", e);
@@ -706,6 +785,7 @@
           }
         }
       } else {
+        // Background sync for other folders - don't update UI
         const affectedConfig = state.accounts.find((acc) => acc.id === idleEvent.account_id);
         if (affectedConfig) {
           try {
@@ -723,14 +803,23 @@
         idleEvent.account_id === state.selectedAccountId &&
         idleEvent.folder_name === state.selectedFolderName
       ) {
-        const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+        const targetAccountId = state.selectedAccountId;
+        const targetFolderName = state.selectedFolderName;
+        const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+
         if (selectedConfig) {
           try {
             const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
               config: selectedConfig,
-              folder: state.selectedFolderName,
+              folder: targetFolderName,
             });
-            state.emails = syncedEmails;
+
+            // Check if still viewing same account/folder
+            if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
+              state.emails = syncedEmails;
+            } else {
+              console.log("Account/folder changed during IDLE sync, discarding result");
+            }
           } catch (e) {
             console.error("❌ Failed to refresh after change:", e);
           }

@@ -154,6 +154,16 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await?;
 
+    // Set default notification settings if not exists
+    sqlx::query(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('notification_enabled', 'true')",
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('sound_enabled', 'true')")
+        .execute(&pool)
+        .await?;
+
     // Create attachments table for storing email attachments
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS attachments (

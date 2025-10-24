@@ -4,13 +4,28 @@
 
   let syncInterval = $state<number>(300); // Default 5 minutes
   let isSavingSyncSettings = $state(false);
+  let notificationEnabled = $state<boolean>(true);
+  let soundEnabled = $state<boolean>(true);
+  let isSavingNotificationSettings = $state(false);
 
-  // Load sync interval on mount
+  // Load settings on mount
   onMount(async () => {
     try {
       syncInterval = await invoke<number>("get_sync_interval");
     } catch (error) {
       console.error("Failed to load sync interval:", error);
+    }
+
+    try {
+      notificationEnabled = await invoke<boolean>("get_notification_enabled");
+    } catch (error) {
+      console.error("Failed to load notification setting:", error);
+    }
+
+    try {
+      soundEnabled = await invoke<boolean>("get_sound_enabled");
+    } catch (error) {
+      console.error("Failed to load sound setting:", error);
     }
   });
 
@@ -25,6 +40,21 @@
       alert("保存同步设置失败！");
     } finally {
       isSavingSyncSettings = false;
+    }
+  }
+
+  // Save notification settings
+  async function saveNotificationSettings() {
+    isSavingNotificationSettings = true;
+    try {
+      await invoke("set_notification_enabled", { enabled: notificationEnabled });
+      await invoke("set_sound_enabled", { enabled: soundEnabled });
+      alert("通知设置已保存！");
+    } catch (error) {
+      console.error("保存通知设置失败:", error);
+      alert("保存通知设置失败！");
+    } finally {
+      isSavingNotificationSettings = false;
     }
   }
 
@@ -86,6 +116,43 @@
       {isSavingSyncSettings ? "保存中..." : "保存设置"}
     </button>
   </div>
+
+  <!-- Notification Settings Section -->
+  <div class="notification-settings-section">
+    <h2>通知设置</h2>
+    <p class="info-text">
+      配置新邮件到达时的提醒方式。
+    </p>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={notificationEnabled} />
+        <span>启用桌面通知</span>
+      </label>
+      <p class="help-text">
+        收到新邮件时在桌面右下角显示浮窗提醒，包含发件人和标题信息。
+      </p>
+    </div>
+
+    <div class="form-group">
+      <label class="checkbox-label">
+        <input type="checkbox" bind:checked={soundEnabled} />
+        <span>启用声音提醒</span>
+      </label>
+      <p class="help-text">
+        收到新邮件时播放提示音。
+      </p>
+    </div>
+
+    <button
+      class="primary-button"
+      onclick={saveNotificationSettings}
+      disabled={isSavingNotificationSettings}
+      type="button"
+    >
+      {isSavingNotificationSettings ? "保存中..." : "保存设置"}
+    </button>
+  </div>
 </div>
 
 <style>
@@ -136,6 +203,14 @@
   /* Sync Settings Section */
   .sync-settings-section {
     animation: fadeIn 0.3s;
+    margin-bottom: 2rem;
+  }
+
+  /* Notification Settings Section */
+  .notification-settings-section {
+    animation: fadeIn 0.3s;
+    border-top: 1px solid #e0e0e0;
+    padding-top: 2rem;
   }
 
   @keyframes fadeIn {
@@ -210,5 +285,27 @@
   .primary-button:disabled {
     background-color: #ccc;
     cursor: not-allowed;
+  }
+
+  /* Checkbox styles */
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 0;
+  }
+
+  input[type="checkbox"] {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    accent-color: #007bff;
+  }
+
+  .checkbox-label span {
+    user-select: none;
   }
 </style>

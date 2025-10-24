@@ -10,9 +10,10 @@ mod oauth2_config;
 use commands::{
     complete_oauth2_flow, delete_account, delete_email, download_attachment, fetch_email_body,
     fetch_email_body_cached, fetch_emails, fetch_folders, forward_email, get_attachment_size_limit,
-    get_last_sync_time, get_sync_interval, listen_for_oauth_callback, load_account_configs,
-    load_attachments_info, load_emails_from_cache, load_folders, move_email_to_trash, reply_email,
-    save_account_config, save_attachment_to_file, send_email, set_sync_interval, should_sync,
+    get_last_sync_time, get_notification_enabled, get_sound_enabled, get_sync_interval,
+    listen_for_oauth_callback, load_account_configs, load_attachments_info, load_emails_from_cache,
+    load_folders, move_email_to_trash, reply_email, save_account_config, save_attachment_to_file,
+    send_email, set_notification_enabled, set_sound_enabled, set_sync_interval, should_sync,
     start_oauth2_flow, sync_emails, sync_folders,
 };
 use idle_manager::{IdleCommand, IdleManager};
@@ -145,6 +146,7 @@ async fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             // Initialize IDLE manager
             let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
@@ -201,6 +203,10 @@ async fn main() {
             should_sync,
             get_sync_interval,
             set_sync_interval,
+            get_notification_enabled,
+            set_notification_enabled,
+            get_sound_enabled,
+            set_sound_enabled,
             move_email_to_trash,
             delete_email,
             send_email,

@@ -16,6 +16,9 @@ pub async fn save_emails_to_cache(
     let current_time = Utc::now().timestamp();
 
     for email in emails {
+        // Debug: Log the UID being saved
+        println!("  💾 Saving email UID {} to cache", email.uid);
+
         // Use INSERT with ON CONFLICT to preserve cached body
         sqlx::query(
             "INSERT INTO emails

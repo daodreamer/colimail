@@ -60,6 +60,24 @@ async fn incremental_sync(
     let folder_name_owned = folder_name.to_string();
     let config_for_uid_check = config.clone();
 
+    // Debug: Check what's actually in the cache
+    let pool = db::pool();
+    let cache_max_uid = sqlx::query_as::<_, (Option<i64>,)>(
+        "SELECT MAX(uid) FROM emails WHERE account_id = ? AND folder_name = ?",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .fetch_one(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to query cache max UID: {}", e))?
+    .0;
+
+    println!(
+        "🔍 Cache state: highest_uid in sync_status = {:?}, MAX(uid) in emails table = {:?}",
+        sync_state.as_ref().and_then(|s| s.highest_uid),
+        cache_max_uid
+    );
+
     // Connect to IMAP and check current state
     let (server_uidvalidity, _server_exists, new_emails) =
         tokio::task::spawn_blocking(move || -> Result<(u32, u32, Vec<EmailHeader>), String> {
@@ -154,17 +172,88 @@ async fn incremental_sync(
                     // No previous emails or empty folder
                     Vec::new()
                 } else {
-                    // Fetch new messages: UID > highest_uid
-                    let uid_range = format!("{}:*", highest_uid + 1);
+                    // First, use UID SEARCH to find if there are any new messages
+                    // This avoids Gmail's bug where UID FETCH with reversed range returns old messages
+                    let search_criteria = format!("UID {}:*", highest_uid + 1);
 
-                    println!("📥 Fetching new messages: UID {}", uid_range);
+                    println!("🔍 Searching for new messages: {}", search_criteria);
 
-                    match imap_session.uid_fetch(uid_range, "(UID ENVELOPE BODYSTRUCTURE)") {
+                    let search_result = match imap_session.uid_search(&search_criteria) {
+                        Ok(uids) => {
+                            // Convert HashSet to Vec and sort
+                            let mut uid_vec: Vec<u32> = uids.into_iter().collect();
+                            uid_vec.sort_unstable();
+                            uid_vec
+                        }
+                        Err(e) => {
+                            eprintln!("⚠️ UID SEARCH failed: {}, falling back to FETCH", e);
+                            Vec::new()
+                        }
+                    };
+
+                    if search_result.is_empty() {
+                        println!("✅ No new messages (SEARCH returned empty)");
+                        Vec::new()
+                    } else {
+                        println!("📋 SEARCH found {} UID(s): {:?}", search_result.len(), search_result);
+
+                        // Filter out UIDs <= highest_uid (Gmail bug workaround)
+                        let new_uids: Vec<u32> = search_result
+                            .into_iter()
+                            .filter(|&uid| uid > highest_uid as u32)
+                            .collect();
+
+                        if new_uids.is_empty() {
+                            println!("✅ No genuinely new messages after filtering");
+                            Vec::new()
+                        } else {
+                            println!("📥 Fetching {} new message(s) with UIDs: {:?}", new_uids.len(), new_uids);
+
+                            // Build UID range for FETCH
+                            let uid_list = new_uids
+                                .iter()
+                                .map(|uid| uid.to_string())
+                                .collect::<Vec<_>>()
+                                .join(",");
+
+                            match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE)") {
                         Ok(messages) => {
                             let count = messages.len();
                             if count > 0 {
-                                println!("✨ Found {} new message(s)", count);
-                                parse_email_headers(messages.iter().rev())
+                                println!("✨ Found {} raw message(s) from IMAP", count);
+
+                                // Debug: Log the actual UIDs returned by IMAP
+                                for (idx, msg) in messages.iter().enumerate() {
+                                    println!("  📋 Message {}: UID = {:?}", idx + 1, msg.uid);
+                                }
+
+                                let parsed = parse_email_headers(messages.iter().rev());
+
+                                // Debug: Log the parsed UIDs
+                                println!("  📝 Parsed UIDs: {:?}", parsed.iter().map(|e| e.uid).collect::<Vec<_>>());
+
+                                // Filter out emails with UID <= highest_uid
+                                // This handles cases where IMAP server returns UIDs we already have
+                                let filtered: Vec<EmailHeader> = parsed
+                                    .into_iter()
+                                    .filter(|email| email.uid > highest_uid as u32)
+                                    .collect();
+
+                                if filtered.len() < count {
+                                    println!(
+                                        "  🔍 Filtered out {} duplicate/old email(s), keeping {} new",
+                                        count - filtered.len(),
+                                        filtered.len()
+                                    );
+                                }
+
+                                if filtered.is_empty() {
+                                    println!("✅ No new messages after filtering");
+                                } else {
+                                    println!("✨ {} genuinely new message(s)", filtered.len());
+                                }
+
+                                filtered
                             } else {
                                 println!("✅ No new messages");
                                 Vec::new()
@@ -173,6 +262,8 @@ async fn incremental_sync(
                         Err(e) => {
                             eprintln!("⚠️ Failed to fetch new messages: {}", e);
                             Vec::new()
+                        }
+                    }
                         }
                     }
                 }
@@ -203,14 +294,34 @@ async fn incremental_sync(
     }
 
     // Update sync state with new UIDVALIDITY and highest UID
-    let new_highest_uid = new_emails
-        .iter()
-        .map(|e| e.uid)
-        .max()
-        .or(sync_state
-            .as_ref()
-            .and_then(|s| s.highest_uid.map(|u| u as u32)))
+    // IMPORTANT: Only update highest_uid based on emails we actually fetched and saved
+    // Do NOT use server_max_uid because there may be a time gap between:
+    // 1. Fetching new emails (first IMAP connection)
+    // 2. Querying all server UIDs (second IMAP connection)
+    // If a new email arrives in between, server_max_uid will be higher than what we actually got
+
+    let new_emails_max_uid = new_emails.iter().map(|e| e.uid).max();
+    let server_max_uid = server_uids.iter().copied().max();
+    let previous_highest_uid = sync_state
+        .as_ref()
+        .and_then(|s| s.highest_uid.map(|u| u as u32));
+
+    // Use the maximum of:
+    // 1. Actually fetched emails (safe - we have the content)
+    // 2. Previous highest_uid (safe - we had it before)
+    // Do NOT use server_max_uid to avoid the race condition
+    let new_highest_uid = new_emails_max_uid
+        .max(previous_highest_uid)
         .unwrap_or(0);
+
+    println!(
+        "📌 Updating highest UID: {} (new_emails_max={:?}, server_max={:?}, prev={:?}, server_total={})",
+        new_highest_uid,
+        new_emails_max_uid,
+        server_max_uid,
+        previous_highest_uid,
+        server_uids.len()
+    );
 
     update_sync_state(
         account_id,

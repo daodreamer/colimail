@@ -1,6 +1,7 @@
 pub mod accounts;
 pub mod emails;
 pub mod folders;
+pub mod notifications;
 pub mod oauth2;
 pub mod send;
 pub mod utils; // Public so idle_manager can access ensure_valid_token
@@ -12,5 +13,8 @@ pub use emails::{
     move_email_to_trash, save_attachment_to_file, set_sync_interval, should_sync, sync_emails,
 };
 pub use folders::{fetch_folders, load_folders, sync_folders};
+pub use notifications::{
+    get_notification_enabled, get_sound_enabled, set_notification_enabled, set_sound_enabled,
+};
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};

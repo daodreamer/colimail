@@ -1,10 +1,12 @@
 use crate::commands::utils::ensure_valid_token;
+use crate::db;
 use crate::models::{AccountConfig, AuthType};
 use native_tls::TlsConnector;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
+use tauri_plugin_notification::NotificationExt;
 use tokio::sync::mpsc;
 
 /// Command to control the IDLE manager
@@ -418,7 +420,25 @@ impl IdleManager {
                             curr_recent,
                         );
 
-                        for event_type in events {
+                        for event_type in events.clone() {
+                            // Send notification for new messages
+                            if let IdleEventType::NewMessages { count } = event_type {
+                                // Clone app_handle for async operation
+                                let app_handle_for_notif = app_handle_clone.clone();
+                                let folder_for_notif = folder_name_owned.clone();
+
+                                // Spawn async task to send notification
+                                tokio::spawn(async move {
+                                    send_notification(
+                                        &app_handle_for_notif,
+                                        account_id,
+                                        &folder_for_notif,
+                                        count,
+                                    )
+                                    .await;
+                                });
+                            }
+
                             let _ = app_handle_clone.emit(
                                 "idle-event",
                                 IdleEvent {
@@ -458,6 +478,77 @@ impl IdleManager {
             .lock()
             .unwrap()
             .contains_key(&(account_id, folder_name.to_string()))
+    }
+}
+
+/// Check notification and sound settings
+async fn check_notification_settings() -> (bool, bool) {
+    let pool = db::pool();
+
+    let notification_enabled = sqlx::query_as::<_, (String,)>(
+        "SELECT value FROM settings WHERE key = 'notification_enabled'",
+    )
+    .fetch_one(pool.as_ref())
+    .await
+    .map(|r| r.0 == "true")
+    .unwrap_or(true);
+
+    let sound_enabled =
+        sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE key = 'sound_enabled'")
+            .fetch_one(pool.as_ref())
+            .await
+            .map(|r| r.0 == "true")
+            .unwrap_or(true);
+
+    (notification_enabled, sound_enabled)
+}
+
+/// Send desktop notification for new emails
+async fn send_notification(app_handle: &AppHandle, account_id: i32, folder_name: &str, count: u32) {
+    let (notification_enabled, sound_enabled) = check_notification_settings().await;
+
+    // Fetch latest email info for notification
+    let pool = db::pool();
+    let latest_email = sqlx::query_as::<_, (String, String)>(
+        "SELECT subject, from_addr FROM emails
+         WHERE account_id = ? AND folder_name = ?
+         ORDER BY timestamp DESC LIMIT 1",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .fetch_optional(pool.as_ref())
+    .await;
+
+    if notification_enabled {
+        if let Ok(Some((subject, from))) = latest_email {
+            let title = if count == 1 {
+                "新邮件".to_string()
+            } else {
+                format!("{} 封新邮件", count)
+            };
+
+            let body = format!("发件人: {}\n主题: {}", from, subject);
+
+            // Use Tauri notification plugin
+            if let Err(e) = app_handle
+                .notification()
+                .builder()
+                .title(&title)
+                .body(&body)
+                .show()
+            {
+                eprintln!("❌ Failed to send notification: {}", e);
+            } else {
+                println!("✅ Sent desktop notification for {} new email(s)", count);
+            }
+        }
+    }
+
+    // Play notification sound if enabled
+    if sound_enabled {
+        // Emit event to frontend to play sound
+        let _ = app_handle.emit("play-notification-sound", ());
+        println!("🔔 Triggered notification sound");
     }
 }
 
