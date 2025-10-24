@@ -61,10 +61,16 @@ pub async fn send_email(
                 .multipart(multipart)
                 .map_err(|e| e.to_string())?
         } else {
-            email_builder.body(body).map_err(|e| e.to_string())?
+            // Send as HTML even without attachments
+            email_builder
+                .multipart(MultiPart::alternative().singlepart(SinglePart::html(body)))
+                .map_err(|e| e.to_string())?
         }
     } else {
-        email_builder.body(body).map_err(|e| e.to_string())?
+        // Send as HTML even without attachments
+        email_builder
+            .multipart(MultiPart::alternative().singlepart(SinglePart::html(body)))
+            .map_err(|e| e.to_string())?
     };
 
     let mailer = match config.auth_type {
@@ -172,10 +178,16 @@ pub async fn reply_email(
                 .multipart(multipart)
                 .map_err(|e| e.to_string())?
         } else {
-            email_builder.body(body).map_err(|e| e.to_string())?
+            // Send as HTML even without attachments
+            email_builder
+                .multipart(MultiPart::alternative().singlepart(SinglePart::html(body)))
+                .map_err(|e| e.to_string())?
         }
     } else {
-        email_builder.body(body).map_err(|e| e.to_string())?
+        // Send as HTML even without attachments
+        email_builder
+            .multipart(MultiPart::alternative().singlepart(SinglePart::html(body)))
+            .map_err(|e| e.to_string())?
     };
 
     let mailer = match config.auth_type {

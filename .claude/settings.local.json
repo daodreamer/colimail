@@ -9,7 +9,9 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "WebFetch(domain:developers.google.com)",
       "Bash(cat:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "WebFetch(domain:sendgrid.com)",
+      "WebFetch(domain:www.twilio.com)"
     ],
     "deny": [],
     "ask": []

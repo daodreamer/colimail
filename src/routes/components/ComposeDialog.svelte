@@ -1,5 +1,6 @@
 <script lang="ts">
   import { formatFileSize } from "../lib/utils";
+  import RichTextEditor from "./RichTextEditor.svelte";
 
   // Props
   let {
@@ -101,13 +102,11 @@
 
         <div class="form-group">
           <label for="compose-body">Body:</label>
-          <textarea
-            id="compose-body"
+          <RichTextEditor
             bind:value={body}
-            placeholder="Write your message here..."
-            rows="10"
             disabled={isSending}
-          ></textarea>
+            placeholder="Write your message here..."
+          />
         </div>
 
         <div class="form-group">
@@ -247,8 +246,7 @@
     font-weight: 500;
   }
 
-  .form-group input,
-  .form-group textarea {
+  .form-group input {
     width: 100%;
     padding: 0.5rem;
     border: 1px solid var(--border-color);
@@ -259,15 +257,9 @@
     color: var(--text-color);
   }
 
-  .form-group input:focus,
-  .form-group textarea:focus {
+  .form-group input:focus {
     outline: none;
     border-color: var(--selected-bg);
-  }
-
-  .form-group textarea {
-    resize: vertical;
-    min-height: 150px;
   }
 
   .attachment-limit-info {
