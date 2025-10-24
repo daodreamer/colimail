@@ -29,7 +29,6 @@
         startAutoSyncTimer();
 
         // Start IDLE connections for all accounts
-        console.log("🔔 Starting IDLE connections for all accounts...");
         for (const account of state.accounts) {
           try {
             await invoke("start_idle", {
@@ -37,9 +36,8 @@
               folderName: "INBOX",
               config: account,
             });
-            console.log(`✅ IDLE enabled for account ${account.id} (${account.email})`);
           } catch (e) {
-            console.warn(`Failed to start IDLE for account ${account.id}:`, e);
+            console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
           }
         }
 
@@ -69,12 +67,11 @@
         try {
           const newInterval = await invoke<number>("get_sync_interval");
           if (newInterval !== state.syncInterval) {
-            console.log(`Sync interval changed from ${state.syncInterval} to ${newInterval}`);
             state.syncInterval = newInterval;
             startAutoSyncTimer();
           }
         } catch (e) {
-          console.error("Failed to reload sync interval:", e);
+          console.error("❌ Failed to reload sync interval:", e);
         }
       }
     };
@@ -96,11 +93,8 @@
     }
 
     if (state.syncInterval <= 0) {
-      console.log("Auto-sync disabled (interval:", state.syncInterval, ")");
       return;
     }
-
-    console.log(`Starting auto-sync timer with interval: ${state.syncInterval} seconds`);
 
     autoSyncTimer = setInterval(async () => {
       if (!state.selectedAccountId) return;
@@ -116,7 +110,6 @@
         });
 
         if (needsSync && !state.isSyncing) {
-          console.log(`Auto-sync triggered for ${state.selectedFolderName}`);
           state.isSyncing = true;
 
           const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
@@ -130,11 +123,9 @@
           state.emails = syncedEmails;
           state.lastSyncTime = Math.floor(Date.now() / 1000);
           state.isSyncing = false;
-
-          console.log(`Auto-sync completed for ${state.selectedFolderName}`);
         }
       } catch (e) {
-        console.error("Auto-sync failed:", e);
+        console.error("❌ Auto-sync failed:", e);
         state.isSyncing = false;
       }
     }, 60000);
@@ -143,7 +134,6 @@
   // Event handlers
   async function handleAccountClick(accountId: number) {
     if (state.selectedAccountId === accountId) {
-      console.log("Same account already selected, ignoring click");
       return;
     }
 
@@ -166,8 +156,6 @@
       state.folders = cachedFolders;
       state.isLoadingFolders = false;
 
-      console.log(`Loaded ${cachedFolders.length} folders from cache`);
-
       await loadEmailsForFolder("INBOX");
 
       const needsFolderSync = await invoke<boolean>("should_sync", {
@@ -177,12 +165,8 @@
       });
 
       if (needsFolderSync) {
-        console.log("Syncing folders in background...");
         const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
         state.folders = syncedFolders;
-        console.log(`Synced ${syncedFolders.length} folders from server`);
-      } else {
-        console.log("Using cached folders, sync not needed yet");
       }
     } catch (e) {
       state.error = `Failed to load folders: ${e}`;
@@ -210,8 +194,6 @@
       state.emails = cachedEmails;
       state.isLoadingEmails = false;
 
-      console.log(`Loaded ${cachedEmails.length} emails from cache`);
-
       state.lastSyncTime = await invoke<number>("get_last_sync_time", {
         accountId: state.selectedAccountId,
         folder: folderName,
@@ -224,7 +206,6 @@
       });
 
       if (needsSync) {
-        console.log("Sync needed, syncing emails in background...");
         state.isSyncing = true;
         const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
           config: selectedConfig,
@@ -234,9 +215,6 @@
         state.emails = syncedEmails;
         state.lastSyncTime = Math.floor(Date.now() / 1000);
         state.isSyncing = false;
-        console.log(`Synced ${syncedEmails.length} emails from server`);
-      } else {
-        console.log("Using cache, sync not needed yet");
       }
     } catch (e) {
       state.error = `Failed to load emails: ${e}`;
@@ -253,8 +231,6 @@
     }
 
     const folderName = state.selectedFolderName;
-    console.log(`📂 User clicked current folder "${folderName}" - syncing this folder only...`);
-
     state.isSyncing = true;
     state.error = null;
 
@@ -268,8 +244,6 @@
       state.emails = syncedEmails;
       // Note: We intentionally do NOT update state.lastSyncTime here
       // because this is a user-triggered folder refresh, not a global sync
-
-      console.log(`✅ Synced ${syncedEmails.length} emails for folder "${folderName}"`);
     } catch (e) {
       state.error = `Failed to sync folder: ${e}`;
     } finally {
@@ -331,7 +305,7 @@
         uid,
       });
     } catch (e) {
-      console.error("Failed to load attachments:", e);
+      console.error("❌ Failed to load attachments:", e);
     } finally {
       state.isLoadingAttachments = false;
     }
@@ -349,10 +323,9 @@
           attachmentId,
           filePath,
         });
-        console.log("Attachment saved successfully:", filePath);
       }
     } catch (e) {
-      console.error("Failed to save attachment:", e);
+      console.error("❌ Failed to save attachment:", e);
       state.error = `Failed to download attachment: ${e}`;
     }
   }
@@ -367,12 +340,8 @@
     state.error = null;
 
     try {
-      console.log("🔄 Global refresh: syncing all accounts and folders...");
-
       // Sync all accounts
       for (const account of state.accounts) {
-        console.log(`📧 Syncing account: ${account.email}`);
-
         try {
           // Sync folders for this account
           const syncedFolders = await invoke<Folder[]>("sync_folders", { config: account });
@@ -384,7 +353,6 @@
 
           // Sync all folders for this account
           for (const folder of syncedFolders) {
-            console.log(`  📂 Syncing folder: ${folder.name}`);
             const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
               config: account,
               folder: folder.name,
@@ -395,8 +363,6 @@
               state.emails = syncedEmails;
             }
           }
-
-          console.log(`✅ Completed sync for account: ${account.email}`);
         } catch (e) {
           console.error(`❌ Failed to sync account ${account.email}:`, e);
           // Continue with other accounts even if one fails
@@ -404,7 +370,6 @@
       }
 
       state.lastSyncTime = Math.floor(Date.now() / 1000);
-      console.log("✅ Global refresh completed for all accounts");
     } catch (e) {
       state.error = `Failed to refresh: ${e}`;
     } finally {
@@ -541,7 +506,7 @@
       });
       state.attachmentSizeLimit = limit;
     } catch (e) {
-      console.error("Failed to get attachment size limit:", e);
+      console.error("❌ Failed to get attachment size limit:", e);
     }
   }
 
@@ -624,7 +589,6 @@
           attachments: attachmentsData,
         });
       }
-      console.log("Send result:", result);
       handleCloseCompose();
       await message("Email sent successfully!", { title: "Success", kind: "info" });
     } catch (e) {
@@ -715,20 +679,13 @@
 
   async function handleIdleEvent(event: { payload: IdleEvent }) {
     const idleEvent = event.payload;
-    console.log("📬 Received IDLE event:", idleEvent);
-
     const eventType = idleEvent.event_type.type;
-    console.log(`📬 Event: ${eventType} for account ${idleEvent.account_id} folder ${idleEvent.folder_name}`);
 
     if (eventType === "NewMessages") {
-      console.log(`✨ ${idleEvent.event_type.count} new message(s) detected`);
-
       if (
         idleEvent.account_id === state.selectedAccountId &&
         idleEvent.folder_name === state.selectedFolderName
       ) {
-        console.log("🔄 Syncing currently displayed folder...");
-
         const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
         if (selectedConfig) {
           try {
@@ -740,15 +697,12 @@
             state.emails = syncedEmails;
             state.lastSyncTime = Math.floor(Date.now() / 1000);
             state.isSyncing = false;
-
-            console.log("✅ Auto-sync completed via IDLE push");
           } catch (e) {
-            console.error("Failed to sync after IDLE event:", e);
+            console.error("❌ Failed to sync after IDLE event:", e);
             state.isSyncing = false;
           }
         }
       } else {
-        console.log("📥 Background sync for non-displayed folder");
         const affectedConfig = state.accounts.find((acc) => acc.id === idleEvent.account_id);
         if (affectedConfig) {
           try {
@@ -756,15 +710,12 @@
               config: affectedConfig,
               folder: idleEvent.folder_name,
             });
-            console.log(`✅ Background sync completed for account ${idleEvent.account_id}`);
           } catch (e) {
-            console.error("Background sync failed:", e);
+            console.error(`❌ Background sync failed for account ${idleEvent.account_id}:`, e);
           }
         }
       }
     } else if (eventType === "Expunge" || eventType === "FlagsChanged") {
-      console.log("🗑️ Message(s) changed, refreshing...");
-
       if (
         idleEvent.account_id === state.selectedAccountId &&
         idleEvent.folder_name === state.selectedFolderName
@@ -777,14 +728,13 @@
               folder: state.selectedFolderName,
             });
             state.emails = syncedEmails;
-            console.log("✅ Refreshed after change");
           } catch (e) {
-            console.error("Failed to refresh after change:", e);
+            console.error("❌ Failed to refresh after change:", e);
           }
         }
       }
     } else if (eventType === "ConnectionLost") {
-      console.warn(`⚠️ IDLE connection lost for account ${idleEvent.account_id}, will reconnect automatically`);
+      console.warn(`⚠️ IDLE connection lost for account ${idleEvent.account_id}`);
     }
   }
 </script>
