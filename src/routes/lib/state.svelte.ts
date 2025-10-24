@@ -36,6 +36,7 @@ class AppState {
   // Compose dialog state
   showComposeDialog = $state<boolean>(false);
   composeTo = $state<string>("");
+  composeCc = $state<string>("");
   composeSubject = $state<string>("");
   composeBody = $state<string>("");
   isReplyMode = $state<boolean>(false);
@@ -59,6 +60,7 @@ class AppState {
   // Helper methods
   resetComposeState() {
     this.composeTo = "";
+    this.composeCc = "";
     this.composeSubject = "";
     this.composeBody = "";
     this.composeAttachments = [];

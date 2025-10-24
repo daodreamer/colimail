@@ -44,6 +44,12 @@
           <span class="meta-label">To:</span>
           <span class="meta-value">{email.to}</span>
         </div>
+        {#if email.cc && email.cc.trim()}
+          <div class="meta-row">
+            <span class="meta-label">CC:</span>
+            <span class="meta-value">{email.cc}</span>
+          </div>
+        {/if}
         <div class="meta-row">
           <span class="meta-label">Date:</span>
           <span class="meta-value">{formatFullLocalDateTime(email.timestamp)}</span>

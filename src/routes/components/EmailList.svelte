@@ -9,6 +9,7 @@
     isLoading = false,
     error = null as string | null,
     selectedAccountId = null as number | null,
+    currentUserEmail = "",
     onEmailClick,
   }: {
     emails?: EmailHeader[];
@@ -16,8 +17,23 @@
     isLoading?: boolean;
     error?: string | null;
     selectedAccountId?: number | null;
+    currentUserEmail?: string;
     onEmailClick: (uid: number) => void;
   } = $props();
+
+  // Check if the current user is a CC recipient (not in To field)
+  function isCcRecipient(email: EmailHeader): boolean {
+    if (!email.cc || !currentUserEmail) return false;
+
+    // Check if current user email is in CC list
+    const isInCc = email.cc.toLowerCase().includes(currentUserEmail.toLowerCase());
+
+    // Check if current user email is NOT in To field
+    const isInTo = email.to.toLowerCase().includes(currentUserEmail.toLowerCase());
+
+    // User is CC recipient if they're in CC but not in To
+    return isInCc && !isInTo;
+  }
 </script>
 
 <div class="email-list-pane">
@@ -35,9 +51,14 @@
             onclick={() => onEmailClick(email.uid)}
           >
             <div class="email-item-content">
-              {#if email.has_attachments}
-                <span class="attachment-indicator" title="This email has attachments">📎</span>
-              {/if}
+              <div class="indicators">
+                {#if email.has_attachments}
+                  <span class="attachment-indicator" title="This email has attachments">📎</span>
+                {/if}
+                {#if isCcRecipient(email)}
+                  <span class="cc-indicator" title="You received this as CC">CC</span>
+                {/if}
+              </div>
               <div class="email-text">
                 <div class="from">{email.from}</div>
                 <div class="subject">{email.subject}</div>
@@ -116,11 +137,31 @@
     min-width: 0;
   }
 
+  .indicators {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.25rem;
+    flex-shrink: 0;
+  }
+
   .attachment-indicator {
     font-size: 1rem;
     flex-shrink: 0;
-    margin-top: 2px;
     opacity: 0.7;
+    display: inline-block;
+  }
+
+  .cc-indicator {
+    font-size: 0.7rem;
+    font-weight: 600;
+    background-color: #6c757d;
+    color: white;
+    padding: 2px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    opacity: 0.8;
+    display: inline-block;
   }
 
   .email-text {

@@ -45,6 +45,8 @@ pub struct EmailHeader {
     pub subject: String,
     pub from: String,
     pub to: String,
+    #[serde(default)]
+    pub cc: String, // CC recipients
     pub date: String,
     pub timestamp: i64, // Unix timestamp in seconds for sorting and conversion
     #[serde(default)]

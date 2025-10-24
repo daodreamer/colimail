@@ -16,6 +16,7 @@ export interface EmailHeader {
   subject: string;
   from: string;
   to: string;
+  cc?: string; // CC recipients
   date: string;
   timestamp: number; // Unix timestamp in seconds
   has_attachments?: boolean;

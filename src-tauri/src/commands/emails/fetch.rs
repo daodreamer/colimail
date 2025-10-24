@@ -188,6 +188,28 @@ pub async fn fetch_emails(
                 })
                 .unwrap_or_else(|| "(Unknown Recipient)".to_string());
 
+            let cc = envelope
+                .cc
+                .as_ref()
+                .map(|addrs| {
+                    addrs
+                        .iter()
+                        .map(|addr| {
+                            if let Some(name_bytes) = addr.name {
+                                let name = decode_bytes_to_string(name_bytes);
+                                if !name.trim().is_empty() {
+                                    return decode_header(&name);
+                                }
+                            }
+                            let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
+                            let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                            format!("{}@{}", mailbox, host)
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                })
+                .unwrap_or_else(|| "".to_string());
+
             // Check if email has attachments by examining BODYSTRUCTURE
             let has_attachments = msg
                 .bodystructure()
@@ -199,6 +221,7 @@ pub async fn fetch_emails(
                 subject,
                 from,
                 to,
+                cc,
                 date,
                 timestamp,
                 has_attachments,

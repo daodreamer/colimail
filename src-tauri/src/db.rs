@@ -81,6 +81,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await;
 
+    // Migration: Add cc_addr column to emails table for CC recipients
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN cc_addr TEXT")
+        .execute(&pool)
+        .await;
+
     // Create emails cache table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS emails (

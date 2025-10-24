@@ -555,6 +555,7 @@
           to: state.composeTo,
           originalSubject: state.composeSubject,
           body: state.composeBody,
+          cc: state.composeCc || null,
           attachments: attachmentsData,
         });
       } else if (state.isForwardMode) {
@@ -573,6 +574,7 @@
           originalDate: selectedEmail.date,
           originalBody: state.emailBody || "",
           additionalMessage: state.composeBody,
+          cc: state.composeCc || null,
           attachments: attachmentsData,
         });
       } else {
@@ -586,6 +588,7 @@
           to: state.composeTo,
           subject: state.composeSubject,
           body: state.composeBody,
+          cc: state.composeCc || null,
           attachments: attachmentsData,
         });
       }
@@ -766,6 +769,7 @@
     isLoading={state.isLoadingEmails}
     error={state.error}
     selectedAccountId={state.selectedAccountId}
+    currentUserEmail={state.accounts.find((acc) => acc.id === state.selectedAccountId)?.email || ""}
     onEmailClick={handleEmailClick}
   />
 
@@ -786,6 +790,7 @@
     show={state.showComposeDialog}
     mode={state.isReplyMode ? "reply" : state.isForwardMode ? "forward" : "compose"}
     bind:to={state.composeTo}
+    bind:cc={state.composeCc}
     bind:subject={state.composeSubject}
     bind:body={state.composeBody}
     bind:attachments={state.composeAttachments}

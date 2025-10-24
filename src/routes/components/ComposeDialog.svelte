@@ -7,6 +7,7 @@
     show = false,
     mode = "compose" as "compose" | "reply" | "forward",
     to = $bindable(""),
+    cc = $bindable(""),
     subject = $bindable(""),
     body = $bindable(""),
     attachments = $bindable<File[]>([]),
@@ -22,6 +23,7 @@
     show?: boolean;
     mode?: "compose" | "reply" | "forward";
     to?: string;
+    cc?: string;
     subject?: string;
     body?: string;
     attachments?: File[];
@@ -85,6 +87,17 @@
             id="compose-to"
             bind:value={to}
             placeholder="recipient@example.com"
+            disabled={isSending}
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="compose-cc">CC:</label>
+          <input
+            type="text"
+            id="compose-cc"
+            bind:value={cc}
+            placeholder="cc@example.com (separate multiple with commas)"
             disabled={isSending}
           />
         </div>

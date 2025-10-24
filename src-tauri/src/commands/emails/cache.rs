@@ -19,12 +19,13 @@ pub async fn save_emails_to_cache(
         // Use INSERT with ON CONFLICT to preserve cached body
         sqlx::query(
             "INSERT INTO emails
-            (account_id, folder_name, uid, subject, from_addr, to_addr, date, timestamp, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(account_id, folder_name, uid) DO UPDATE SET
                 subject = excluded.subject,
                 from_addr = excluded.from_addr,
                 to_addr = excluded.to_addr,
+                cc_addr = excluded.cc_addr,
                 date = excluded.date,
                 timestamp = excluded.timestamp,
                 synced_at = excluded.synced_at",
@@ -35,6 +36,7 @@ pub async fn save_emails_to_cache(
         .bind(&email.subject)
         .bind(&email.from)
         .bind(&email.to)
+        .bind(&email.cc)
         .bind(&email.date)
         .bind(email.timestamp)
         .bind(current_time)
@@ -65,8 +67,8 @@ pub async fn load_emails_from_cache(
 
     let pool = db::pool();
 
-    let rows = sqlx::query_as::<_, (i64, String, String, String, String, i64, i64)>(
-        "SELECT uid, subject, from_addr, to_addr, date, timestamp, COALESCE(has_attachments, 0)
+    let rows = sqlx::query_as::<_, (i64, String, String, String, Option<String>, String, i64, i64)>(
+        "SELECT uid, subject, from_addr, to_addr, cc_addr, date, timestamp, COALESCE(has_attachments, 0)
         FROM emails
         WHERE account_id = ? AND folder_name = ?
         ORDER BY timestamp DESC",
@@ -80,11 +82,12 @@ pub async fn load_emails_from_cache(
     let emails: Vec<EmailHeader> = rows
         .into_iter()
         .map(
-            |(uid, subject, from, to, date, timestamp, has_attachments)| EmailHeader {
+            |(uid, subject, from, to, cc, date, timestamp, has_attachments)| EmailHeader {
                 uid: uid as u32,
                 subject,
                 from,
                 to,
+                cc: cc.unwrap_or_default(),
                 date,
                 timestamp,
                 has_attachments: has_attachments != 0,

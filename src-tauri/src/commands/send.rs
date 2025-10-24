@@ -21,6 +21,7 @@ pub async fn send_email(
     to: String,
     subject: String,
     body: String,
+    cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Sending email to {}", to);
@@ -31,10 +32,25 @@ pub async fn send_email(
     let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
-    let email_builder = Message::builder()
+    let mut email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(subject);
+
+    // Add CC recipients if provided
+    if let Some(cc_str) = cc {
+        if !cc_str.trim().is_empty() {
+            // Split by comma and parse each CC recipient
+            for cc_addr in cc_str.split(',') {
+                let cc_addr = cc_addr.trim();
+                if !cc_addr.is_empty() {
+                    let cc_mailbox: Mailbox =
+                        cc_addr.parse::<Mailbox>().map_err(|e| e.to_string())?;
+                    email_builder = email_builder.cc(cc_mailbox);
+                }
+            }
+        }
+    }
 
     // Validate attachment sizes if attachments are present
     if let Some(ref attachment_list) = attachments {
@@ -131,6 +147,7 @@ pub async fn reply_email(
     to: String,
     original_subject: String,
     body: String,
+    cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Replying to email: {}", to);
@@ -148,10 +165,25 @@ pub async fn reply_email(
         format!("Re: {}", original_subject)
     };
 
-    let email_builder = Message::builder()
+    let mut email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(reply_subject);
+
+    // Add CC recipients if provided
+    if let Some(cc_str) = cc {
+        if !cc_str.trim().is_empty() {
+            // Split by comma and parse each CC recipient
+            for cc_addr in cc_str.split(',') {
+                let cc_addr = cc_addr.trim();
+                if !cc_addr.is_empty() {
+                    let cc_mailbox: Mailbox =
+                        cc_addr.parse::<Mailbox>().map_err(|e| e.to_string())?;
+                    email_builder = email_builder.cc(cc_mailbox);
+                }
+            }
+        }
+    }
 
     // Validate attachment sizes if attachments are present
     if let Some(ref attachment_list) = attachments {
@@ -248,6 +280,7 @@ pub async fn forward_email(
     original_date: String,
     original_body: String,
     additional_message: String,
+    cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
 ) -> Result<String, String> {
     println!("Forwarding email to: {}", to);
@@ -303,10 +336,25 @@ pub async fn forward_email(
         )
     };
 
-    let email_builder = Message::builder()
+    let mut email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(forward_subject);
+
+    // Add CC recipients if provided
+    if let Some(cc_str) = cc {
+        if !cc_str.trim().is_empty() {
+            // Split by comma and parse each CC recipient
+            for cc_addr in cc_str.split(',') {
+                let cc_addr = cc_addr.trim();
+                if !cc_addr.is_empty() {
+                    let cc_mailbox: Mailbox =
+                        cc_addr.parse::<Mailbox>().map_err(|e| e.to_string())?;
+                    email_builder = email_builder.cc(cc_mailbox);
+                }
+            }
+        }
+    }
 
     // Validate attachment sizes if attachments are present
     if let Some(ref attachment_list) = attachments {
