@@ -80,6 +80,55 @@ fn is_idle_active(
     }
 }
 
+#[command]
+async fn start_idle_for_account(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+    config: AccountConfig,
+) -> Result<(), String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        mgr.send_command(IdleCommand::StartAllForAccount { config })?;
+    }
+    Ok(())
+}
+
+#[command]
+async fn stop_idle_for_account(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+    account_id: i32,
+) -> Result<(), String> {
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        mgr.send_command(IdleCommand::StopAllForAccount { account_id })?;
+    }
+    Ok(())
+}
+
+#[command]
+async fn start_idle_for_all_accounts(
+    idle_manager: State<'_, Arc<Mutex<Option<IdleManager>>>>,
+) -> Result<(), String> {
+    println!("🚀 Starting IDLE monitoring for all accounts...");
+
+    // Load all accounts from database
+    let accounts = load_account_configs().await?;
+
+    println!("  📧 Found {} accounts", accounts.len());
+
+    let manager = idle_manager.lock().unwrap();
+    if let Some(ref mgr) = *manager {
+        for account in accounts {
+            println!("  🔄 Starting IDLE for account: {}", account.email);
+            mgr.send_command(IdleCommand::StartAllForAccount {
+                config: account.clone(),
+            })?;
+        }
+    }
+
+    println!("✅ IDLE monitoring started for all accounts");
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
     db::init().await.expect("Failed to initialize database");
@@ -99,9 +148,44 @@ async fn main() {
         .setup(|app| {
             // Initialize IDLE manager
             let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
-            app.manage(idle_manager);
+            app.manage(idle_manager.clone());
 
             println!("✅ IDLE manager initialized");
+
+            // Auto-start IDLE monitoring for all accounts on app startup
+            let idle_manager_clone = idle_manager.clone();
+            tokio::spawn(async move {
+                // Wait a bit for the app to fully initialize
+                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+                println!("🚀 Auto-starting IDLE monitoring for all accounts...");
+
+                match load_account_configs().await {
+                    Ok(accounts) => {
+                        println!("  📧 Found {} accounts to monitor", accounts.len());
+
+                        let manager = idle_manager_clone.lock().unwrap();
+                        if let Some(ref mgr) = *manager {
+                            for account in accounts {
+                                println!("  🔄 Starting IDLE for account: {}", account.email);
+                                if let Err(e) = mgr.send_command(IdleCommand::StartAllForAccount {
+                                    config: account.clone(),
+                                }) {
+                                    eprintln!(
+                                        "❌ Failed to start IDLE for account {}: {}",
+                                        account.email, e
+                                    );
+                                }
+                            }
+                            println!("✅ IDLE auto-start completed");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to load accounts for IDLE auto-start: {}", e);
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -135,7 +219,10 @@ async fn main() {
             start_idle,
             stop_idle,
             stop_all_idle,
-            is_idle_active
+            is_idle_active,
+            start_idle_for_account,
+            stop_idle_for_account,
+            start_idle_for_all_accounts
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

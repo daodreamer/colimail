@@ -20,6 +20,12 @@ pub enum IdleCommand {
         folder_name: String,
     },
     StopAll,
+    StartAllForAccount {
+        config: AccountConfig,
+    },
+    StopAllForAccount {
+        account_id: i32,
+    },
 }
 
 /// Event emitted by IDLE connections
@@ -164,6 +170,99 @@ impl IdleManager {
                     }
 
                     active_connections.lock().unwrap().clear();
+                }
+
+                IdleCommand::StartAllForAccount { config } => {
+                    let account_id = match config.id {
+                        Some(id) => id,
+                        None => {
+                            eprintln!("❌ Cannot start IDLE: account ID missing");
+                            continue;
+                        }
+                    };
+
+                    println!(
+                        "🚀 Starting IDLE for all folders of account {} ({})",
+                        account_id, config.email
+                    );
+
+                    // Load folders from database
+                    match crate::commands::load_folders(account_id).await {
+                        Ok(folders) => {
+                            println!("  📁 Found {} folders to monitor", folders.len());
+
+                            for folder in &folders {
+                                let key = (account_id, folder.name.clone());
+
+                                // Stop existing connection if any
+                                if let Some(task) = tasks.remove(&key) {
+                                    task.abort();
+                                }
+
+                                // Mark as active
+                                active_connections.lock().unwrap().insert(key.clone(), ());
+
+                                println!("  🔄 Starting IDLE for folder: {}", folder.display_name);
+
+                                // Clone necessary data
+                                let app_handle_clone = app_handle.clone();
+                                let active_connections_clone = active_connections.clone();
+                                let config_clone = config.clone();
+                                let folder_name = folder.name.clone();
+
+                                // Spawn IDLE task
+                                let task = tokio::spawn(async move {
+                                    Self::idle_connection_loop(
+                                        app_handle_clone,
+                                        account_id,
+                                        folder_name.clone(),
+                                        config_clone,
+                                    )
+                                    .await;
+
+                                    // Remove from active connections when done
+                                    active_connections_clone
+                                        .lock()
+                                        .unwrap()
+                                        .remove(&(account_id, folder_name));
+                                });
+
+                                tasks.insert(key, task);
+                            }
+
+                            println!("✅ Started IDLE monitoring for {} folders", folders.len());
+                        }
+                        Err(e) => {
+                            eprintln!(
+                                "❌ Failed to load folders for account {}: {}",
+                                account_id, e
+                            );
+                        }
+                    }
+                }
+
+                IdleCommand::StopAllForAccount { account_id } => {
+                    println!(
+                        "⏹️ Stopping all IDLE connections for account {}",
+                        account_id
+                    );
+
+                    // Find and stop all tasks for this account
+                    let keys_to_remove: Vec<_> = tasks
+                        .keys()
+                        .filter(|(acc_id, _)| *acc_id == account_id)
+                        .cloned()
+                        .collect();
+
+                    for key in keys_to_remove {
+                        if let Some(task) = tasks.remove(&key) {
+                            task.abort();
+                            active_connections.lock().unwrap().remove(&key);
+                            println!("  ⏹️ Stopped IDLE for folder: {}", key.1);
+                        }
+                    }
+
+                    println!("✅ Stopped all IDLE connections for account {}", account_id);
                 }
             }
         }

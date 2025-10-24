@@ -25,6 +25,26 @@
           auth_type: "basic"
         }
       });
+
+      // Load the saved account to get its ID
+      const accounts = await invoke<any[]>("load_account_configs");
+      const savedAccount = accounts.find(acc => acc.email === accountConfig.email);
+
+      if (savedAccount) {
+        // Sync folders for the new account
+        try {
+          await invoke("sync_folders", { config: savedAccount });
+          console.log("Folders synced for new account");
+
+          // Start IDLE monitoring for this account
+          await invoke("start_idle_for_account", { config: savedAccount });
+          console.log("IDLE monitoring started for new account");
+        } catch (error) {
+          console.error("Failed to sync folders or start IDLE:", error);
+          // Don't show error to user as account is saved successfully
+        }
+      }
+
       alert("配置已保存！");
     } catch (error) {
       console.error("保存配置失败:", error);
@@ -67,6 +87,25 @@
         code,
         state,
       });
+
+      // Load the saved account to get its ID
+      const accounts = await invoke<any[]>("load_account_configs");
+      const savedAccount = accounts.find(acc => acc.email === oauthEmail);
+
+      if (savedAccount) {
+        // Sync folders for the new account
+        try {
+          await invoke("sync_folders", { config: savedAccount });
+          console.log("Folders synced for new OAuth2 account");
+
+          // Start IDLE monitoring for this account
+          await invoke("start_idle_for_account", { config: savedAccount });
+          console.log("IDLE monitoring started for new OAuth2 account");
+        } catch (error) {
+          console.error("Failed to sync folders or start IDLE:", error);
+          // Don't show error to user as account is saved successfully
+        }
+      }
 
       alert(`✅ ${selectedProvider === 'google' ? 'Google' : 'Outlook'} 账户添加成功！`);
       oauthEmail = "";
