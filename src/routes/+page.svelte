@@ -614,26 +614,42 @@
     state.error = null;
 
     try {
+      const deletedUid = state.selectedEmailUid;
+
       if (isInTrash) {
+        // Permanently delete from server
         await invoke("delete_email", {
           config: selectedConfig,
-          uid: state.selectedEmailUid,
+          uid: deletedUid,
           folder: state.selectedFolderName,
         });
+
+        // Immediately remove from UI (optimistic update)
+        state.emails = state.emails.filter((email) => email.uid !== deletedUid);
+        state.resetEmailState();
+
         await message("Email permanently deleted!", { title: "Success", kind: "info" });
       } else {
+        // Move to trash on server
         await invoke("move_email_to_trash", {
           config: selectedConfig,
-          uid: state.selectedEmailUid,
+          uid: deletedUid,
           folder: state.selectedFolderName,
         });
+
+        // Immediately remove from current folder UI (optimistic update)
+        state.emails = state.emails.filter((email) => email.uid !== deletedUid);
+        state.resetEmailState();
+
         await message("Email moved to trash!", { title: "Success", kind: "info" });
       }
 
-      state.resetEmailState();
-      await loadEmailsForFolder(state.selectedFolderName);
+      // Note: The IDLE event handler will sync in the background if needed,
+      // but we've already updated the UI for immediate feedback
     } catch (e) {
       state.error = `Failed to delete email: ${e}`;
+      // On error, reload to ensure UI is in sync with server
+      await loadEmailsForFolder(state.selectedFolderName);
     }
   }
 
