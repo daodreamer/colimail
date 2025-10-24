@@ -263,10 +263,20 @@
 </div>
 
 <style>
+  :global(html),
+  :global(body) {
+    overflow: auto !important;
+    position: static !important;
+    height: auto !important;
+  }
+
   .container {
     padding: 2rem;
     max-width: 700px;
     margin: 0 auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
 
   .header {

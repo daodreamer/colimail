@@ -152,14 +152,28 @@
     >
       {isSavingNotificationSettings ? "保存中..." : "保存设置"}
     </button>
+
+    <p class="help-text" style="margin-top: 1rem; font-size: 0.85rem; color: #666;">
+      💡 <strong>提示:</strong> 启用桌面通知后,收到新邮件时会在屏幕右下角显示浮窗提醒,3秒后自动消失。
+    </p>
   </div>
 </div>
 
 <style>
+  :global(html),
+  :global(body) {
+    overflow: auto !important;
+    position: static !important;
+    height: auto !important;
+  }
+
   .container {
     padding: 2rem;
     max-width: 700px;
     margin: 0 auto;
+    min-height: 100vh;
+    overflow-y: auto;
+    box-sizing: border-box;
   }
 
   .header {

@@ -11,7 +11,12 @@
       "Bash(cat:*)",
       "Bash(npm install:*)",
       "WebFetch(domain:sendgrid.com)",
-      "WebFetch(domain:www.twilio.com)"
+      "WebFetch(domain:www.twilio.com)",
+      "Bash(dir:*)",
+      "Bash(findstr:*)",
+      "WebFetch(domain:v2.tauri.app)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:stackoverflow.com)"
     ],
     "deny": [],
     "ask": []

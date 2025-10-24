@@ -10,26 +10,36 @@
   import EmailList from "./components/EmailList.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
+  import ToastNotification from "./components/ToastNotification.svelte";
 
   // Types and utilities
   import type { AccountConfig, EmailHeader, IdleEvent, Folder } from "./lib/types";
-  import { state } from "./lib/state.svelte";
+  import { state as appState } from "./lib/state.svelte";
   import { isTrashFolder } from "./lib/utils";
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Custom notification state
+  interface ToastNotificationData {
+    title: string;
+    body: string;
+    from: string;
+    subject: string;
+  }
+  let toastNotification = $state<ToastNotificationData | null>(null);
+
   // Lifecycle: Initialize app
   onMount(() => {
     (async () => {
       try {
-        state.accounts = await invoke<AccountConfig[]>("load_account_configs");
-        state.syncInterval = await invoke<number>("get_sync_interval");
+        appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+        appState.syncInterval = await invoke<number>("get_sync_interval");
 
         startAutoSyncTimer();
 
         // Start IDLE connections for all accounts
-        for (const account of state.accounts) {
+        for (const account of appState.accounts) {
           try {
             await invoke("start_idle", {
               accountId: account.id,
@@ -44,6 +54,15 @@
         // Listen for IDLE push notifications
         const unlisten = await listen<IdleEvent>("idle-event", handleIdleEvent);
 
+        // Listen for custom notification event
+        const unlistenNotification = await listen<ToastNotificationData>(
+          "show-custom-notification",
+          (event) => {
+            console.log("📬 Received custom notification event:", event.payload);
+            toastNotification = event.payload;
+          }
+        );
+
         // Listen for notification sound event
         const unlistenSound = await listen("play-notification-sound", () => {
           playNotificationSound();
@@ -51,7 +70,7 @@
 
         // Update current time every minute
         const timeUpdateTimer = setInterval(() => {
-          state.currentTime = Math.floor(Date.now() / 1000);
+          appState.currentTime = Math.floor(Date.now() / 1000);
         }, 60000);
 
         return () => {
@@ -60,7 +79,7 @@
           clearInterval(timeUpdateTimer);
         };
       } catch (e) {
-        state.error = `Failed to load accounts: ${e}`;
+        appState.error = `Failed to load accounts: ${e}`;
       }
     })();
   });
@@ -71,8 +90,8 @@
       if (document.visibilityState === "visible") {
         try {
           const newInterval = await invoke<number>("get_sync_interval");
-          if (newInterval !== state.syncInterval) {
-            state.syncInterval = newInterval;
+          if (newInterval !== appState.syncInterval) {
+            appState.syncInterval = newInterval;
             startAutoSyncTimer();
           }
         } catch (e) {
@@ -97,84 +116,84 @@
       autoSyncTimer = null;
     }
 
-    if (state.syncInterval <= 0) {
+    if (appState.syncInterval <= 0) {
       return;
     }
 
     autoSyncTimer = setInterval(async () => {
-      if (!state.selectedAccountId) return;
+      if (!appState.selectedAccountId) return;
 
-      const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+      const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
       if (!selectedConfig) return;
 
       try {
         const needsSync = await invoke<boolean>("should_sync", {
-          accountId: state.selectedAccountId,
-          folder: state.selectedFolderName,
-          syncInterval: state.syncInterval,
+          accountId: appState.selectedAccountId,
+          folder: appState.selectedFolderName,
+          syncInterval: appState.syncInterval,
         });
 
-        if (needsSync && !state.isSyncing) {
-          state.isSyncing = true;
+        if (needsSync && !appState.isSyncing) {
+          appState.isSyncing = true;
 
           const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
-          state.folders = syncedFolders;
+          appState.folders = syncedFolders;
 
           const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
             config: selectedConfig,
-            folder: state.selectedFolderName,
+            folder: appState.selectedFolderName,
           });
 
-          state.emails = syncedEmails;
-          state.lastSyncTime = Math.floor(Date.now() / 1000);
-          state.isSyncing = false;
+          appState.emails = syncedEmails;
+          appState.lastSyncTime = Math.floor(Date.now() / 1000);
+          appState.isSyncing = false;
         }
       } catch (e) {
         console.error("❌ Auto-sync failed:", e);
-        state.isSyncing = false;
+        appState.isSyncing = false;
       }
     }, 60000);
   }
 
   // Event handlers
   async function handleAccountClick(accountId: number) {
-    if (state.selectedAccountId === accountId) {
+    if (appState.selectedAccountId === accountId) {
       return;
     }
 
     // Store the accountId locally to avoid race conditions
     const targetAccountId = accountId;
 
-    state.selectedAccountId = targetAccountId;
-    state.selectedFolderName = "INBOX";
-    state.resetEmailState();
-    state.emails = [];
-    state.error = null;
+    appState.selectedAccountId = targetAccountId;
+    appState.selectedFolderName = "INBOX";
+    appState.resetEmailState();
+    appState.emails = [];
+    appState.error = null;
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+    const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
     if (!selectedConfig) {
-      state.error = "Could not find selected account configuration.";
+      appState.error = "Could not find selected account configuration.";
       return;
     }
 
-    state.isLoadingFolders = true;
+    appState.isLoadingFolders = true;
 
     try {
       const cachedFolders = await invoke<Folder[]>("load_folders", { accountId: targetAccountId });
 
       // Check if user switched accounts during the async operation
-      if (state.selectedAccountId !== targetAccountId) {
+      if (appState.selectedAccountId !== targetAccountId) {
         console.log("Account switched during folder load, aborting");
         return;
       }
 
-      state.folders = cachedFolders;
-      state.isLoadingFolders = false;
+      appState.folders = cachedFolders;
+      appState.isLoadingFolders = false;
 
       await loadEmailsForFolder("INBOX");
 
       // Check again after loading emails
-      if (state.selectedAccountId !== targetAccountId) {
+      if (appState.selectedAccountId !== targetAccountId) {
         console.log("Account switched during email load, aborting");
         return;
       }
@@ -182,35 +201,35 @@
       const needsFolderSync = await invoke<boolean>("should_sync", {
         accountId: targetAccountId,
         folder: "__folders__",
-        syncInterval: state.syncInterval,
+        syncInterval: appState.syncInterval,
       });
 
-      if (needsFolderSync && state.selectedAccountId === targetAccountId) {
+      if (needsFolderSync && appState.selectedAccountId === targetAccountId) {
         const syncedFolders = await invoke<Folder[]>("sync_folders", { config: selectedConfig });
 
         // Final check before updating state
-        if (state.selectedAccountId === targetAccountId) {
-          state.folders = syncedFolders;
+        if (appState.selectedAccountId === targetAccountId) {
+          appState.folders = syncedFolders;
         }
       }
     } catch (e) {
-      state.error = `Failed to load folders: ${e}`;
-      state.isLoadingFolders = false;
+      appState.error = `Failed to load folders: ${e}`;
+      appState.isLoadingFolders = false;
     }
   }
 
   async function loadEmailsForFolder(folderName: string) {
-    const targetAccountId = state.selectedAccountId;
-    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+    const targetAccountId = appState.selectedAccountId;
+    const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
 
     if (!selectedConfig || !targetAccountId) {
-      state.error = "No account selected.";
+      appState.error = "No account selected.";
       return;
     }
 
-    state.isLoadingEmails = true;
-    state.resetEmailState();
-    state.error = null;
+    appState.isLoadingEmails = true;
+    appState.resetEmailState();
+    appState.error = null;
 
     try {
       const cachedEmails = await invoke<EmailHeader[]>("load_emails_from_cache", {
@@ -219,15 +238,15 @@
       });
 
       // Check if account or folder changed during async operation
-      if (state.selectedAccountId !== targetAccountId || state.selectedFolderName !== folderName) {
+      if (appState.selectedAccountId !== targetAccountId || appState.selectedFolderName !== folderName) {
         console.log("Account/folder changed during cache load, aborting");
         return;
       }
 
-      state.emails = cachedEmails;
-      state.isLoadingEmails = false;
+      appState.emails = cachedEmails;
+      appState.isLoadingEmails = false;
 
-      state.lastSyncTime = await invoke<number>("get_last_sync_time", {
+      appState.lastSyncTime = await invoke<number>("get_last_sync_time", {
         accountId: targetAccountId,
         folder: folderName,
       });
@@ -235,42 +254,42 @@
       const needsSync = await invoke<boolean>("should_sync", {
         accountId: targetAccountId,
         folder: folderName,
-        syncInterval: state.syncInterval,
+        syncInterval: appState.syncInterval,
       });
 
-      if (needsSync && state.selectedAccountId === targetAccountId && state.selectedFolderName === folderName) {
-        state.isSyncing = true;
+      if (needsSync && appState.selectedAccountId === targetAccountId && appState.selectedFolderName === folderName) {
+        appState.isSyncing = true;
         const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
           config: selectedConfig,
           folder: folderName,
         });
 
         // Final check before updating state
-        if (state.selectedAccountId === targetAccountId && state.selectedFolderName === folderName) {
-          state.emails = syncedEmails;
-          state.lastSyncTime = Math.floor(Date.now() / 1000);
+        if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === folderName) {
+          appState.emails = syncedEmails;
+          appState.lastSyncTime = Math.floor(Date.now() / 1000);
         }
-        state.isSyncing = false;
+        appState.isSyncing = false;
       }
     } catch (e) {
-      state.error = `Failed to load emails: ${e}`;
-      state.isLoadingEmails = false;
-      state.isSyncing = false;
+      appState.error = `Failed to load emails: ${e}`;
+      appState.isLoadingEmails = false;
+      appState.isSyncing = false;
     }
   }
 
   async function syncSingleFolder() {
-    const targetAccountId = state.selectedAccountId;
-    const targetFolderName = state.selectedFolderName;
-    const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+    const targetAccountId = appState.selectedAccountId;
+    const targetFolderName = appState.selectedFolderName;
+    const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
 
     if (!selectedConfig || !targetAccountId) {
-      state.error = "No account selected.";
+      appState.error = "No account selected.";
       return;
     }
 
-    state.isSyncing = true;
-    state.error = null;
+    appState.isSyncing = true;
+    appState.error = null;
 
     try {
       // Sync only this folder without affecting global sync timer
@@ -280,24 +299,24 @@
       });
 
       // Check if account/folder changed during sync
-      if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
-        state.emails = syncedEmails;
-        // Note: We intentionally do NOT update state.lastSyncTime here
+      if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === targetFolderName) {
+        appState.emails = syncedEmails;
+        // Note: We intentionally do NOT update appState.lastSyncTime here
         // because this is a user-triggered folder refresh, not a global sync
       } else {
         console.log("Account/folder changed during sync, discarding result");
       }
     } catch (e) {
-      state.error = `Failed to sync folder: ${e}`;
+      appState.error = `Failed to sync folder: ${e}`;
     } finally {
-      state.isSyncing = false;
+      appState.isSyncing = false;
     }
   }
 
   async function handleFolderClick(folderName: string) {
-    const isSameFolder = state.selectedFolderName === folderName;
+    const isSameFolder = appState.selectedFolderName === folderName;
 
-    state.selectedFolderName = folderName;
+    appState.selectedFolderName = folderName;
 
     if (isSameFolder) {
       // User clicked the current folder - they want to check for updates
@@ -309,48 +328,48 @@
   }
 
   async function handleEmailClick(uid: number) {
-    state.selectedEmailUid = uid;
-    state.isLoadingBody = true;
-    state.emailBody = null;
-    state.attachments = [];
-    state.error = null;
+    appState.selectedEmailUid = uid;
+    appState.isLoadingBody = true;
+    appState.emailBody = null;
+    appState.attachments = [];
+    appState.error = null;
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
     if (!selectedConfig) {
-      state.error = "Could not find selected account configuration.";
-      state.isLoadingBody = false;
+      appState.error = "Could not find selected account configuration.";
+      appState.isLoadingBody = false;
       return;
     }
 
     try {
-      state.emailBody = await invoke<string>("fetch_email_body_cached", {
+      appState.emailBody = await invoke<string>("fetch_email_body_cached", {
         config: selectedConfig,
         uid,
-        folder: state.selectedFolderName,
+        folder: appState.selectedFolderName,
       });
 
-      if (state.selectedAccountId) {
-        loadAttachmentsForEmail(state.selectedAccountId, uid);
+      if (appState.selectedAccountId) {
+        loadAttachmentsForEmail(appState.selectedAccountId, uid);
       }
     } catch (e) {
-      state.error = `Failed to fetch email body: ${e}`;
+      appState.error = `Failed to fetch email body: ${e}`;
     } finally {
-      state.isLoadingBody = false;
+      appState.isLoadingBody = false;
     }
   }
 
   async function loadAttachmentsForEmail(accountId: number, uid: number) {
-    state.isLoadingAttachments = true;
+    appState.isLoadingAttachments = true;
     try {
-      state.attachments = await invoke("load_attachments_info", {
+      appState.attachments = await invoke("load_attachments_info", {
         accountId,
-        folderName: state.selectedFolderName,
+        folderName: appState.selectedFolderName,
         uid,
       });
     } catch (e) {
       console.error("❌ Failed to load attachments:", e);
     } finally {
-      state.isLoadingAttachments = false;
+      appState.isLoadingAttachments = false;
     }
   }
 
@@ -369,29 +388,29 @@
       }
     } catch (e) {
       console.error("❌ Failed to save attachment:", e);
-      state.error = `Failed to download attachment: ${e}`;
+      appState.error = `Failed to download attachment: ${e}`;
     }
   }
 
   async function handleManualRefresh() {
-    if (state.accounts.length === 0) {
-      state.error = "No accounts configured.";
+    if (appState.accounts.length === 0) {
+      appState.error = "No accounts configured.";
       return;
     }
 
-    state.isSyncing = true;
-    state.error = null;
+    appState.isSyncing = true;
+    appState.error = null;
 
     try {
       // Sync all accounts
-      for (const account of state.accounts) {
+      for (const account of appState.accounts) {
         try {
           // Sync folders for this account
           const syncedFolders = await invoke<Folder[]>("sync_folders", { config: account });
 
           // Update folders if this is the currently selected account
-          if (account.id === state.selectedAccountId) {
-            state.folders = syncedFolders;
+          if (account.id === appState.selectedAccountId) {
+            appState.folders = syncedFolders;
           }
 
           // Sync all folders for this account
@@ -402,8 +421,8 @@
             });
 
             // Update emails if this is the currently selected account and folder
-            if (account.id === state.selectedAccountId && folder.name === state.selectedFolderName) {
-              state.emails = syncedEmails;
+            if (account.id === appState.selectedAccountId && folder.name === appState.selectedFolderName) {
+              appState.emails = syncedEmails;
             }
           }
         } catch (e) {
@@ -412,11 +431,11 @@
         }
       }
 
-      state.lastSyncTime = Math.floor(Date.now() / 1000);
+      appState.lastSyncTime = Math.floor(Date.now() / 1000);
     } catch (e) {
-      state.error = `Failed to refresh: ${e}`;
+      appState.error = `Failed to refresh: ${e}`;
     } finally {
-      state.isSyncing = false;
+      appState.isSyncing = false;
     }
   }
 
@@ -434,82 +453,82 @@
 
     try {
       await invoke("delete_account", { email });
-      state.accounts = await invoke<AccountConfig[]>("load_account_configs");
+      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
 
-      const deletedAccount = state.accounts.find((acc) => acc.email === email);
-      if (deletedAccount && deletedAccount.id === state.selectedAccountId) {
-        state.selectedAccountId = null;
-        state.emails = [];
-        state.emailBody = null;
+      const deletedAccount = appState.accounts.find((acc) => acc.email === email);
+      if (deletedAccount && deletedAccount.id === appState.selectedAccountId) {
+        appState.selectedAccountId = null;
+        appState.emails = [];
+        appState.emailBody = null;
       }
     } catch (e) {
-      state.error = `Failed to delete account: ${e}`;
+      appState.error = `Failed to delete account: ${e}`;
     }
   }
 
   async function handleComposeClick() {
-    if (!state.selectedAccountId) {
-      state.error = "Please select an account first.";
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
       return;
     }
-    state.showComposeDialog = true;
-    state.resetComposeState();
+    appState.showComposeDialog = true;
+    appState.resetComposeState();
     await updateAttachmentSizeLimit();
   }
 
   async function handleReplyClick() {
-    if (!state.selectedAccountId || !state.selectedEmailUid) {
-      state.error = "Please select an email first.";
+    if (!appState.selectedAccountId || !appState.selectedEmailUid) {
+      appState.error = "Please select an email first.";
       return;
     }
 
-    const selectedEmail = state.emails.find((email) => email.uid === state.selectedEmailUid);
+    const selectedEmail = appState.emails.find((email) => email.uid === appState.selectedEmailUid);
     if (!selectedEmail) {
-      state.error = "Could not find selected email.";
+      appState.error = "Could not find selected email.";
       return;
     }
 
-    state.showComposeDialog = true;
-    state.isReplyMode = true;
-    state.isForwardMode = false;
-    state.composeTo = selectedEmail.from;
-    state.composeSubject = selectedEmail.subject.toLowerCase().startsWith("re:")
+    appState.showComposeDialog = true;
+    appState.isReplyMode = true;
+    appState.isForwardMode = false;
+    appState.composeTo = selectedEmail.from;
+    appState.composeSubject = selectedEmail.subject.toLowerCase().startsWith("re:")
       ? selectedEmail.subject
       : `Re: ${selectedEmail.subject}`;
-    state.composeBody = "";
-    state.composeAttachments = [];
-    state.error = null;
+    appState.composeBody = "";
+    appState.composeAttachments = [];
+    appState.error = null;
     await updateAttachmentSizeLimit();
   }
 
   async function handleForwardClick() {
-    if (!state.selectedAccountId || !state.selectedEmailUid) {
-      state.error = "Please select an email first.";
+    if (!appState.selectedAccountId || !appState.selectedEmailUid) {
+      appState.error = "Please select an email first.";
       return;
     }
 
-    const selectedEmail = state.emails.find((email) => email.uid === state.selectedEmailUid);
+    const selectedEmail = appState.emails.find((email) => email.uid === appState.selectedEmailUid);
     if (!selectedEmail) {
-      state.error = "Could not find selected email.";
+      appState.error = "Could not find selected email.";
       return;
     }
 
-    state.showComposeDialog = true;
-    state.isReplyMode = false;
-    state.isForwardMode = true;
-    state.composeTo = "";
-    state.composeSubject = selectedEmail.subject.toLowerCase().startsWith("fwd:")
+    appState.showComposeDialog = true;
+    appState.isReplyMode = false;
+    appState.isForwardMode = true;
+    appState.composeTo = "";
+    appState.composeSubject = selectedEmail.subject.toLowerCase().startsWith("fwd:")
       ? selectedEmail.subject
       : `Fwd: ${selectedEmail.subject}`;
-    state.composeBody = "";
-    state.composeAttachments = [];
-    state.error = null;
+    appState.composeBody = "";
+    appState.composeAttachments = [];
+    appState.error = null;
     await updateAttachmentSizeLimit();
   }
 
   function handleCloseCompose() {
-    state.showComposeDialog = false;
-    state.resetComposeState();
+    appState.showComposeDialog = false;
+    appState.resetComposeState();
   }
 
   function handleAttachmentSelect(event: Event) {
@@ -517,68 +536,68 @@
     if (!input.files) return;
 
     const newFiles = Array.from(input.files);
-    const allFiles = [...state.composeAttachments, ...newFiles];
+    const allFiles = [...appState.composeAttachments, ...newFiles];
 
     const totalSize = allFiles.reduce((sum, file) => sum + file.size, 0);
-    if (totalSize > state.attachmentSizeLimit) {
-      const limitMB = (state.attachmentSizeLimit / (1024 * 1024)).toFixed(2);
+    if (totalSize > appState.attachmentSizeLimit) {
+      const limitMB = (appState.attachmentSizeLimit / (1024 * 1024)).toFixed(2);
       const totalMB = (totalSize / (1024 * 1024)).toFixed(2);
-      state.error = `Total attachment size (${totalMB} MB) exceeds the limit for your email provider (${limitMB} MB)`;
+      appState.error = `Total attachment size (${totalMB} MB) exceeds the limit for your email provider (${limitMB} MB)`;
       input.value = "";
       return;
     }
 
-    state.composeAttachments = allFiles;
+    appState.composeAttachments = allFiles;
     input.value = "";
-    state.error = null;
+    appState.error = null;
   }
 
   function removeAttachment(index: number) {
-    state.composeAttachments = state.composeAttachments.filter((_, i) => i !== index);
+    appState.composeAttachments = appState.composeAttachments.filter((_, i) => i !== index);
   }
 
   async function updateAttachmentSizeLimit() {
-    if (!state.selectedAccountId) return;
+    if (!appState.selectedAccountId) return;
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
     if (!selectedConfig) return;
 
     try {
       const limit = await invoke<number>("get_attachment_size_limit", {
         email: selectedConfig.email,
       });
-      state.attachmentSizeLimit = limit;
+      appState.attachmentSizeLimit = limit;
     } catch (e) {
       console.error("❌ Failed to get attachment size limit:", e);
     }
   }
 
   async function handleSendEmail() {
-    if (!state.selectedAccountId) {
-      state.error = "Please select an account first.";
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
       return;
     }
 
-    if (!state.composeTo || !state.composeSubject) {
-      state.error = "Please fill in recipient and subject fields.";
+    if (!appState.composeTo || !appState.composeSubject) {
+      appState.error = "Please fill in recipient and subject fields.";
       return;
     }
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
     if (!selectedConfig) {
-      state.error = "Could not find selected account configuration.";
+      appState.error = "Could not find selected account configuration.";
       return;
     }
 
-    state.isSending = true;
-    state.error = null;
+    appState.isSending = true;
+    appState.error = null;
 
     try {
       let attachmentsData: Array<{ filename: string; content_type: string; data: number[] }> | null =
         null;
-      if (state.composeAttachments.length > 0) {
+      if (appState.composeAttachments.length > 0) {
         attachmentsData = [];
-        for (const file of state.composeAttachments) {
+        for (const file of appState.composeAttachments) {
           const arrayBuffer = await file.arrayBuffer();
           const uint8Array = new Uint8Array(arrayBuffer);
           const dataArray = Array.from(uint8Array);
@@ -592,77 +611,77 @@
       }
 
       let result: string;
-      if (state.isReplyMode) {
+      if (appState.isReplyMode) {
         result = await invoke<string>("reply_email", {
           config: selectedConfig,
-          to: state.composeTo,
-          originalSubject: state.composeSubject,
-          body: state.composeBody,
-          cc: state.composeCc || null,
+          to: appState.composeTo,
+          originalSubject: appState.composeSubject,
+          body: appState.composeBody,
+          cc: appState.composeCc || null,
           attachments: attachmentsData,
         });
-      } else if (state.isForwardMode) {
-        const selectedEmail = state.emails.find((email) => email.uid === state.selectedEmailUid);
+      } else if (appState.isForwardMode) {
+        const selectedEmail = appState.emails.find((email) => email.uid === appState.selectedEmailUid);
         if (!selectedEmail) {
-          state.error = "Could not find selected email.";
-          state.isSending = false;
+          appState.error = "Could not find selected email.";
+          appState.isSending = false;
           return;
         }
         result = await invoke<string>("forward_email", {
           config: selectedConfig,
-          to: state.composeTo,
+          to: appState.composeTo,
           originalSubject: selectedEmail.subject,
           originalFrom: selectedEmail.from,
           originalTo: selectedEmail.to,
           originalDate: selectedEmail.date,
-          originalBody: state.emailBody || "",
-          additionalMessage: state.composeBody,
-          cc: state.composeCc || null,
+          originalBody: appState.emailBody || "",
+          additionalMessage: appState.composeBody,
+          cc: appState.composeCc || null,
           attachments: attachmentsData,
         });
       } else {
-        if (!state.composeBody) {
-          state.error = "Please fill in the message body.";
-          state.isSending = false;
+        if (!appState.composeBody) {
+          appState.error = "Please fill in the message body.";
+          appState.isSending = false;
           return;
         }
         result = await invoke<string>("send_email", {
           config: selectedConfig,
-          to: state.composeTo,
-          subject: state.composeSubject,
-          body: state.composeBody,
-          cc: state.composeCc || null,
+          to: appState.composeTo,
+          subject: appState.composeSubject,
+          body: appState.composeBody,
+          cc: appState.composeCc || null,
           attachments: attachmentsData,
         });
       }
       handleCloseCompose();
       await message("Email sent successfully!", { title: "Success", kind: "info" });
     } catch (e) {
-      state.error = `Failed to send email: ${e}`;
+      appState.error = `Failed to send email: ${e}`;
     } finally {
-      state.isSending = false;
+      appState.isSending = false;
     }
   }
 
   async function handleDeleteEmail() {
-    if (!state.selectedAccountId || !state.selectedEmailUid) {
-      state.error = "Please select an email first.";
+    if (!appState.selectedAccountId || !appState.selectedEmailUid) {
+      appState.error = "Please select an email first.";
       return;
     }
 
-    const selectedEmail = state.emails.find((email) => email.uid === state.selectedEmailUid);
+    const selectedEmail = appState.emails.find((email) => email.uid === appState.selectedEmailUid);
     if (!selectedEmail) {
-      state.error = "Could not find selected email.";
+      appState.error = "Could not find selected email.";
       return;
     }
 
-    const selectedConfig = state.accounts.find((acc) => acc.id === state.selectedAccountId);
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
     if (!selectedConfig) {
-      state.error = "Could not find selected account configuration.";
+      appState.error = "Could not find selected account configuration.";
       return;
     }
 
-    const isInTrash = isTrashFolder(state.selectedFolderName);
+    const isInTrash = isTrashFolder(appState.selectedFolderName);
 
     const confirmTitle = isInTrash ? "Permanently Delete Email?" : "Move to Trash?";
     const confirmMessage = isInTrash
@@ -681,22 +700,22 @@
     }
 
     // Only after user confirms, proceed with backend operations
-    state.error = null;
+    appState.error = null;
 
     try {
-      const deletedUid = state.selectedEmailUid;
+      const deletedUid = appState.selectedEmailUid;
 
       if (isInTrash) {
         // Permanently delete from server
         await invoke("delete_email", {
           config: selectedConfig,
           uid: deletedUid,
-          folder: state.selectedFolderName,
+          folder: appState.selectedFolderName,
         });
 
         // Immediately remove from UI (optimistic update)
-        state.emails = state.emails.filter((email) => email.uid !== deletedUid);
-        state.resetEmailState();
+        appState.emails = appState.emails.filter((email) => email.uid !== deletedUid);
+        appState.resetEmailState();
 
         await message("Email permanently deleted!", { title: "Success", kind: "info" });
       } else {
@@ -704,12 +723,12 @@
         await invoke("move_email_to_trash", {
           config: selectedConfig,
           uid: deletedUid,
-          folder: state.selectedFolderName,
+          folder: appState.selectedFolderName,
         });
 
         // Immediately remove from current folder UI (optimistic update)
-        state.emails = state.emails.filter((email) => email.uid !== deletedUid);
-        state.resetEmailState();
+        appState.emails = appState.emails.filter((email) => email.uid !== deletedUid);
+        appState.resetEmailState();
 
         await message("Email moved to trash!", { title: "Success", kind: "info" });
       }
@@ -717,9 +736,9 @@
       // Note: The IDLE event handler will sync in the background if needed,
       // but we've already updated the UI for immediate feedback
     } catch (e) {
-      state.error = `Failed to delete email: ${e}`;
+      appState.error = `Failed to delete email: ${e}`;
       // On error, reload to ensure UI is in sync with server
-      await loadEmailsForFolder(state.selectedFolderName);
+      await loadEmailsForFolder(appState.selectedFolderName);
     }
   }
 
@@ -756,37 +775,37 @@
 
     if (eventType === "NewMessages") {
       if (
-        idleEvent.account_id === state.selectedAccountId &&
-        idleEvent.folder_name === state.selectedFolderName
+        idleEvent.account_id === appState.selectedAccountId &&
+        idleEvent.folder_name === appState.selectedFolderName
       ) {
-        const targetAccountId = state.selectedAccountId;
-        const targetFolderName = state.selectedFolderName;
-        const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+        const targetAccountId = appState.selectedAccountId;
+        const targetFolderName = appState.selectedFolderName;
+        const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
 
         if (selectedConfig) {
           try {
-            state.isSyncing = true;
+            appState.isSyncing = true;
             const syncedEmails = await invoke<EmailHeader[]>("sync_emails", {
               config: selectedConfig,
               folder: targetFolderName,
             });
 
             // Check if still viewing same account/folder
-            if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
-              state.emails = syncedEmails;
-              state.lastSyncTime = Math.floor(Date.now() / 1000);
+            if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === targetFolderName) {
+              appState.emails = syncedEmails;
+              appState.lastSyncTime = Math.floor(Date.now() / 1000);
             } else {
               console.log("Account/folder changed during IDLE sync, discarding result");
             }
-            state.isSyncing = false;
+            appState.isSyncing = false;
           } catch (e) {
             console.error("❌ Failed to sync after IDLE event:", e);
-            state.isSyncing = false;
+            appState.isSyncing = false;
           }
         }
       } else {
         // Background sync for other folders - don't update UI
-        const affectedConfig = state.accounts.find((acc) => acc.id === idleEvent.account_id);
+        const affectedConfig = appState.accounts.find((acc) => acc.id === idleEvent.account_id);
         if (affectedConfig) {
           try {
             await invoke<EmailHeader[]>("sync_emails", {
@@ -800,12 +819,12 @@
       }
     } else if (eventType === "Expunge" || eventType === "FlagsChanged") {
       if (
-        idleEvent.account_id === state.selectedAccountId &&
-        idleEvent.folder_name === state.selectedFolderName
+        idleEvent.account_id === appState.selectedAccountId &&
+        idleEvent.folder_name === appState.selectedFolderName
       ) {
-        const targetAccountId = state.selectedAccountId;
-        const targetFolderName = state.selectedFolderName;
-        const selectedConfig = state.accounts.find((acc) => acc.id === targetAccountId);
+        const targetAccountId = appState.selectedAccountId;
+        const targetFolderName = appState.selectedFolderName;
+        const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
 
         if (selectedConfig) {
           try {
@@ -815,8 +834,8 @@
             });
 
             // Check if still viewing same account/folder
-            if (state.selectedAccountId === targetAccountId && state.selectedFolderName === targetFolderName) {
-              state.emails = syncedEmails;
+            if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === targetFolderName) {
+              appState.emails = syncedEmails;
             } else {
               console.log("Account/folder changed during IDLE sync, discarding result");
             }
@@ -833,11 +852,11 @@
 
 <div class="main-layout">
   <AccountsSidebar
-    accounts={state.accounts}
-    selectedAccountId={state.selectedAccountId}
-    isSyncing={state.isSyncing}
-    lastSyncTime={state.lastSyncTime}
-    currentTime={state.currentTime}
+    accounts={appState.accounts}
+    selectedAccountId={appState.selectedAccountId}
+    isSyncing={appState.isSyncing}
+    lastSyncTime={appState.lastSyncTime}
+    currentTime={appState.currentTime}
     onAccountClick={handleAccountClick}
     onCompose={handleComposeClick}
     onRefresh={handleManualRefresh}
@@ -845,30 +864,30 @@
   />
 
   <FoldersSidebar
-    bind:folders={state.folders}
-    bind:selectedFolderName={state.selectedFolderName}
-    isLoading={state.isLoadingFolders}
-    selectedAccountId={state.selectedAccountId}
+    bind:folders={appState.folders}
+    bind:selectedFolderName={appState.selectedFolderName}
+    isLoading={appState.isLoadingFolders}
+    selectedAccountId={appState.selectedAccountId}
     onFolderClick={handleFolderClick}
   />
 
   <EmailList
-    emails={state.emails}
-    selectedEmailUid={state.selectedEmailUid}
-    isLoading={state.isLoadingEmails}
-    error={state.error}
-    selectedAccountId={state.selectedAccountId}
-    currentUserEmail={state.accounts.find((acc) => acc.id === state.selectedAccountId)?.email || ""}
+    emails={appState.emails}
+    selectedEmailUid={appState.selectedEmailUid}
+    isLoading={appState.isLoadingEmails}
+    error={appState.error}
+    selectedAccountId={appState.selectedAccountId}
+    currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
     onEmailClick={handleEmailClick}
   />
 
   <EmailBody
-    email={state.selectedEmail}
-    body={state.emailBody}
-    attachments={state.attachments}
-    isLoadingBody={state.isLoadingBody}
-    isLoadingAttachments={state.isLoadingAttachments}
-    error={state.error}
+    email={appState.selectedEmail}
+    body={appState.emailBody}
+    attachments={appState.attachments}
+    isLoadingBody={appState.isLoadingBody}
+    isLoadingAttachments={appState.isLoadingAttachments}
+    error={appState.error}
     onReply={handleReplyClick}
     onForward={handleForwardClick}
     onDelete={handleDeleteEmail}
@@ -876,22 +895,34 @@
   />
 
   <ComposeDialog
-    show={state.showComposeDialog}
-    mode={state.isReplyMode ? "reply" : state.isForwardMode ? "forward" : "compose"}
-    bind:to={state.composeTo}
-    bind:cc={state.composeCc}
-    bind:subject={state.composeSubject}
-    bind:body={state.composeBody}
-    bind:attachments={state.composeAttachments}
-    attachmentSizeLimit={state.attachmentSizeLimit}
-    totalAttachmentSize={state.totalAttachmentSize}
-    isSending={state.isSending}
-    error={state.error}
+    show={appState.showComposeDialog}
+    mode={appState.isReplyMode ? "reply" : appState.isForwardMode ? "forward" : "compose"}
+    bind:to={appState.composeTo}
+    bind:cc={appState.composeCc}
+    bind:subject={appState.composeSubject}
+    bind:body={appState.composeBody}
+    bind:attachments={appState.composeAttachments}
+    attachmentSizeLimit={appState.attachmentSizeLimit}
+    totalAttachmentSize={appState.totalAttachmentSize}
+    isSending={appState.isSending}
+    error={appState.error}
     onSend={handleSendEmail}
     onCancel={handleCloseCompose}
     onAttachmentAdd={handleAttachmentSelect}
     onAttachmentRemove={removeAttachment}
   />
+
+  {#if toastNotification}
+    <ToastNotification
+      title={toastNotification.title}
+      body={toastNotification.body}
+      from={toastNotification.from}
+      subject={toastNotification.subject}
+      onClose={() => {
+        toastNotification = null;
+      }}
+    />
+  {/if}
 </div>
 
 <style>

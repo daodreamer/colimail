@@ -310,9 +310,7 @@ async fn incremental_sync(
     // 1. Actually fetched emails (safe - we have the content)
     // 2. Previous highest_uid (safe - we had it before)
     // Do NOT use server_max_uid to avoid the race condition
-    let new_highest_uid = new_emails_max_uid
-        .max(previous_highest_uid)
-        .unwrap_or(0);
+    let new_highest_uid = new_emails_max_uid.max(previous_highest_uid).unwrap_or(0);
 
     println!(
         "📌 Updating highest UID: {} (new_emails_max={:?}, server_max={:?}, prev={:?}, server_total={})",

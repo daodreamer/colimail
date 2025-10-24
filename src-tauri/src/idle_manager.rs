@@ -2,12 +2,28 @@ use crate::commands::utils::ensure_valid_token;
 use crate::db;
 use crate::models::{AccountConfig, AuthType};
 use native_tls::TlsConnector;
+use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
-use tauri_plugin_notification::NotificationExt;
+use tauri::{AppHandle, Emitter, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::mpsc;
+
+/// Notification data to be queued
+#[derive(Debug, Clone)]
+struct NotificationData {
+    title: String,
+    from: String,
+    subject: String,
+}
+
+/// Global notification queue
+static NOTIFICATION_QUEUE: Lazy<Arc<Mutex<Vec<NotificationData>>>> =
+    Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
+
+/// Flag to track if notification worker is running
+static NOTIFICATION_WORKER_RUNNING: Lazy<Arc<Mutex<bool>>> =
+    Lazy::new(|| Arc::new(Mutex::new(false)));
 
 /// Command to control the IDLE manager
 #[derive(Debug)]
@@ -503,8 +519,27 @@ async fn check_notification_settings() -> (bool, bool) {
     (notification_enabled, sound_enabled)
 }
 
-/// Send desktop notification for new emails
+/// Check if folder is an inbox folder (case-insensitive)
+fn is_inbox_folder(folder_name: &str) -> bool {
+    let normalized = folder_name.to_lowercase();
+    // Common inbox folder names across different email providers
+    normalized == "inbox"
+        || normalized == "收件箱"
+        || normalized == "收件夹"
+        || normalized.contains("inbox")
+}
+
+/// Send custom toast notification for new emails
 async fn send_notification(app_handle: &AppHandle, account_id: i32, folder_name: &str, count: u32) {
+    // Only show notification for inbox folders
+    if !is_inbox_folder(folder_name) {
+        println!(
+            "🔕 Skipping notification for folder '{}' (not inbox)",
+            folder_name
+        );
+        return;
+    }
+
     let (notification_enabled, sound_enabled) = check_notification_settings().await;
 
     // Fetch latest email info for notification
@@ -527,21 +562,29 @@ async fn send_notification(app_handle: &AppHandle, account_id: i32, folder_name:
                 format!("{} 封新邮件", count)
             };
 
-            let body = format!("发件人: {}\n主题: {}", from, subject);
+            println!(
+                "📬 Queuing notification - Title: '{}', From: '{}', Subject: '{}'",
+                title, from, subject
+            );
 
-            // Use Tauri notification plugin
-            if let Err(e) = app_handle
-                .notification()
-                .builder()
-                .title(&title)
-                .body(&body)
-                .show()
+            // Add notification to queue
             {
-                eprintln!("❌ Failed to send notification: {}", e);
-            } else {
-                println!("✅ Sent desktop notification for {} new email(s)", count);
+                let mut queue = NOTIFICATION_QUEUE.lock().unwrap();
+                queue.push(NotificationData {
+                    title: title.clone(),
+                    from: from.clone(),
+                    subject: subject.clone(),
+                });
+                println!("📋 Notification queue size: {}", queue.len());
             }
+
+            // Start notification worker if not already running
+            start_notification_worker(app_handle.clone());
+        } else {
+            println!("⚠️ Notification enabled but no email data found for notification");
         }
+    } else {
+        println!("🔕 Notifications are disabled in settings");
     }
 
     // Play notification sound if enabled
@@ -549,6 +592,136 @@ async fn send_notification(app_handle: &AppHandle, account_id: i32, folder_name:
         // Emit event to frontend to play sound
         let _ = app_handle.emit("play-notification-sound", ());
         println!("🔔 Triggered notification sound");
+    }
+}
+
+/// Start the notification worker that processes the queue
+fn start_notification_worker(app_handle: AppHandle) {
+    let mut is_running = NOTIFICATION_WORKER_RUNNING.lock().unwrap();
+
+    if *is_running {
+        println!("⏳ Notification worker already running");
+        return;
+    }
+
+    *is_running = true;
+    drop(is_running); // Release lock before spawning thread
+
+    println!("🚀 Starting notification worker");
+
+    std::thread::spawn(move || {
+        loop {
+            // Get next notification from queue
+            let notification = {
+                let mut queue = NOTIFICATION_QUEUE.lock().unwrap();
+                if queue.is_empty() {
+                    // No more notifications, stop worker
+                    let mut running = NOTIFICATION_WORKER_RUNNING.lock().unwrap();
+                    *running = false;
+                    println!("⏹️ Notification worker stopped (queue empty)");
+                    break;
+                }
+                queue.remove(0) // Get first item
+            };
+
+            println!("📤 Processing notification: '{}'", notification.title);
+
+            // Create and show notification window
+            create_notification_window(
+                &app_handle,
+                &notification.title,
+                &notification.from,
+                &notification.subject,
+            );
+
+            // Wait 5 seconds before processing next notification
+            std::thread::sleep(Duration::from_secs(5));
+        }
+    });
+}
+
+/// Create a notification window that appears on screen
+fn create_notification_window(app_handle: &AppHandle, title: &str, from: &str, subject: &str) {
+    // Generate unique window label with timestamp
+    let window_label = format!(
+        "notification-{}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    );
+
+    // URL encode parameters
+    let encoded_title = urlencoding::encode(title);
+    let encoded_from = urlencoding::encode(from);
+    let encoded_subject = urlencoding::encode(subject);
+
+    // Build notification URL
+    let url = format!(
+        "notification.html?title={}&from={}&subject={}",
+        encoded_title, encoded_from, encoded_subject
+    );
+
+    // Get screen dimensions to position in bottom-right
+    let window_width = 380;
+    let window_height = 120;
+    let margin_right = 130; // Distance from right edge (80 + 50 = 130)
+    let margin_bottom = 110; // Distance from bottom edge (to avoid taskbar)
+
+    // Create window builder
+    match WebviewWindowBuilder::new(app_handle, &window_label, WebviewUrl::App(url.into()))
+        .title("通知")
+        .inner_size(window_width as f64, window_height as f64)
+        .resizable(false)
+        .decorations(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .visible(false) // Start invisible, will show after positioning
+        .focused(false)
+        .build()
+    {
+        Ok(window) => {
+            // Get primary monitor to calculate position
+            if let Some(monitor) = window.current_monitor().ok().flatten() {
+                let monitor_size = monitor.size();
+                let monitor_position = monitor.position();
+
+                // Calculate position in physical pixels (bottom-right corner of monitor)
+                let x =
+                    monitor_position.x + (monitor_size.width as i32) - window_width - margin_right;
+                let y = monitor_position.y + (monitor_size.height as i32)
+                    - window_height
+                    - margin_bottom;
+
+                println!(
+                    "📍 Monitor size: {:?}, position: {:?}",
+                    monitor_size, monitor_position
+                );
+                println!("📍 Notification window position: ({}, {})", x, y);
+
+                // Set position and show
+                if let Err(e) = window.set_position(PhysicalPosition::new(x, y)) {
+                    eprintln!("❌ Failed to set notification window position: {}", e);
+                }
+            }
+
+            // Show the window
+            if let Err(e) = window.show() {
+                eprintln!("❌ Failed to show notification window: {}", e);
+            } else {
+                println!("✅ Notification window created and shown");
+            }
+
+            // Close window after 5 seconds
+            let window_clone = window.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_secs(5));
+                let _ = window_clone.close();
+            });
+        }
+        Err(e) => {
+            eprintln!("❌ Failed to create notification window: {}", e);
+        }
     }
 }
 
