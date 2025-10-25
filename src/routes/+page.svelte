@@ -228,7 +228,11 @@
     }
 
     appState.isLoadingEmails = true;
-    appState.resetEmailState();
+    // DON'T reset email state if we're just refreshing the same folder
+    // Only reset when switching folders
+    if (appState.selectedFolderName !== folderName) {
+      appState.resetEmailState();
+    }
     appState.error = null;
 
     try {
@@ -352,6 +356,7 @@
         loadAttachmentsForEmail(appState.selectedAccountId, uid);
       }
     } catch (e) {
+      console.error(`❌ Failed to fetch email body:`, e);
       appState.error = `Failed to fetch email body: ${e}`;
     } finally {
       appState.isLoadingBody = false;
@@ -685,27 +690,31 @@
 
     const isInTrash = isTrashFolder(appState.selectedFolderName);
 
-    const confirmTitle = isInTrash ? "Permanently Delete Email?" : "Move to Trash?";
-    const confirmMessage = isInTrash
-      ? `Are you sure you want to PERMANENTLY delete this email?\n\nThis action cannot be undone.\n\nSubject: ${selectedEmail.subject}`
-      : `Move this email to trash?\n\nSubject: ${selectedEmail.subject}`;
+    // Only ask for confirmation when permanently deleting from trash folder
+    if (isInTrash) {
+      const confirmMessage = `Are you sure you want to PERMANENTLY delete this email?\n\nThis action cannot be undone.\n\nSubject: ${selectedEmail.subject}`;
 
-    // IMPORTANT: Use Tauri's ask() dialog instead of native confirm()
-    // This properly blocks execution until user responds
-    const userConfirmed = await ask(confirmMessage, {
-      title: confirmTitle,
-      kind: "warning",
-    });
+      // IMPORTANT: Use Tauri's ask() dialog instead of native confirm()
+      // This properly blocks execution until user responds
+      const userConfirmed = await ask(confirmMessage, {
+        title: "Permanently Delete Email?",
+        kind: "warning",
+      });
 
-    if (!userConfirmed) {
-      return;
+      if (!userConfirmed) {
+        return;
+      }
     }
 
-    // Only after user confirms, proceed with backend operations
+    // Proceed with backend operations
     appState.error = null;
 
     try {
       const deletedUid = appState.selectedEmailUid;
+
+      // Immediately remove from UI (optimistic update) for instant feedback
+      appState.emails = appState.emails.filter((email) => email.uid !== deletedUid);
+      appState.resetEmailState();
 
       if (isInTrash) {
         // Permanently delete from server
@@ -715,24 +724,16 @@
           folder: appState.selectedFolderName,
         });
 
-        // Immediately remove from UI (optimistic update)
-        appState.emails = appState.emails.filter((email) => email.uid !== deletedUid);
-        appState.resetEmailState();
-
-        await message("Email permanently deleted!", { title: "Success", kind: "info" });
+        // No success message needed - the UI update provides instant feedback
       } else {
-        // Move to trash on server
+        // Move to trash on server (no confirmation needed)
         await invoke("move_email_to_trash", {
           config: selectedConfig,
           uid: deletedUid,
           folder: appState.selectedFolderName,
         });
 
-        // Immediately remove from current folder UI (optimistic update)
-        appState.emails = appState.emails.filter((email) => email.uid !== deletedUid);
-        appState.resetEmailState();
-
-        await message("Email moved to trash!", { title: "Success", kind: "info" });
+        // No success message needed - instant UI feedback is better for smooth UX
       }
 
       // Note: The IDLE event handler will sync in the background if needed,
@@ -794,8 +795,18 @@
 
             // Check if still viewing same account/folder
             if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === targetFolderName) {
+              // Preserve the selected email UID if it exists in the new list
+              const currentlySelectedUid = appState.selectedEmailUid;
               appState.emails = syncedEmails;
               appState.lastSyncTime = Math.floor(Date.now() / 1000);
+
+              // Check if the selected email still exists
+              if (currentlySelectedUid) {
+                const stillExists = syncedEmails.find(e => e.uid === currentlySelectedUid);
+                if (!stillExists) {
+                  console.warn(`⚠️ Selected email UID ${currentlySelectedUid} no longer in list after sync!`);
+                }
+              }
             } else {
               console.log("Account/folder changed during IDLE sync, discarding result");
             }

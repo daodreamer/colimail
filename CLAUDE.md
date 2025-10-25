@@ -33,8 +33,10 @@ cargo build --release          # Build optimized release version
 
 ### Running Static Checks
 After any code changes, **always run** the appropriate checks before reporting completion:
-- Rust changes: `cargo fmt && cargo check` from `src-tauri/`
+- Rust changes: `cargo fmt && cargo check && cargo clippy -- -D warnings` from `src-tauri/`
 - Frontend changes: `npm run check` from root
+
+**IMPORTANT**: The `cargo clippy -- -D warnings` command treats all Clippy warnings as errors. This ensures code quality and prevents warnings from accumulating. Always fix any Clippy warnings before completing a task.
 
 ## Architecture
 

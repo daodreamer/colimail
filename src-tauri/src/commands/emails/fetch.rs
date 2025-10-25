@@ -253,10 +253,14 @@ pub async fn fetch_email_body_with_attachments(
     folder: Option<String>,
 ) -> Result<(String, Vec<Attachment>), String> {
     let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
-    println!("Fetching body for UID {} from {}", uid, folder_name);
+    println!(
+        "🌐 fetch_email_body_with_attachments: uid={}, folder={}",
+        uid, folder_name
+    );
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
+    println!("✅ Token validated for {}", config.email);
 
     let (body, attachments) =
         tokio::task::spawn_blocking(move || -> Result<(String, Vec<Attachment>), String> {
@@ -313,13 +317,24 @@ pub async fn fetch_email_body_with_attachments(
 
             let messages = imap_session
                 .uid_fetch(uid.to_string(), "BODY[]")
-                .map_err(|e| e.to_string())?;
-            let message = messages.first().ok_or("No message found for UID")?;
+                .map_err(|e| {
+                    eprintln!("❌ UID FETCH failed for UID {}: {}", uid, e);
+                    e.to_string()
+                })?;
+
+            let message = messages.first().ok_or_else(|| {
+                eprintln!("❌ No message found for UID {}", uid);
+                "No message found for UID".to_string()
+            })?;
 
             let raw_body = message.body().unwrap_or_default();
+
             let parsed_mail = mail_parser::MessageParser::default()
                 .parse(raw_body)
-                .ok_or("Failed to parse email message")?;
+                .ok_or_else(|| {
+                    eprintln!("❌ Failed to parse email message for UID {}", uid);
+                    "Failed to parse email message".to_string()
+                })?;
 
             // mail-parser automatically handles multipart messages
             let final_body = if let Some(html_body) = parsed_mail.body_html(0) {
@@ -390,22 +405,37 @@ pub async fn fetch_email_body_cached(
     let account_id = config.id.ok_or("Account ID is required")?;
     let folder_name = folder.clone().unwrap_or_else(|| "INBOX".to_string());
 
+    println!(
+        "🔍 fetch_email_body_cached called: account_id={}, uid={}, folder={}",
+        account_id, uid, folder_name
+    );
+
     // Try to load from cache first
     if let Some(cached_body) = load_email_body_from_cache(account_id, &folder_name, uid).await? {
         println!("✅ Loaded body from cache for UID {}", uid);
         return Ok(cached_body);
     }
 
-    println!("📥 Fetching body from server for UID {}", uid);
+    println!("📥 Cache miss - fetching body from server for UID {}", uid);
 
     // Not in cache, fetch from server
-    let (body, attachments) = fetch_email_body_with_attachments(config, uid, folder).await?;
+    let (body, attachments) = match fetch_email_body_with_attachments(config, uid, folder).await {
+        Ok(result) => result,
+        Err(e) => {
+            eprintln!("❌ Failed to fetch email body from server: {}", e);
+            return Err(e);
+        }
+    };
 
     // Save body to cache
     save_email_body_to_cache(account_id, &folder_name, uid, &body).await?;
 
     // Save attachments to cache if any
     if !attachments.is_empty() {
+        println!(
+            "📎 Email has {} attachment(s), saving to cache...",
+            attachments.len()
+        );
         // Get email database ID
         let pool = db::pool();
         let email_id_result = sqlx::query_as::<_, (i64,)>(
@@ -419,6 +449,7 @@ pub async fn fetch_email_body_cached(
         .map_err(|e| format!("Failed to get email id: {}", e))?;
 
         if let Some((email_id,)) = email_id_result {
+            println!("✅ Found email in cache DB with id={}", email_id);
             save_attachments_to_cache(email_id, &attachments).await?;
 
             // Update has_attachments flag
@@ -427,8 +458,17 @@ pub async fn fetch_email_body_cached(
                 .execute(pool.as_ref())
                 .await
                 .map_err(|e| format!("Failed to update has_attachments flag: {}", e))?;
+        } else {
+            println!(
+                "⚠️ Email UID {} not found in cache DB, cannot save attachments",
+                uid
+            );
         }
     }
 
+    println!(
+        "✅ Successfully fetched and cached email body for UID {}",
+        uid
+    );
     Ok(body)
 }

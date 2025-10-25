@@ -32,7 +32,7 @@
 <main class="content-pane">
   {#if isLoadingBody}
     <p>Loading email content...</p>
-  {:else if body && email}
+  {:else if email && body}
     <div class="email-header-section">
       <h2 class="email-subject">{email.subject}</h2>
       <div class="email-meta">
@@ -71,8 +71,17 @@
     <div class="email-body">
       {@html body}
     </div>
-  {:else if email && error}
-    <p class="error-message">{error}</p>
+  {:else if error}
+    <div class="error-container">
+      <p class="error-message">⚠️ Error loading email</p>
+      <p class="error-details">{error}</p>
+      <p class="error-hint">The email may have been deleted or moved. Please try refreshing the folder.</p>
+    </div>
+  {:else if email && !body}
+    <div class="placeholder">
+      <p>Email selected but content not loaded yet...</p>
+      <p class="hint">If this persists, try selecting another email.</p>
+    </div>
   {:else}
     <div class="placeholder">
       <p>Select an email to read its content.</p>
@@ -186,13 +195,42 @@
     color: #666;
     flex: 1;
     display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .placeholder .hint {
+    font-size: 0.875rem;
+    color: #999;
+    margin-top: 0.5rem;
+  }
+
+  .error-container {
+    text-align: center;
+    padding: 4rem 2rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
   }
 
   .error-message {
-    color: #d9534f;
-    text-align: center;
-    padding: 2rem;
+    color: #dc3545;
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+  }
+
+  .error-details {
+    color: #666;
+    margin-bottom: 0.5rem;
+  }
+
+  .error-hint {
+    color: #999;
+    font-size: 0.875rem;
+    font-style: italic;
   }
 </style>

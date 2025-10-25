@@ -71,12 +71,17 @@ pub async fn move_email_to_trash(
     folder: Option<String>,
 ) -> Result<(), String> {
     let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    let account_id = config.id.ok_or("Account ID is required")?;
     println!("Moving email UID {} from {} to trash", uid, folder_name);
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
+    // Clone folder_name for use in both the blocking task and later cache removal
+    let folder_name_for_task = folder_name.clone();
+
     tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let folder_name = folder_name_for_task;
         let domain = config.imap_server.as_str();
         let port = config.imap_port;
         let email = config.email.as_str();
@@ -159,7 +164,20 @@ pub async fn move_email_to_trash(
     .await
     .map_err(|e| e.to_string())??;
 
-    println!("✅ Successfully moved email UID {} to trash", uid);
+    // Remove email from local cache immediately for responsive UI
+    let pool = crate::db::pool();
+    sqlx::query("DELETE FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?")
+        .bind(account_id)
+        .bind(&folder_name)
+        .bind(uid as i64)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to remove email from cache: {}", e))?;
+
+    println!(
+        "✅ Successfully moved email UID {} to trash and removed from cache",
+        uid
+    );
 
     Ok(())
 }
@@ -172,6 +190,7 @@ pub async fn delete_email(
     folder: Option<String>,
 ) -> Result<(), String> {
     let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    let account_id = config.id.ok_or("Account ID is required")?;
     println!(
         "Permanently deleting email UID {} from {}",
         uid, folder_name
@@ -180,7 +199,11 @@ pub async fn delete_email(
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
+    // Clone folder_name for use in both the blocking task and later cache removal
+    let folder_name_for_task = folder_name.clone();
+
     tokio::task::spawn_blocking(move || -> Result<(), String> {
+        let folder_name = folder_name_for_task;
         let domain = config.imap_server.as_str();
         let port = config.imap_port;
         let email = config.email.as_str();
@@ -249,7 +272,20 @@ pub async fn delete_email(
     .await
     .map_err(|e| e.to_string())??;
 
-    println!("✅ Successfully deleted email UID {} from server", uid);
+    // Remove email from local cache immediately for responsive UI
+    let pool = crate::db::pool();
+    sqlx::query("DELETE FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?")
+        .bind(account_id)
+        .bind(&folder_name)
+        .bind(uid as i64)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to remove email from cache: {}", e))?;
+
+    println!(
+        "✅ Successfully deleted email UID {} from server and removed from cache",
+        uid
+    );
 
     Ok(())
 }
