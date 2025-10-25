@@ -149,6 +149,8 @@ async fn main() {
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .setup(|app| {
+            oauth2_config::init_credentials(app.handle());
+
             // Initialize IDLE manager
             let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
             app.manage(idle_manager.clone());

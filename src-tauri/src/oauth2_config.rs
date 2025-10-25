@@ -2,11 +2,11 @@ use oauth2::{
     basic::BasicClient, AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken,
     PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl,
 };
-use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::sync::Mutex;
+use tauri::{AppHandle, Manager, Wry};
 
 lazy_static::lazy_static! {
     // Store PKCE verifiers for pending OAuth flows
@@ -27,33 +27,55 @@ struct ProviderCredentials {
     note: Option<String>,
 }
 
-static CREDENTIALS: Lazy<Option<OAuth2Credentials>> = Lazy::new(|| {
-    // Try to load credentials from file (for official builds)
-    if let Ok(content) = fs::read_to_string("oauth2_credentials.json") {
-        if let Ok(creds) = serde_json::from_str::<OAuth2Credentials>(&content) {
-            println!("✓ Loaded OAuth2 credentials from oauth2_credentials.json");
-            return Some(creds);
-        } else {
-            eprintln!("⚠ Warning: oauth2_credentials.json exists but is invalid");
-        }
+// Use a Mutex-wrapped Option to allow for runtime initialization.
+static CREDENTIALS: Mutex<Option<OAuth2Credentials>> = Mutex::new(None);
+
+/// Initializes the OAuth2 credentials.
+///
+/// This function is called at startup to load the credentials from the appropriate source.
+/// The loading order is:
+/// 1. Tauri application resources (for release builds).
+/// 2. Local `oauth2_credentials.json` file (for development).
+/// 3. Environment variables (as a final fallback).
+pub fn init_credentials(app: &AppHandle<Wry>) {
+    let mut creds_guard = CREDENTIALS.lock().unwrap();
+    if creds_guard.is_some() {
+        return; // Already initialized
     }
 
-    // Fallback: check if it's in the executable directory
-    if let Ok(exe_path) = std::env::current_exe() {
-        if let Some(exe_dir) = exe_path.parent() {
-            let config_path = exe_dir.join("oauth2_credentials.json");
-            if let Ok(content) = fs::read_to_string(&config_path) {
+    // 1. Try loading from resource path (for release builds)
+    if let Ok(path) = app.path().resolve(
+        "oauth2_credentials.json",
+        tauri::path::BaseDirectory::Resource,
+    ) {
+        if path.exists() {
+            if let Ok(content) = fs::read_to_string(&path) {
                 if let Ok(creds) = serde_json::from_str::<OAuth2Credentials>(&content) {
-                    println!("✓ Loaded OAuth2 credentials from {}", config_path.display());
-                    return Some(creds);
+                    println!("✓ Loaded OAuth2 credentials from app resources.");
+                    *creds_guard = Some(creds);
+                    return;
+                } else {
+                    eprintln!(
+                        "⚠ Warning: Found oauth2_credentials.json in resources, but it's invalid."
+                    );
                 }
             }
         }
     }
 
-    println!("ℹ No oauth2_credentials.json found, will use environment variables");
-    None
-});
+    // 2. Try to load from local file (for development)
+    if let Ok(content) = fs::read_to_string("oauth2_credentials.json") {
+        if let Ok(creds) = serde_json::from_str::<OAuth2Credentials>(&content) {
+            println!("✓ Loaded OAuth2 credentials from local oauth2_credentials.json");
+            *creds_guard = Some(creds);
+            return;
+        } else {
+            eprintln!("⚠ Warning: Found local oauth2_credentials.json, but it's invalid.");
+        }
+    }
+
+    println!("ℹ No valid oauth2_credentials.json found, will use environment variables as fallback.");
+}
 
 pub struct OAuth2Provider {
     pub client_id: String,
@@ -69,14 +91,15 @@ pub struct OAuth2Provider {
 
 impl OAuth2Provider {
     pub fn google() -> Self {
-        let (client_id, client_secret) = if let Some(creds) = &*CREDENTIALS {
-            // Use credentials from config file
+        let creds_guard = CREDENTIALS.lock().unwrap();
+        let (client_id, client_secret) = if let Some(creds) = &*creds_guard {
+            // Use credentials from the initialized storage
             (
                 creds.google.client_id.clone(),
                 creds.google.client_secret.clone(),
             )
         } else {
-            // Fallback to environment variables
+            // Fallback to environment variables if not initialized
             (
                 std::env::var("GOOGLE_CLIENT_ID").unwrap_or_else(|_| {
                     eprintln!("⚠ Warning: GOOGLE_CLIENT_ID not set");
@@ -106,14 +129,15 @@ impl OAuth2Provider {
     }
 
     pub fn outlook() -> Self {
-        let (client_id, client_secret) = if let Some(creds) = &*CREDENTIALS {
-            // Use credentials from config file
+        let creds_guard = CREDENTIALS.lock().unwrap();
+        let (client_id, client_secret) = if let Some(creds) = &*creds_guard {
+            // Use credentials from the initialized storage
             (
                 creds.outlook.client_id.clone(),
                 creds.outlook.client_secret.clone(),
             )
         } else {
-            // Fallback to environment variables
+            // Fallback to environment variables if not initialized
             (
                 std::env::var("OUTLOOK_CLIENT_ID").unwrap_or_else(|_| {
                     eprintln!("⚠ Warning: OUTLOOK_CLIENT_ID not set");
