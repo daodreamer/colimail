@@ -39,8 +39,10 @@ jobs:
         run: npm install
 
       - name: Create OAuth2 credentials from secret
-        if: secrets.OAUTH_CREDENTIALS_JSON != ''
-        run: echo "${{ secrets.OAUTH_CREDENTIALS_JSON }}" > src-tauri/oauth2_credentials.json
+        env:
+          OAUTH_CREDENTIALS_JSON: ${{ secrets.OAUTH_CREDENTIALS_JSON }}
+        if: env.OAUTH_CREDENTIALS_JSON != ''
+        run: echo "$OAUTH_CREDENTIALS_JSON" > src-tauri/oauth2_credentials.json
 
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
