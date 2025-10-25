@@ -74,7 +74,9 @@ pub fn init_credentials(app: &AppHandle<Wry>) {
         }
     }
 
-    println!("ℹ No valid oauth2_credentials.json found, will use environment variables as fallback.");
+    println!(
+        "ℹ No valid oauth2_credentials.json found, will use environment variables as fallback."
+    );
 }
 
 pub struct OAuth2Provider {
