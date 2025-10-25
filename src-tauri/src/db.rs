@@ -71,27 +71,7 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
-    // Migration: Add has_attachments column to emails table if it doesn't exist
-    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN has_attachments INTEGER DEFAULT 0")
-        .execute(&pool)
-        .await;
-
-    // Migration: Add flags column to emails table for IMAP flags (Seen, Flagged, etc.)
-    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN flags TEXT")
-        .execute(&pool)
-        .await;
-
-    // Migration: Add seen column to emails table for read/unread status
-    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN seen INTEGER DEFAULT 0")
-        .execute(&pool)
-        .await;
-
-    // Migration: Add cc_addr column to emails table for CC recipients
-    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN cc_addr TEXT")
-        .execute(&pool)
-        .await;
-
-    // Create emails cache table
+    // Create emails cache table with all columns included
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS emails (
             id INTEGER PRIMARY KEY,
@@ -101,9 +81,13 @@ pub async fn init() -> Result<(), sqlx::Error> {
             subject TEXT NOT NULL,
             from_addr TEXT NOT NULL,
             to_addr TEXT NOT NULL,
+            cc_addr TEXT,
             date TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             body TEXT,
+            has_attachments INTEGER DEFAULT 0,
+            flags TEXT,
+            seen INTEGER DEFAULT 0,
             synced_at INTEGER NOT NULL,
             UNIQUE(account_id, folder_name, uid),
             FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
@@ -111,6 +95,26 @@ pub async fn init() -> Result<(), sqlx::Error> {
     )
     .execute(&pool)
     .await?;
+
+    // Migration: Add cc_addr column to emails table for CC recipients (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN cc_addr TEXT")
+        .execute(&pool)
+        .await;
+
+    // Migration: Add has_attachments column to emails table if it doesn't exist (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN has_attachments INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+
+    // Migration: Add flags column to emails table for IMAP flags (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN flags TEXT")
+        .execute(&pool)
+        .await;
+
+    // Migration: Add seen column to emails table for read/unread status (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN seen INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
 
     // Create index for faster queries
     sqlx::query(

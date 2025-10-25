@@ -1,6 +1,6 @@
 {
   "name": "colimail",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Colimail - A Lightweight Email Client",
   "type": "module",
   "scripts": {

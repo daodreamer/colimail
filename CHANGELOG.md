@@ -14,7 +14,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
-## [0.1.1] - 2025-01-24
+## [0.1.4] - 2025-10-25
+
+### Fixed
+- **Critical**: Fixed database schema initialization issue on macOS causing "no such column: cc_addr" error
+  - Moved all required columns (`cc_addr`, `has_attachments`, `flags`, `seen`) directly into CREATE TABLE statement
+  - Ensured proper column initialization for fresh database installations
+  - Maintained backward compatibility with existing databases through migration statements
+  - Issue primarily affected macOS M4 chip users with new installations
+
+## [0.1.1] - 2025-10-24
 
 ### Fixed
 - GitHub Actions permissions for automated releases
@@ -25,7 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Streamlined release builds to Windows x64 and macOS Apple Silicon only
 - Removed Linux and macOS Intel builds from automated releases
 
-## [0.1.0] - 2025-01-24 [YANKED]
+## [0.1.0] - 2025-10-24 [YANKED]
 
 **Note**: This release was yanked due to GitHub Actions configuration issues. Use v0.1.1 instead.
 
