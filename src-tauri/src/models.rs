@@ -125,7 +125,7 @@ impl Folder {
         for pattern in &system_folder_patterns {
             let pattern_lower = pattern.to_lowercase();
             if lower_display_name.contains(&format!("{}/", pattern_lower))
-                || lower_display_name.contains(&format!("{}", pattern_lower))
+                || lower_display_name.contains(&pattern_lower)
             {
                 return false;
             }

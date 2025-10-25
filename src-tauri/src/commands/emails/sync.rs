@@ -132,16 +132,135 @@ async fn incremental_sync(
             );
 
             // Determine sync strategy based on UIDVALIDITY
-            let new_emails = if sync_state_for_task.is_none()
-                || sync_state_for_task.as_ref().unwrap().uidvalidity
-                    != Some(server_uidvalidity as i64)
-            {
-                // Full sync needed: no previous state or UIDVALIDITY changed
-                if sync_state_for_task.is_some() {
+            let new_emails = if let Some(ref sync_state) = sync_state_for_task {
+                if sync_state.uidvalidity != Some(server_uidvalidity as i64) {
+                    // Full sync needed: UIDVALIDITY changed
                     println!("⚠️ UIDVALIDITY changed! Full resync required.");
+
+                    // Fetch recent emails (last 100)
+                    if server_exists == 0 {
+                        Vec::new()
+                    } else {
+                        let start = server_exists.saturating_sub(99).max(1);
+                        let seq_range = format!("{}:{}", start, server_exists);
+
+                        println!("📥 Fetching messages: {}", seq_range);
+
+                        let messages = imap_session
+                            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
+                            .map_err(|e| e.to_string())?;
+
+                        parse_email_headers(messages.iter().rev())
+                    }
                 } else {
-                    println!("🆕 First sync for this folder.");
+                    // Incremental sync: fetch only new messages
+                    let highest_uid = sync_state.highest_uid.unwrap_or(0);
+
+                    println!("🔄 Incremental sync from UID > {}", highest_uid);
+
+                    if highest_uid == 0 || server_exists == 0 {
+                        // No previous emails or empty folder
+                        Vec::new()
+                    } else {
+                        // First, use UID SEARCH to find if there are any new messages
+                        // This avoids Gmail's bug where UID FETCH with reversed range returns old messages
+                        let search_criteria = format!("UID {}:*", highest_uid + 1);
+
+                        println!("🔍 Searching for new messages: {}", search_criteria);
+
+                        let search_result = match imap_session.uid_search(&search_criteria) {
+                            Ok(uids) => {
+                                // Convert HashSet to Vec and sort
+                                let mut uid_vec: Vec<u32> = uids.into_iter().collect();
+                                uid_vec.sort_unstable();
+                                uid_vec
+                            }
+                            Err(e) => {
+                                eprintln!("⚠️ UID SEARCH failed: {}, falling back to FETCH", e);
+                                Vec::new()
+                            }
+                        };
+
+                        if search_result.is_empty() {
+                            println!("✅ No new messages (SEARCH returned empty)");
+                            Vec::new()
+                        } else {
+                            println!("📋 SEARCH found {} UID(s): {:?}", search_result.len(), search_result);
+
+                            // Filter out UIDs <= highest_uid (Gmail bug workaround)
+                            let new_uids: Vec<u32> = search_result
+                                .into_iter()
+                                .filter(|&uid| uid > highest_uid as u32)
+                                .collect();
+
+                            if new_uids.is_empty() {
+                                println!("✅ No genuinely new messages after filtering");
+                                Vec::new()
+                            } else {
+                                println!("📥 Fetching {} new message(s) with UIDs: {:?}", new_uids.len(), new_uids);
+
+                                // Build UID range for FETCH
+                                let uid_list = new_uids
+                                    .iter()
+                                    .map(|uid| uid.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(",");
+
+                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE)") {
+                                    Ok(messages) => {
+                                        let count = messages.len();
+                                        if count > 0 {
+                                            println!("✨ Found {} raw message(s) from IMAP", count);
+
+                                            // Debug: Log the actual UIDs returned by IMAP
+                                            for (idx, msg) in messages.iter().enumerate() {
+                                                println!("  📋 Message {}: UID = {:?}", idx + 1, msg.uid);
+                                            }
+
+                                            let parsed = parse_email_headers(messages.iter().rev());
+
+                                            // Debug: Log the parsed UIDs
+                                            println!("  📝 Parsed UIDs: {:?}", parsed.iter().map(|e| e.uid).collect::<Vec<_>>());
+
+                                            // Filter out emails with UID <= highest_uid
+                                            // This handles cases where IMAP server returns UIDs we already have
+                                            let filtered: Vec<EmailHeader> = parsed
+                                                .into_iter()
+                                                .filter(|email| email.uid > highest_uid as u32)
+                                                .collect();
+
+                                            if filtered.len() < count {
+                                                println!(
+                                                    "  🔍 Filtered out {} duplicate/old email(s), keeping {} new",
+                                                    count - filtered.len(),
+                                                    filtered.len()
+                                                );
+                                            }
+
+                                            if filtered.is_empty() {
+                                                println!("✅ No new messages after filtering");
+                                            } else {
+                                                println!("✨ {} genuinely new message(s)", filtered.len());
+                                            }
+
+                                            filtered
+                                        } else {
+                                            println!("✅ No new messages");
+                                            Vec::new()
+                                        }
+                                    }
+                                    Err(e) => {
+                                        eprintln!("⚠️ Failed to fetch new messages: {}", e);
+                                        Vec::new()
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+            } else {
+                // Full sync needed: no previous state
+                println!("🆕 First sync for this folder.");
 
                 // Fetch recent emails (last 100)
                 if server_exists == 0 {
@@ -157,115 +276,6 @@ async fn incremental_sync(
                         .map_err(|e| e.to_string())?;
 
                     parse_email_headers(messages.iter().rev())
-                }
-            } else {
-                // Incremental sync: fetch only new messages
-                let highest_uid = sync_state_for_task
-                    .as_ref()
-                    .unwrap()
-                    .highest_uid
-                    .unwrap_or(0);
-
-                println!("🔄 Incremental sync from UID > {}", highest_uid);
-
-                if highest_uid == 0 || server_exists == 0 {
-                    // No previous emails or empty folder
-                    Vec::new()
-                } else {
-                    // First, use UID SEARCH to find if there are any new messages
-                    // This avoids Gmail's bug where UID FETCH with reversed range returns old messages
-                    let search_criteria = format!("UID {}:*", highest_uid + 1);
-
-                    println!("🔍 Searching for new messages: {}", search_criteria);
-
-                    let search_result = match imap_session.uid_search(&search_criteria) {
-                        Ok(uids) => {
-                            // Convert HashSet to Vec and sort
-                            let mut uid_vec: Vec<u32> = uids.into_iter().collect();
-                            uid_vec.sort_unstable();
-                            uid_vec
-                        }
-                        Err(e) => {
-                            eprintln!("⚠️ UID SEARCH failed: {}, falling back to FETCH", e);
-                            Vec::new()
-                        }
-                    };
-
-                    if search_result.is_empty() {
-                        println!("✅ No new messages (SEARCH returned empty)");
-                        Vec::new()
-                    } else {
-                        println!("📋 SEARCH found {} UID(s): {:?}", search_result.len(), search_result);
-
-                        // Filter out UIDs <= highest_uid (Gmail bug workaround)
-                        let new_uids: Vec<u32> = search_result
-                            .into_iter()
-                            .filter(|&uid| uid > highest_uid as u32)
-                            .collect();
-
-                        if new_uids.is_empty() {
-                            println!("✅ No genuinely new messages after filtering");
-                            Vec::new()
-                        } else {
-                            println!("📥 Fetching {} new message(s) with UIDs: {:?}", new_uids.len(), new_uids);
-
-                            // Build UID range for FETCH
-                            let uid_list = new_uids
-                                .iter()
-                                .map(|uid| uid.to_string())
-                                .collect::<Vec<_>>()
-                                .join(",");
-
-                            match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE)") {
-                        Ok(messages) => {
-                            let count = messages.len();
-                            if count > 0 {
-                                println!("✨ Found {} raw message(s) from IMAP", count);
-
-                                // Debug: Log the actual UIDs returned by IMAP
-                                for (idx, msg) in messages.iter().enumerate() {
-                                    println!("  📋 Message {}: UID = {:?}", idx + 1, msg.uid);
-                                }
-
-                                let parsed = parse_email_headers(messages.iter().rev());
-
-                                // Debug: Log the parsed UIDs
-                                println!("  📝 Parsed UIDs: {:?}", parsed.iter().map(|e| e.uid).collect::<Vec<_>>());
-
-                                // Filter out emails with UID <= highest_uid
-                                // This handles cases where IMAP server returns UIDs we already have
-                                let filtered: Vec<EmailHeader> = parsed
-                                    .into_iter()
-                                    .filter(|email| email.uid > highest_uid as u32)
-                                    .collect();
-
-                                if filtered.len() < count {
-                                    println!(
-                                        "  🔍 Filtered out {} duplicate/old email(s), keeping {} new",
-                                        count - filtered.len(),
-                                        filtered.len()
-                                    );
-                                }
-
-                                if filtered.is_empty() {
-                                    println!("✅ No new messages after filtering");
-                                } else {
-                                    println!("✨ {} genuinely new message(s)", filtered.len());
-                                }
-
-                                filtered
-                            } else {
-                                println!("✅ No new messages");
-                                Vec::new()
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("⚠️ Failed to fetch new messages: {}", e);
-                            Vec::new()
-                        }
-                    }
-                        }
-                    }
                 }
             };
 
@@ -431,7 +441,7 @@ where
 
         let has_attachments = msg
             .bodystructure()
-            .map(|bs| check_for_attachments(bs))
+            .map(check_for_attachments)
             .unwrap_or(false);
 
         headers.push(EmailHeader {

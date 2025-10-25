@@ -17,7 +17,8 @@
       "WebFetch(domain:v2.tauri.app)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:stackoverflow.com)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(cargo clippy:*)"
     ],
     "deny": [],
     "ask": []

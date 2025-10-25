@@ -213,7 +213,7 @@ pub async fn fetch_emails(
             // Check if email has attachments by examining BODYSTRUCTURE
             let has_attachments = msg
                 .bodystructure()
-                .map(|bs| check_for_attachments(bs))
+                .map(check_for_attachments)
                 .unwrap_or(false);
 
             headers.push(EmailHeader {

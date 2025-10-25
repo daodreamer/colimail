@@ -15,6 +15,19 @@ pub struct AttachmentData {
     pub data: Vec<u8>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct ForwardEmailParams {
+    pub to: String,
+    pub original_subject: String,
+    pub original_from: String,
+    pub original_to: String,
+    pub original_date: String,
+    pub original_body: String,
+    pub additional_message: String,
+    pub cc: Option<String>,
+    pub attachments: Option<Vec<AttachmentData>>,
+}
+
 #[command]
 pub async fn send_email(
     config: AccountConfig,
@@ -273,29 +286,21 @@ pub async fn reply_email(
 #[command]
 pub async fn forward_email(
     config: AccountConfig,
-    to: String,
-    original_subject: String,
-    original_from: String,
-    original_to: String,
-    original_date: String,
-    original_body: String,
-    additional_message: String,
-    cc: Option<String>,
-    attachments: Option<Vec<AttachmentData>>,
+    params: ForwardEmailParams,
 ) -> Result<String, String> {
-    println!("Forwarding email to: {}", to);
+    println!("Forwarding email to: {}", params.to);
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
     let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
-    let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
+    let to_mailbox: Mailbox = params.to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
     // Add "Fwd: " prefix to subject if not already present
-    let forward_subject = if original_subject.to_lowercase().starts_with("fwd:") {
-        original_subject.clone()
+    let forward_subject = if params.original_subject.to_lowercase().starts_with("fwd:") {
+        params.original_subject.clone()
     } else {
-        format!("Fwd: {}", original_subject)
+        format!("Fwd: {}", params.original_subject)
     };
 
     // Build HTML email body with forwarded message metadata and original HTML content
@@ -308,28 +313,29 @@ pub async fn forward_email(
 <p style="margin: 5px 0;"><strong>Subject:</strong> {}</p>
 </div>
 <br/>"#,
-        original_from, original_to, original_date, original_subject
+        params.original_from, params.original_to, params.original_date, params.original_subject
     );
 
     // Strip outer <html><body> tags from original body if present to avoid nesting
-    let cleaned_original_body = original_body
+    let cleaned_original_body = params
+        .original_body
         .trim()
         .strip_prefix("<html>")
         .and_then(|s| s.strip_suffix("</html>"))
         .and_then(|s| s.trim().strip_prefix("<body>"))
         .and_then(|s| s.strip_suffix("</body>"))
-        .unwrap_or(&original_body)
+        .unwrap_or(&params.original_body)
         .trim();
 
     // Combine additional message with forwarded content
-    let combined_body = if additional_message.is_empty() {
+    let combined_body = if params.additional_message.is_empty() {
         format!(
             r#"<html><body>{}{}</body></html>"#,
             forwarded_header, cleaned_original_body
         )
     } else {
         // Convert plain text additional message to HTML (replace newlines with <br/>)
-        let html_message = additional_message.replace('\n', "<br/>");
+        let html_message = params.additional_message.replace('\n', "<br/>");
         format!(
             r#"<html><body><p>{}</p>{}{}</body></html>"#,
             html_message, forwarded_header, cleaned_original_body
@@ -342,7 +348,7 @@ pub async fn forward_email(
         .subject(forward_subject);
 
     // Add CC recipients if provided
-    if let Some(cc_str) = cc {
+    if let Some(cc_str) = params.cc {
         if !cc_str.trim().is_empty() {
             // Split by comma and parse each CC recipient
             for cc_addr in cc_str.split(',') {
@@ -357,14 +363,14 @@ pub async fn forward_email(
     }
 
     // Validate attachment sizes if attachments are present
-    if let Some(ref attachment_list) = attachments {
+    if let Some(ref attachment_list) = params.attachments {
         if !attachment_list.is_empty() {
             validate_attachment_sizes(&config.email, attachment_list)?;
         }
     }
 
     // Build multipart message with attachments if present
-    let email = if let Some(attachment_list) = attachments {
+    let email = if let Some(attachment_list) = params.attachments {
         if !attachment_list.is_empty() {
             let mut multipart = MultiPart::mixed().singlepart(SinglePart::html(combined_body));
 

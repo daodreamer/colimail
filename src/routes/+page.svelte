@@ -629,15 +629,17 @@
         }
         result = await invoke<string>("forward_email", {
           config: selectedConfig,
-          to: appState.composeTo,
-          originalSubject: selectedEmail.subject,
-          originalFrom: selectedEmail.from,
-          originalTo: selectedEmail.to,
-          originalDate: selectedEmail.date,
-          originalBody: appState.emailBody || "",
-          additionalMessage: appState.composeBody,
-          cc: appState.composeCc || null,
-          attachments: attachmentsData,
+          params: {
+            to: appState.composeTo,
+            originalSubject: selectedEmail.subject,
+            originalFrom: selectedEmail.from,
+            originalTo: selectedEmail.to,
+            originalDate: selectedEmail.date,
+            originalBody: appState.emailBody || "",
+            additionalMessage: appState.composeBody,
+            cc: appState.composeCc || null,
+            attachments: attachmentsData,
+          },
         });
       } else {
         if (!appState.composeBody) {
