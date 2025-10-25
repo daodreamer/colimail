@@ -355,6 +355,24 @@
       if (appState.selectedAccountId) {
         loadAttachmentsForEmail(appState.selectedAccountId, uid);
       }
+
+      // Auto-mark as read when opening email
+      const selectedEmail = appState.emails.find((email) => email.uid === uid);
+      if (selectedEmail && !selectedEmail.seen) {
+        try {
+          await invoke("mark_email_as_read", {
+            config: selectedConfig,
+            uid,
+            folder: appState.selectedFolderName,
+          });
+
+          // Update local state
+          selectedEmail.seen = true;
+          appState.emails = [...appState.emails];
+        } catch (e) {
+          console.error("Failed to mark email as read:", e);
+        }
+      }
     } catch (e) {
       console.error(`❌ Failed to fetch email body:`, e);
       appState.error = `Failed to fetch email body: ${e}`;
@@ -670,6 +688,50 @@
     }
   }
 
+  async function handleToggleReadStatus() {
+    if (!appState.selectedAccountId || !appState.selectedEmailUid) {
+      appState.error = "Please select an email first.";
+      return;
+    }
+
+    const selectedEmail = appState.emails.find((email) => email.uid === appState.selectedEmailUid);
+    if (!selectedEmail) {
+      appState.error = "Could not find selected email.";
+      return;
+    }
+
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+    if (!selectedConfig) {
+      appState.error = "Could not find selected account configuration.";
+      return;
+    }
+
+    try {
+      if (selectedEmail.seen) {
+        // Mark as unread
+        await invoke("mark_email_as_unread", {
+          config: selectedConfig,
+          uid: appState.selectedEmailUid,
+          folder: appState.selectedFolderName,
+        });
+        selectedEmail.seen = false;
+      } else {
+        // Mark as read
+        await invoke("mark_email_as_read", {
+          config: selectedConfig,
+          uid: appState.selectedEmailUid,
+          folder: appState.selectedFolderName,
+        });
+        selectedEmail.seen = true;
+      }
+
+      // Update local state to trigger re-render
+      appState.emails = [...appState.emails];
+    } catch (e) {
+      appState.error = `Failed to toggle read status: ${e}`;
+    }
+  }
+
   async function handleDeleteEmail() {
     if (!appState.selectedAccountId || !appState.selectedEmailUid) {
       appState.error = "Please select an email first.";
@@ -905,6 +967,7 @@
     onForward={handleForwardClick}
     onDelete={handleDeleteEmail}
     onDownloadAttachment={downloadAttachment}
+    onToggleRead={handleToggleReadStatus}
   />
 
   <ComposeDialog

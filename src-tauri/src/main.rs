@@ -12,9 +12,10 @@ use commands::{
     fetch_email_body_cached, fetch_emails, fetch_folders, forward_email, get_attachment_size_limit,
     get_last_sync_time, get_notification_enabled, get_sound_enabled, get_sync_interval,
     listen_for_oauth_callback, load_account_configs, load_attachments_info, load_emails_from_cache,
-    load_folders, move_email_to_trash, reply_email, save_account_config, save_attachment_to_file,
-    send_email, set_notification_enabled, set_sound_enabled, set_sync_interval, should_sync,
-    start_oauth2_flow, sync_emails, sync_folders,
+    load_folders, mark_email_as_read, mark_email_as_unread, move_email_to_trash, reply_email,
+    save_account_config, save_attachment_to_file, send_email, set_notification_enabled,
+    set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow, sync_emails,
+    sync_folders,
 };
 use idle_manager::{IdleCommand, IdleManager};
 use models::AccountConfig;
@@ -222,6 +223,8 @@ async fn main() {
             load_attachments_info,
             download_attachment,
             save_attachment_to_file,
+            mark_email_as_read,
+            mark_email_as_unread,
             start_idle,
             stop_idle,
             stop_all_idle,

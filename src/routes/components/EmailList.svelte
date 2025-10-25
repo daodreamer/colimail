@@ -48,10 +48,14 @@
           <button
             class="email-item"
             class:selected={email.uid === selectedEmailUid}
+            class:unread={!email.seen}
             onclick={() => onEmailClick(email.uid)}
           >
             <div class="email-item-content">
               <div class="indicators">
+                {#if !email.seen}
+                  <span class="unread-indicator" title="Unread email">●</span>
+                {/if}
                 {#if email.has_attachments}
                   <span class="attachment-indicator" title="This email has attachments">📎</span>
                 {/if}
@@ -129,6 +133,11 @@
     background-color: var(--sidebar-bg);
   }
 
+  .email-item.unread .from,
+  .email-item.unread .subject {
+    font-weight: 700;
+  }
+
   .email-item-content {
     flex: 1;
     display: flex;
@@ -143,6 +152,19 @@
     align-items: center;
     gap: 0.25rem;
     flex-shrink: 0;
+  }
+
+  .unread-indicator {
+    color: #007bff;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    display: inline-block;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .unread-indicator {
+      color: #24c8db;
+    }
   }
 
   .attachment-indicator {

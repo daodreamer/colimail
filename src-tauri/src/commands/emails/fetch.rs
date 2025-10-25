@@ -110,7 +110,7 @@ pub async fn fetch_emails(
         println!("Fetching messages with sequence range: {}", seq_range);
 
         let messages = imap_session
-            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
+            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
             .map_err(|e| e.to_string())?;
 
         let mut headers = Vec::new();
@@ -216,6 +216,12 @@ pub async fn fetch_emails(
                 .map(check_for_attachments)
                 .unwrap_or(false);
 
+            // Check if email has been read by examining FLAGS
+            let seen = msg
+                .flags()
+                .iter()
+                .any(|flag| matches!(flag, imap::types::Flag::Seen));
+
             headers.push(EmailHeader {
                 uid: msg.uid.unwrap_or(0),
                 subject,
@@ -225,6 +231,7 @@ pub async fn fetch_emails(
                 date,
                 timestamp,
                 has_attachments,
+                seen,
             });
         }
 

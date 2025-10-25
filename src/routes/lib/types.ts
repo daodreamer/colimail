@@ -20,6 +20,7 @@ export interface EmailHeader {
   date: string;
   timestamp: number; // Unix timestamp in seconds
   has_attachments?: boolean;
+  seen?: boolean; // Read/unread status
 }
 
 export interface AttachmentInfo {

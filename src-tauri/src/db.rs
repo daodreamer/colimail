@@ -81,6 +81,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await;
 
+    // Migration: Add seen column to emails table for read/unread status
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN seen INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+
     // Migration: Add cc_addr column to emails table for CC recipients
     let _ = sqlx::query("ALTER TABLE emails ADD COLUMN cc_addr TEXT")
         .execute(&pool)

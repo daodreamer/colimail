@@ -51,6 +51,8 @@ pub struct EmailHeader {
     pub timestamp: i64, // Unix timestamp in seconds for sorting and conversion
     #[serde(default)]
     pub has_attachments: bool, // Indicates if email has attachments
+    #[serde(default)]
+    pub seen: bool, // Read/unread status
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -147,7 +147,7 @@ async fn incremental_sync(
                         println!("📥 Fetching messages: {}", seq_range);
 
                         let messages = imap_session
-                            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
+                            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
                             .map_err(|e| e.to_string())?;
 
                         parse_email_headers(messages.iter().rev())
@@ -206,7 +206,7 @@ async fn incremental_sync(
                                     .collect::<Vec<_>>()
                                     .join(",");
 
-                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE)") {
+                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE FLAGS)") {
                                     Ok(messages) => {
                                         let count = messages.len();
                                         if count > 0 {
@@ -272,7 +272,7 @@ async fn incremental_sync(
                     println!("📥 Fetching messages: {}", seq_range);
 
                     let messages = imap_session
-                        .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE)")
+                        .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
                         .map_err(|e| e.to_string())?;
 
                     parse_email_headers(messages.iter().rev())
@@ -444,6 +444,12 @@ where
             .map(check_for_attachments)
             .unwrap_or(false);
 
+        // Check if email has been read by examining FLAGS
+        let seen = msg
+            .flags()
+            .iter()
+            .any(|flag| matches!(flag, imap::types::Flag::Seen));
+
         headers.push(EmailHeader {
             uid: msg.uid.unwrap_or(0),
             subject,
@@ -453,6 +459,7 @@ where
             date,
             timestamp,
             has_attachments,
+            seen,
         });
     }
 

@@ -15,6 +15,7 @@
     onForward,
     onDelete,
     onDownloadAttachment,
+    onToggleRead,
   }: {
     email?: EmailHeader | null;
     body?: string | null;
@@ -26,6 +27,7 @@
     onForward: () => void;
     onDelete: () => void;
     onDownloadAttachment: (attachmentId: number, filename: string) => void;
+    onToggleRead: () => void;
   } = $props();
 </script>
 
@@ -58,6 +60,9 @@
       <div class="email-actions">
         <button class="action-button reply-button" onclick={onReply}> ↩ Reply </button>
         <button class="action-button forward-button" onclick={onForward}> ➡ Forward </button>
+        <button class="action-button read-button" onclick={onToggleRead}>
+          {email.seen ? "✉ Mark Unread" : "✅ Mark Read"}
+        </button>
         <button class="action-button delete-email-button" onclick={onDelete}> 🗑 Delete </button>
       </div>
     </div>
