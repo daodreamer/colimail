@@ -3,6 +3,7 @@
   import { formatFileSize } from "../lib/utils";
   import { Button } from "$lib/components/ui/button";
   import { Badge } from "$lib/components/ui/badge";
+  import { Skeleton } from "$lib/components/ui/skeleton";
 
   // Props
   let {
@@ -18,8 +19,22 @@
 
 {#if isLoading}
   <div class="flex-shrink-0 border-b bg-muted/40 p-4">
-    <h3 class="mb-2 text-sm font-semibold">Attachments</h3>
-    <p class="text-xs text-muted-foreground">Loading attachments...</p>
+    <div class="mb-3 flex items-center gap-2">
+      <Skeleton class="h-5 w-24" />
+      <Skeleton class="h-5 w-8 rounded-full" />
+    </div>
+    <div class="space-y-2">
+      {#each Array(2) as _, i}
+        <div class="flex items-center gap-3 rounded-md border p-3">
+          <Skeleton class="h-6 w-6" />
+          <div class="flex flex-1 flex-col gap-1">
+            <Skeleton class="h-4 w-32" />
+            <Skeleton class="h-3 w-16" />
+          </div>
+          <Skeleton class="h-6 w-6" />
+        </div>
+      {/each}
+    </div>
   </div>
 {:else if attachments.length > 0}
   <div class="flex-shrink-0 border-b bg-muted/40 p-4">

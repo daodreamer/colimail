@@ -2,6 +2,7 @@
   import type { Folder } from "../lib/types";
   import { Button } from "$lib/components/ui/button";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { Skeleton } from "$lib/components/ui/skeleton";
 
   // Props
   let {
@@ -25,9 +26,16 @@
   </div>
 
   {#if isLoading}
-    <p class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-      Loading folders...
-    </p>
+    <ScrollArea class="flex-1 px-3 py-2">
+      <div class="space-y-1">
+        {#each Array(6) as _, i}
+          <div class="flex items-center gap-2 rounded-md p-2">
+            <Skeleton class="h-4 w-4 shrink-0" />
+            <Skeleton class="h-4 flex-1" />
+          </div>
+        {/each}
+      </div>
+    </ScrollArea>
   {:else if folders.length > 0}
     <ScrollArea class="flex-1 px-3 py-2">
       <div class="space-y-1">

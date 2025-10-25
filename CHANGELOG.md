@@ -27,14 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **UI Components**: Implemented shadcn-svelte components across all views
   - `AccountsSidebar`: Button, ScrollArea, Badge, Separator, ButtonGroup (vertical orientation)
-  - `FoldersSidebar`: Button, ScrollArea
-  - `EmailList`: Card, ScrollArea, Badge - refined card hover states and typography
-  - `EmailBody`: Card, Button, ScrollArea, Separator, ButtonGroup (action toolbar)
+  - `FoldersSidebar`: Button, ScrollArea, Skeleton (loading state)
+  - `EmailList`: Card, ScrollArea, Badge, Skeleton (loading state with 8 placeholder cards)
+  - `EmailBody`: Card, Button, ScrollArea, Separator, ButtonGroup (action toolbar), Skeleton (loading state)
   - `ComposeDialog`: Dialog, Input, Textarea, Button, Label, Badge, ButtonGroup (footer actions)
-  - `AttachmentList`: Button, Badge
+  - `AttachmentList`: Button, Badge, Skeleton (loading state with 2 placeholder items)
   - `Settings Page`: Card, Input, Label, Separator
   - `Account Page`: Card, Input, Label, Button, ButtonGroup - OAuth2 and manual configuration forms
   - `Notification Window`: Tailwind CSS styling for toast notifications
+- **Loading States**: Added Skeleton components for better loading UX
+  - EmailList shows 8 skeleton cards while fetching emails
+  - EmailBody displays skeleton for header, metadata, action buttons, and content
+  - FoldersSidebar shows 6 skeleton items while loading folders
+  - AttachmentList displays 2 skeleton items while fetching attachments
 - **Button Groups**: Added official shadcn-svelte ButtonGroup component for better visual hierarchy
   - Grouped related actions (Reply/Forward, Compose/Refresh, etc.)
   - Consistent spacing and borders following shadcn design patterns

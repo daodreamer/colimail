@@ -4,6 +4,7 @@
   import { Card } from "$lib/components/ui/card";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Badge } from "$lib/components/ui/badge";
+  import { Skeleton } from "$lib/components/ui/skeleton";
 
   // Props
   let {
@@ -41,7 +42,22 @@
 
 <div class="flex h-screen flex-col border-r">
   {#if isLoading}
-    <p class="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading emails...</p>
+    <ScrollArea class="flex-1 p-2">
+      <div class="space-y-1.5">
+        {#each Array(8) as _, i}
+          <Card class="p-3.5">
+            <div class="mb-2 flex items-center justify-between gap-2">
+              <div class="flex min-w-0 flex-1 items-center gap-2">
+                <Skeleton class="h-2 w-2 rounded-full" />
+                <Skeleton class="h-4 w-32" />
+              </div>
+              <Skeleton class="h-3 w-16" />
+            </div>
+            <Skeleton class="h-4 w-full" />
+          </Card>
+        {/each}
+      </div>
+    </ScrollArea>
   {:else if error && emails.length === 0}
     <p class="flex flex-1 items-center justify-center text-sm text-destructive">{error}</p>
   {:else if emails.length > 0}

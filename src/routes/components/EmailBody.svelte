@@ -6,6 +6,7 @@
   import { Button } from "$lib/components/ui/button";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Separator } from "$lib/components/ui/separator";
+  import { Skeleton } from "$lib/components/ui/skeleton";
   import * as ButtonGroup from "$lib/components/ui/button-group";
 
   // Props
@@ -38,7 +39,44 @@
 
 <main class="flex h-screen flex-col">
   {#if isLoadingBody}
-    <p class="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading email content...</p>
+    <!-- Skeleton loading state -->
+    <div class="flex-shrink-0 border-b bg-muted/40 p-6">
+      <Skeleton class="mb-4 h-8 w-3/4" />
+      
+      <div class="space-y-2">
+        <div class="flex gap-2">
+          <Skeleton class="h-4 w-16" />
+          <Skeleton class="h-4 w-48" />
+        </div>
+        <div class="flex gap-2">
+          <Skeleton class="h-4 w-16" />
+          <Skeleton class="h-4 w-64" />
+        </div>
+        <div class="flex gap-2">
+          <Skeleton class="h-4 w-16" />
+          <Skeleton class="h-4 w-40" />
+        </div>
+      </div>
+
+      <div class="mt-6 flex items-center gap-2">
+        <Skeleton class="h-8 w-32" />
+        <Skeleton class="h-8 w-32" />
+        <Skeleton class="h-8 w-32" />
+        <Skeleton class="h-8 w-24" />
+      </div>
+    </div>
+
+    <div class="flex-1 p-6">
+      <div class="space-y-3">
+        <Skeleton class="h-4 w-full" />
+        <Skeleton class="h-4 w-full" />
+        <Skeleton class="h-4 w-5/6" />
+        <Skeleton class="h-4 w-full" />
+        <Skeleton class="h-4 w-4/5" />
+        <Skeleton class="h-4 w-full" />
+        <Skeleton class="h-4 w-3/4" />
+      </div>
+    </div>
   {:else if email && body}
     <div class="flex-shrink-0 border-b bg-muted/40 p-6">
       <h2 class="mb-4 text-2xl font-semibold">{email.subject}</h2>
