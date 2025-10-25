@@ -42,6 +42,9 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Create dummy OAuth2 credentials
+        run: cp src-tauri/oauth2_credentials.json.example src-tauri/oauth2_credentials.json
+
       - name: Format Rust code
         working-directory: src-tauri
         run: cargo fmt --check
