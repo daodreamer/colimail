@@ -6,7 +6,7 @@ use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, PhysicalPosition, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, LogicalPosition, WebviewUrl, WebviewWindowBuilder};
 use tokio::sync::mpsc;
 
 /// Notification data to be queued
@@ -665,8 +665,8 @@ fn create_notification_window(app_handle: &AppHandle, title: &str, from: &str, s
     // Get screen dimensions to position in bottom-right
     let window_width = 380;
     let window_height = 120;
-    let margin_right = 130; // Distance from right edge (80 + 50 = 130)
-    let margin_bottom = 110; // Distance from bottom edge (to avoid taskbar)
+    let margin_right = 20; // Distance from right edge (comfortable margin)
+    let margin_bottom = 20; // Distance from bottom edge (comfortable margin)
 
     // Create window builder
     match WebviewWindowBuilder::new(app_handle, &window_label, WebviewUrl::App(url.into()))
@@ -681,27 +681,54 @@ fn create_notification_window(app_handle: &AppHandle, title: &str, from: &str, s
         .build()
     {
         Ok(window) => {
-            // Get primary monitor to calculate position
+            // Get primary monitor to calculate position using available work area
             if let Some(monitor) = window.current_monitor().ok().flatten() {
-                let monitor_size = monitor.size();
-                let monitor_position = monitor.position();
+                // Get monitor properties
+                let work_size = monitor.size();
+                let work_position = monitor.position();
+                let scale_factor = monitor.scale_factor();
 
-                // Calculate position in physical pixels (bottom-right corner of monitor)
-                let x =
-                    monitor_position.x + (monitor_size.width as i32) - window_width - margin_right;
-                let y = monitor_position.y + (monitor_size.height as i32)
-                    - window_height
-                    - margin_bottom;
+                // Convert physical pixels to logical pixels for macOS Retina displays
+                // On Retina displays, scale_factor is typically 2.0
+                let logical_width = (work_size.width as f64 / scale_factor) as i32;
+                let logical_height = (work_size.height as f64 / scale_factor) as i32;
+                let logical_pos_x = (work_position.x as f64 / scale_factor) as i32;
+                let logical_pos_y = (work_position.y as f64 / scale_factor) as i32;
+
+                // Calculate position in logical pixels (bottom-right corner of work area)
+                // This ensures correct positioning on both regular and Retina displays
+                let x = logical_pos_x + logical_width - window_width - margin_right;
+                let y = logical_pos_y + logical_height - window_height - margin_bottom;
 
                 println!(
-                    "📍 Monitor size: {:?}, position: {:?}",
-                    monitor_size, monitor_position
+                    "📍 Monitor - physical size: {:?}, position: {:?}, scale: {}x",
+                    work_size, work_position, scale_factor
+                );
+                println!(
+                    "📍 Monitor - logical size: {}x{}, position: ({}, {})",
+                    logical_width, logical_height, logical_pos_x, logical_pos_y
                 );
                 println!("📍 Notification window position: ({}, {})", x, y);
+                println!(
+                    "📍 Window size - logical: {}x{}, margins: right={}px, bottom={}px",
+                    window_width, window_height, margin_right, margin_bottom
+                );
 
-                // Set position and show
-                if let Err(e) = window.set_position(PhysicalPosition::new(x, y)) {
+                // Set position using LogicalPosition (not PhysicalPosition!)
+                // This is crucial for Retina displays where logical != physical pixels
+                if let Err(e) = window.set_position(LogicalPosition::new(x, y)) {
                     eprintln!("❌ Failed to set notification window position: {}", e);
+                }
+
+                // Debug: Print actual window size after creation
+                if let Ok(size) = window.outer_size() {
+                    println!("📍 Actual window outer size: {:?}", size);
+                }
+                if let Ok(size) = window.inner_size() {
+                    println!("📍 Actual window inner size: {:?}", size);
+                }
+                if let Ok(pos) = window.outer_position() {
+                    println!("📍 Actual window position: {:?}", pos);
                 }
             }
 

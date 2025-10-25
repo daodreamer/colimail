@@ -22,6 +22,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Ensured proper column initialization for fresh database installations
   - Maintained backward compatibility with existing databases through migration statements
   - Issue primarily affected macOS M4 chip users with new installations
+- **UI**: Fixed notification window positioning issue on macOS with Retina displays
+  - **Root cause**: Used `PhysicalPosition` with logical coordinates, causing incorrect positioning on Retina displays
+  - **Solution**: Changed to `LogicalPosition` to properly handle DPI scaling
+  - Notification windows now correctly appear in bottom-right corner on all screen resolutions
+  - Properly converts physical pixels (4096x2304) to logical pixels (2048x1152) for Retina displays
+  - Uses appropriate coordinate system: logical coordinates for logical pixel calculations
+  - Adjusted margins to 20px each for comfortable spacing above Dock/taskbar
+  - Added comprehensive logging for debugging (physical/logical dimensions, scale factor, window size)
 
 ## [0.1.1] - 2025-10-24
 
