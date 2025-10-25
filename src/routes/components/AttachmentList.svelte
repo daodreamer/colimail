@@ -1,6 +1,8 @@
 <script lang="ts">
   import type { AttachmentInfo } from "../lib/types";
   import { formatFileSize } from "../lib/utils";
+  import { Button } from "$lib/components/ui/button";
+  import { Badge } from "$lib/components/ui/badge";
 
   // Props
   let {
@@ -15,111 +17,31 @@
 </script>
 
 {#if isLoading}
-  <div class="attachments-section">
-    <h3>Attachments</h3>
-    <p class="loading-text">Loading attachments...</p>
+  <div class="flex-shrink-0 border-b bg-muted/40 p-4">
+    <h3 class="mb-2 text-sm font-semibold">Attachments</h3>
+    <p class="text-xs text-muted-foreground">Loading attachments...</p>
   </div>
 {:else if attachments.length > 0}
-  <div class="attachments-section">
-    <h3>📎 Attachments ({attachments.length})</h3>
-    <div class="attachments-list">
+  <div class="flex-shrink-0 border-b bg-muted/40 p-4">
+    <h3 class="mb-3 text-sm font-semibold">
+      📎 Attachments
+      <Badge variant="secondary" class="ml-2">{attachments.length}</Badge>
+    </h3>
+    <div class="space-y-2">
       {#each attachments as attachment (attachment.id)}
-        <button
-          type="button"
-          class="attachment-item"
+        <Button
+          variant="outline"
+          class="h-auto w-full justify-start gap-3 p-3"
           onclick={() => onDownload(attachment.id, attachment.filename)}
         >
-          <span class="attachment-icon">📎</span>
-          <div class="attachment-info">
-            <span class="attachment-name">{attachment.filename}</span>
-            <span class="attachment-size">{formatFileSize(attachment.size)}</span>
+          <span class="text-xl">📎</span>
+          <div class="flex flex-1 flex-col items-start gap-1 overflow-hidden">
+            <span class="w-full truncate text-sm font-medium">{attachment.filename}</span>
+            <span class="text-xs text-muted-foreground">{formatFileSize(attachment.size)}</span>
           </div>
-          <span class="download-icon">⬇</span>
-        </button>
+          <span class="shrink-0 text-xl text-primary">⬇</span>
+        </Button>
       {/each}
     </div>
   </div>
 {/if}
-
-<style>
-  .attachments-section {
-    padding: 1rem 2rem;
-    background-color: var(--sidebar-bg);
-    border-bottom: 1px solid var(--border-color);
-    flex-shrink: 0;
-  }
-
-  h3 {
-    margin: 0 0 0.75rem 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: var(--text-color);
-  }
-
-  .loading-text {
-    color: #666;
-    font-size: 0.875rem;
-  }
-
-  .attachments-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .attachment-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    background-color: var(--app-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.2s, border-color 0.2s;
-    text-align: left;
-    font: inherit;
-    color: inherit;
-    width: 100%;
-  }
-
-  .attachment-item:hover {
-    background-color: var(--hover-bg);
-    border-color: var(--selected-bg);
-  }
-
-  .attachment-item:active {
-    transform: scale(0.98);
-  }
-
-  .attachment-icon {
-    font-size: 1.5rem;
-    flex-shrink: 0;
-  }
-
-  .attachment-info {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    min-width: 0;
-  }
-
-  .attachment-name {
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .attachment-size {
-    font-size: 0.875rem;
-    color: #666;
-  }
-
-  .download-icon {
-    font-size: 1.25rem;
-    color: var(--selected-bg);
-    flex-shrink: 0;
-  }
-</style>

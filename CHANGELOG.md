@@ -14,6 +14,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.2.0] - TBD
+
+### Changed
+- **UI Framework**: Migrated entire frontend to shadcn-svelte component library with Tailwind CSS
+  - Replaced all custom CSS components with professional shadcn-svelte components
+  - Integrated Tailwind CSS for consistent, modern styling
+  - Improved component architecture with better composition and reusability
+  - Enhanced dark mode support with proper theming
+  - Better accessibility support built into components
+
+### Added
+- **UI Components**: Implemented shadcn-svelte components across all views
+  - `AccountsSidebar`: Button, ScrollArea, Badge, Separator
+  - `FoldersSidebar`: Button, ScrollArea
+  - `EmailList`: Card, ScrollArea, Badge
+  - `EmailBody`: Card, Button, ScrollArea, Separator
+  - `ComposeDialog`: Dialog, Input, Textarea, Button, Label, Badge
+  - `AttachmentList`: Button, Badge
+  - `Settings Page`: Card, Input, Label, Separator
+- **Notifications**: Replaced custom toast with Sonner toast library for professional notifications
+- **Typography**: Added Tailwind Typography for better email body rendering
+
+### Improved
+- **Design Consistency**: All UI elements now follow a unified design system
+- **User Experience**: Smoother interactions and transitions
+- **Code Maintainability**: Simplified component code with utility-first CSS
+- **Performance**: Optimized component rendering with Tailwind's JIT compiler
+
 ## [0.1.4] - 2025-10-25
 
 ### Fixed

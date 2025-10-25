@@ -1,6 +1,11 @@
 <script lang="ts">
   import { formatFileSize } from "../lib/utils";
   import RichTextEditor from "./RichTextEditor.svelte";
+  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "$lib/components/ui/dialog";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
+  import { Badge } from "$lib/components/ui/badge";
 
   // Props
   let {
@@ -47,345 +52,109 @@
         return "Compose Email";
     }
   }
-
-  function handleKeyDown(event: KeyboardEvent) {
-    if (event.key === "Escape") {
-      onCancel();
-    }
-  }
 </script>
 
-{#if show}
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div class="modal-overlay" onclick={onCancel} onkeydown={handleKeyDown}>
-    <!-- svelte-ignore a11y_click_events_have_key_events -->
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
-    <div
-      class="modal-content"
-      onclick={(e) => e.stopPropagation()}
-      onkeydown={handleKeyDown}
-      role="dialog"
-      aria-modal="true"
-      tabindex="-1"
-    >
-      <div class="modal-header">
-        <h2>{getModalTitle()}</h2>
-        <button class="close-button" onclick={onCancel}>×</button>
+<Dialog open={show} onOpenChange={(open) => { if (!open) onCancel(); }}>
+  <DialogContent class="max-w-2xl max-h-[90vh] flex flex-col">
+    <DialogHeader>
+      <DialogTitle>{getModalTitle()}</DialogTitle>
+    </DialogHeader>
+
+    <div class="flex-1 space-y-4 overflow-y-auto px-1">
+      {#if error}
+        <div class="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+          {error}
+        </div>
+      {/if}
+
+      <div class="space-y-2">
+        <Label for="compose-to">To:</Label>
+        <Input
+          type="email"
+          id="compose-to"
+          bind:value={to}
+          placeholder="recipient@example.com"
+          disabled={isSending}
+        />
       </div>
 
-      <div class="modal-body">
-        {#if error}
-          <div class="error-banner">{error}</div>
-        {/if}
+      <div class="space-y-2">
+        <Label for="compose-cc">CC:</Label>
+        <Input
+          type="text"
+          id="compose-cc"
+          bind:value={cc}
+          placeholder="cc@example.com (separate multiple with commas)"
+          disabled={isSending}
+        />
+      </div>
 
-        <div class="form-group">
-          <label for="compose-to">To:</label>
-          <input
-            type="email"
-            id="compose-to"
-            bind:value={to}
-            placeholder="recipient@example.com"
-            disabled={isSending}
-          />
-        </div>
+      <div class="space-y-2">
+        <Label for="compose-subject">Subject:</Label>
+        <Input
+          type="text"
+          id="compose-subject"
+          bind:value={subject}
+          placeholder="Email subject"
+          disabled={isSending}
+        />
+      </div>
 
-        <div class="form-group">
-          <label for="compose-cc">CC:</label>
-          <input
-            type="text"
-            id="compose-cc"
-            bind:value={cc}
-            placeholder="cc@example.com (separate multiple with commas)"
-            disabled={isSending}
-          />
-        </div>
+      <div class="space-y-2">
+        <Label for="compose-body">Body:</Label>
+        <RichTextEditor
+          bind:value={body}
+          disabled={isSending}
+          placeholder="Write your message here..."
+        />
+      </div>
 
-        <div class="form-group">
-          <label for="compose-subject">Subject:</label>
-          <input
-            type="text"
-            id="compose-subject"
-            bind:value={subject}
-            placeholder="Email subject"
-            disabled={isSending}
-          />
-        </div>
+      <div class="space-y-2">
+        <Label for="compose-attachments">
+          Attachments:
+          <span class="text-xs text-muted-foreground ml-1">
+            (Max: {formatFileSize(attachmentSizeLimit)})
+          </span>
+        </Label>
+        <Input
+          type="file"
+          id="compose-attachments"
+          multiple
+          onchange={onAttachmentAdd}
+          disabled={isSending}
+        />
 
-        <div class="form-group">
-          <label for="compose-body">Body:</label>
-          <RichTextEditor
-            bind:value={body}
-            disabled={isSending}
-            placeholder="Write your message here..."
-          />
-        </div>
-
-        <div class="form-group">
-          <label for="compose-attachments">
-            Attachments:
-            <span class="attachment-limit-info">
-              (Max: {formatFileSize(attachmentSizeLimit)})
-            </span>
-          </label>
-          <input
-            type="file"
-            id="compose-attachments"
-            multiple
-            onchange={onAttachmentAdd}
-            disabled={isSending}
-            style="margin-bottom: 0.5rem;"
-          />
-
-          {#if attachments.length > 0}
-            <div class="attachments-list">
-              {#each attachments as file, index}
-                <div class="attachment-item">
-                  <span class="attachment-name">{file.name}</span>
-                  <span class="attachment-size">({formatFileSize(file.size)})</span>
-                  <button
-                    class="remove-attachment-button"
-                    onclick={() => onAttachmentRemove(index)}
-                    disabled={isSending}
-                    title="Remove attachment"
-                  >
-                    ×
-                  </button>
-                </div>
-              {/each}
-              <div class="attachment-total">
-                Total: {formatFileSize(totalAttachmentSize)} / {formatFileSize(
-                  attachmentSizeLimit
-                )}
+        {#if attachments.length > 0}
+          <div class="space-y-2 pt-2">
+            {#each attachments as file, index}
+              <div class="flex items-center gap-2 rounded-md border bg-muted/40 p-2">
+                <span class="flex-1 truncate text-sm">{file.name}</span>
+                <Badge variant="secondary" class="text-xs">{formatFileSize(file.size)}</Badge>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-6 w-6 shrink-0 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                  onclick={() => onAttachmentRemove(index)}
+                  disabled={isSending}
+                  title="Remove attachment"
+                >
+                  ×
+                </Button>
               </div>
+            {/each}
+            <div class="rounded-md bg-muted p-2 text-right text-xs font-medium">
+              Total: {formatFileSize(totalAttachmentSize)} / {formatFileSize(attachmentSizeLimit)}
             </div>
-          {/if}
-        </div>
-      </div>
-
-      <div class="modal-footer">
-        <button class="cancel-button" onclick={onCancel} disabled={isSending}> Cancel </button>
-        <button class="send-button" onclick={onSend} disabled={isSending}>
-          {isSending ? "Sending..." : "Send"}
-        </button>
+          </div>
+        {/if}
       </div>
     </div>
-  </div>
-{/if}
 
-<style>
-  .modal-overlay {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background-color: rgba(0, 0, 0, 0.5);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-  }
-
-  .modal-content {
-    background-color: var(--app-bg);
-    border-radius: 8px;
-    width: 90%;
-    max-width: 600px;
-    max-height: 90vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  }
-
-  .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .modal-header h2 {
-    margin: 0;
-    font-size: 1.25rem;
-  }
-
-  .close-button {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    color: #999;
-    cursor: pointer;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 4px;
-    transition: all 0.2s;
-  }
-
-  .close-button:hover {
-    background-color: #ff4444;
-    color: white;
-  }
-
-  .modal-body {
-    padding: 1.5rem;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .error-banner {
-    background-color: #f8d7da;
-    color: #721c24;
-    padding: 0.75rem;
-    border-radius: 4px;
-    margin-bottom: 1rem;
-    border: 1px solid #f5c6cb;
-  }
-
-  .form-group {
-    margin-bottom: 1rem;
-  }
-
-  .form-group label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-  }
-
-  .form-group input {
-    width: 100%;
-    padding: 0.5rem;
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
-    font-family: inherit;
-    font-size: 1rem;
-    background-color: var(--app-bg);
-    color: var(--text-color);
-  }
-
-  .form-group input:focus {
-    outline: none;
-    border-color: var(--selected-bg);
-  }
-
-  .attachment-limit-info {
-    font-size: 0.85rem;
-    color: #666;
-    font-weight: normal;
-  }
-
-  .attachments-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .attachment-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    background-color: var(--sidebar-bg);
-    border: 1px solid var(--border-color);
-    border-radius: 6px;
-  }
-
-  .attachment-name {
-    flex: 1;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .attachment-size {
-    font-size: 0.875rem;
-    color: #666;
-    flex-shrink: 0;
-  }
-
-  .remove-attachment-button {
-    background-color: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    font-size: 18px;
-    line-height: 1;
-    cursor: pointer;
-    padding: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.2s;
-    flex-shrink: 0;
-  }
-
-  .remove-attachment-button:hover:not(:disabled) {
-    background-color: #c82333;
-  }
-
-  .remove-attachment-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-
-  .attachment-total {
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    background-color: var(--sidebar-bg);
-    border-radius: 4px;
-    font-weight: 500;
-    font-size: 0.9rem;
-    text-align: right;
-  }
-
-  .modal-footer {
-    padding: 1rem 1.5rem;
-    border-top: 1px solid var(--border-color);
-    display: flex;
-    justify-content: flex-end;
-    gap: 0.5rem;
-  }
-
-  .cancel-button,
-  .send-button {
-    padding: 0.5rem 1.5rem;
-    border-radius: 4px;
-    border: none;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.2s;
-  }
-
-  .cancel-button {
-    background-color: #6c757d;
-    color: white;
-  }
-
-  .cancel-button:hover:not(:disabled) {
-    background-color: #5a6268;
-  }
-
-  .send-button {
-    background-color: #007bff;
-    color: white;
-  }
-
-  .send-button:hover:not(:disabled) {
-    background-color: #0056b3;
-  }
-
-  .cancel-button:disabled,
-  .send-button:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-</style>
+    <DialogFooter class="gap-2">
+      <Button variant="secondary" onclick={onCancel} disabled={isSending}>Cancel</Button>
+      <Button variant="default" onclick={onSend} disabled={isSending}>
+        {isSending ? "Sending..." : "Send"}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>

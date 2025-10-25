@@ -1,6 +1,9 @@
 <script lang="ts">
   import type { EmailHeader } from "../lib/types";
   import { formatLocalDateTime } from "../lib/utils";
+  import { Card } from "$lib/components/ui/card";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { Badge } from "$lib/components/ui/badge";
 
   // Props
   let {
@@ -36,183 +39,44 @@
   }
 </script>
 
-<div class="email-list-pane">
+<div class="flex h-screen flex-col border-r">
   {#if isLoading}
-    <p>Loading emails...</p>
+    <p class="flex flex-1 items-center justify-center text-sm text-muted-foreground">Loading emails...</p>
   {:else if error && emails.length === 0}
-    <p class="error-message">{error}</p>
+    <p class="flex flex-1 items-center justify-center text-sm text-destructive">{error}</p>
   {:else if emails.length > 0}
-    <ul class="email-list">
-      {#each emails as email (email.uid)}
-        <li>
-          <button
-            class="email-item"
-            class:selected={email.uid === selectedEmailUid}
-            class:unread={!email.seen}
+    <ScrollArea class="flex-1 p-2">
+      <div class="space-y-2">
+        {#each emails as email (email.uid)}
+          <Card
+            class="cursor-pointer transition-colors hover:bg-accent {email.uid === selectedEmailUid ? 'border-l-4 border-l-primary bg-accent' : ''}"
             onclick={() => onEmailClick(email.uid)}
           >
-            <div class="email-item-content">
-              <div class="indicators">
-                {#if !email.seen}
-                  <span class="unread-indicator" title="Unread email">●</span>
-                {/if}
-                {#if email.has_attachments}
-                  <span class="attachment-indicator" title="This email has attachments">📎</span>
-                {/if}
-                {#if isCcRecipient(email)}
-                  <span class="cc-indicator" title="You received this as CC">CC</span>
-                {/if}
-              </div>
-              <div class="email-text">
-                <div class="from">{email.from}</div>
-                <div class="subject">{email.subject}</div>
+            <div class="p-3">
+              <div class="flex items-start gap-2">
+                <div class="flex flex-wrap items-center gap-1">
+                  {#if !email.seen}
+                    <Badge variant="default" class="h-2 w-2 rounded-full bg-blue-500 p-0" title="Unread email" />
+                  {/if}
+                  {#if email.has_attachments}
+                    <span class="text-sm opacity-70" title="This email has attachments">📎</span>
+                  {/if}
+                  {#if isCcRecipient(email)}
+                    <Badge variant="secondary" class="text-xs" title="You received this as CC">CC</Badge>
+                  {/if}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="text-sm {!email.seen ? 'font-bold' : 'font-medium'}">{email.from}</div>
+                  <div class="text-sm {!email.seen ? 'font-bold' : ''} truncate">{email.subject}</div>
+                </div>
+                <time class="shrink-0 text-xs text-muted-foreground">{formatLocalDateTime(email.timestamp)}</time>
               </div>
             </div>
-            <div class="date">{formatLocalDateTime(email.timestamp)}</div>
-          </button>
-        </li>
-      {/each}
-    </ul>
+          </Card>
+        {/each}
+      </div>
+    </ScrollArea>
   {:else if selectedAccountId}
-    <p>No emails found in this inbox.</p>
+    <p class="flex flex-1 items-center justify-center text-sm text-muted-foreground">No emails found in this inbox.</p>
   {/if}
 </div>
-
-<style>
-  .email-list-pane {
-    border-right: 1px solid var(--border-color);
-    padding: 0;
-    height: 100vh;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .email-list-pane > p {
-    padding: 1rem;
-    text-align: center;
-  }
-
-  .email-list {
-    list-style: none;
-    padding: 0.5rem;
-    margin: 0;
-    text-align: left;
-    flex: 1;
-    overflow-y: auto;
-    min-height: 0;
-  }
-
-  .email-list li {
-    margin-bottom: 4px;
-  }
-
-  .email-item {
-    background: none;
-    border: none;
-    font: inherit;
-    text-align: left;
-    width: 100%;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    padding: 0.75rem;
-    cursor: pointer;
-    transition: background-color 0.2s;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    gap: 0.5rem;
-  }
-
-  .email-item:hover {
-    background-color: var(--sidebar-bg);
-  }
-
-  .email-item.selected {
-    border-left: 4px solid var(--selected-bg);
-    background-color: var(--sidebar-bg);
-  }
-
-  .email-item.unread .from,
-  .email-item.unread .subject {
-    font-weight: 700;
-  }
-
-  .email-item-content {
-    flex: 1;
-    display: flex;
-    align-items: flex-start;
-    gap: 0.5rem;
-    min-width: 0;
-  }
-
-  .indicators {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 0.25rem;
-    flex-shrink: 0;
-  }
-
-  .unread-indicator {
-    color: #007bff;
-    font-size: 0.8rem;
-    flex-shrink: 0;
-    display: inline-block;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    .unread-indicator {
-      color: #24c8db;
-    }
-  }
-
-  .attachment-indicator {
-    font-size: 1rem;
-    flex-shrink: 0;
-    opacity: 0.7;
-    display: inline-block;
-  }
-
-  .cc-indicator {
-    font-size: 0.7rem;
-    font-weight: 600;
-    background-color: #6c757d;
-    color: white;
-    padding: 2px 6px;
-    border-radius: 3px;
-    flex-shrink: 0;
-    opacity: 0.8;
-    display: inline-block;
-  }
-
-  .email-text {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .email-item .from {
-    font-weight: bold;
-    font-size: 0.9rem;
-  }
-
-  .email-item .subject {
-    margin: 0.25rem 0;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .email-item .date {
-    font-size: 0.8rem;
-    color: #666;
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-
-  .error-message {
-    color: #d9534f;
-    text-align: center;
-    padding: 2rem;
-  }
-</style>

@@ -3,6 +3,8 @@
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { save, ask, message } from "@tauri-apps/plugin-dialog";
+  import { toast } from "svelte-sonner";
+  import { Toaster } from "$lib/components/ui/sonner";
 
   // Components
   import AccountsSidebar from "./components/AccountsSidebar.svelte";
@@ -10,7 +12,6 @@
   import EmailList from "./components/EmailList.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
-  import ToastNotification from "./components/ToastNotification.svelte";
 
   // Types and utilities
   import type { AccountConfig, EmailHeader, IdleEvent, Folder } from "./lib/types";
@@ -19,15 +20,6 @@
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Custom notification state
-  interface ToastNotificationData {
-    title: string;
-    body: string;
-    from: string;
-    subject: string;
-  }
-  let toastNotification = $state<ToastNotificationData | null>(null);
 
   // Lifecycle: Initialize app
   onMount(() => {
@@ -55,11 +47,13 @@
         const unlisten = await listen<IdleEvent>("idle-event", handleIdleEvent);
 
         // Listen for custom notification event
-        const unlistenNotification = await listen<ToastNotificationData>(
+        const unlistenNotification = await listen<{ title: string; body: string; from: string; subject: string }>(
           "show-custom-notification",
           (event) => {
             console.log("📬 Received custom notification event:", event.payload);
-            toastNotification = event.payload;
+            toast.success(event.payload.title, {
+              description: `From: ${event.payload.from}\nSubject: ${event.payload.subject}`,
+            });
           }
         );
 
@@ -925,7 +919,7 @@
   }
 </script>
 
-<div class="main-layout">
+<div class="grid h-screen w-screen grid-cols-[240px_200px_320px_1fr] overflow-hidden">
   <AccountsSidebar
     accounts={appState.accounts}
     selectedAccountId={appState.selectedAccountId}
@@ -988,76 +982,6 @@
     onAttachmentRemove={removeAttachment}
   />
 
-  {#if toastNotification}
-    <ToastNotification
-      title={toastNotification.title}
-      body={toastNotification.body}
-      from={toastNotification.from}
-      subject={toastNotification.subject}
-      onClose={() => {
-        toastNotification = null;
-      }}
-    />
-  {/if}
+  <Toaster />
 </div>
 
-<style>
-  /* Global scrollbar hiding */
-  :global(*) {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-
-  :global(*::-webkit-scrollbar) {
-    display: none;
-  }
-
-  :global(html),
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    width: 100vw;
-    height: 100vh;
-    overflow: hidden;
-    position: fixed;
-  }
-
-  :root {
-    --border-color: #dcdcdc;
-    --sidebar-bg: #e8e8e8;
-    --app-bg: #f6f6f6;
-    --text-color: #0f0f0f;
-    --hover-bg: #dcdcdc;
-    --selected-bg: #007bff;
-    --selected-text: white;
-    --link-bg: #007bff;
-    --link-text: white;
-    --link-hover-bg: #0056b3;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --border-color: #3a3a3a;
-      --sidebar-bg: #252525;
-      --app-bg: #2f2f2f;
-      --text-color: #f6f6f6;
-      --hover-bg: #3a3a3a;
-      --selected-bg: #24c8db;
-      --selected-text: #1a1a1a;
-      --link-bg: #24c8db;
-      --link-text: #1a1a1a;
-      --link-hover-bg: #1c9aa8;
-    }
-  }
-
-  .main-layout {
-    display: grid;
-    grid-template-columns: 240px 200px 320px 1fr;
-    height: 100vh;
-    width: 100vw;
-    font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
-    background-color: var(--app-bg);
-    color: var(--text-color);
-    overflow: hidden;
-  }
-</style>
