@@ -23,8 +23,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved component architecture with better composition and reusability
   - Enhanced dark mode support with proper theming
   - Better accessibility support built into components
+- **Layout Architecture**: Complete redesign with official shadcn-svelte Sidebar component
+  - Implemented professional 3-column layout: Sidebar | Email List | Email Content
+  - Left sidebar with collapsible navigation and account management
+  - Dropdown menu for account selection with visual indicators
+  - Folder list integrated directly into sidebar (no separate column)
+  - Middle column (400px) dedicated to email list with header controls
+  - Right column (flexible) for email content viewing
+  - Responsive keyboard shortcuts (Cmd/Ctrl+B to toggle sidebar)
+- **Typography**: Integrated Inter font family to match shadcn-svelte official design
+  - Primary UI font: Inter with weights 400, 500, 600, 700
+  - Fallback stack: System fonts for optimal cross-platform rendering
+  - Consistent with shadcn-svelte documentation standards
+- **Color Scheme**: Updated sidebar CSS variables to match official shadcn-svelte specification
+  - Light mode: Pure grayscale values for cleaner neutral palette
+  - Dark mode: Deep backgrounds with proper contrast ratios
+  - Removed color tints for professional appearance
+  - Updated text contrast in sidebar for better readability
 
 ### Added
+- **Sidebar Component**: Official shadcn-svelte Sidebar with advanced features
+  - `Sidebar.Provider` for state management
+  - `Sidebar.Header` with account dropdown menu (Mail icon + email + status)
+  - `Sidebar.Content` with scrollable folder list
+  - `Sidebar.Footer` with user account menu (订阅方案/设置/登出)
+  - Support for collapsible/expandable states
+  - Proper hover states and active indicators
 - **UI Components**: Implemented shadcn-svelte components across all views
   - `AccountsSidebar`: Button, ScrollArea, Badge, Separator, ButtonGroup (vertical orientation)
   - `FoldersSidebar`: Button, ScrollArea, Skeleton (loading state)
@@ -35,6 +59,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `Settings Page`: Card, Input, Label, Separator
   - `Account Page`: Card, Input, Label, Button, ButtonGroup - OAuth2 and manual configuration forms
   - `Notification Window`: Tailwind CSS styling for toast notifications
+- **New Dependencies**:
+  - `lucide-svelte`: Modern icon library for Svelte
+  - `dropdown-menu`: Dropdown component for account/user menus
+  - `sheet`: Mobile responsive sheet component
+  - `tooltip`: Tooltip component for better UX
 - **Loading States**: Added Skeleton components for better loading UX
   - EmailList shows 8 skeleton cards while fetching emails
   - EmailBody displays skeleton for header, metadata, action buttons, and content

@@ -5,10 +5,10 @@
   import { save, ask, message } from "@tauri-apps/plugin-dialog";
   import { toast } from "svelte-sonner";
   import { Toaster } from "$lib/components/ui/sonner";
+  import * as Sidebar from "$lib/components/ui/sidebar";
 
   // Components
-  import AccountsSidebar from "./components/AccountsSidebar.svelte";
-  import FoldersSidebar from "./components/FoldersSidebar.svelte";
+  import AppSidebar from "./components/AppSidebar.svelte";
   import EmailList from "./components/EmailList.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
@@ -919,50 +919,73 @@
   }
 </script>
 
-<div class="grid h-screen w-screen grid-cols-[240px_200px_320px_1fr] overflow-hidden">
-  <AccountsSidebar
+<Sidebar.Provider>
+  <AppSidebar
     accounts={appState.accounts}
     selectedAccountId={appState.selectedAccountId}
-    isSyncing={appState.isSyncing}
-    lastSyncTime={appState.lastSyncTime}
-    currentTime={appState.currentTime}
-    onAccountClick={handleAccountClick}
-    onCompose={handleComposeClick}
-    onRefresh={handleManualRefresh}
-    onDeleteAccount={handleDeleteAccount}
-  />
-
-  <FoldersSidebar
-    bind:folders={appState.folders}
-    bind:selectedFolderName={appState.selectedFolderName}
-    isLoading={appState.isLoadingFolders}
-    selectedAccountId={appState.selectedAccountId}
+    folders={appState.folders}
+    selectedFolderName={appState.selectedFolderName}
+    isLoadingFolders={appState.isLoadingFolders}
+    onAccountSelect={handleAccountClick}
     onFolderClick={handleFolderClick}
+    onAddAccount={() => window.location.href = '/account'}
+    onSettings={() => window.location.href = '/settings'}
   />
+  <Sidebar.Inset>
+    <div class="flex h-screen flex-1 overflow-hidden">
+      <!-- Middle Column: Email List -->
+      <div class="w-[400px] border-r">
+        <div class="flex h-14 items-center justify-between border-b px-4">
+          <Sidebar.Trigger />
+          <h2 class="text-sm font-semibold">
+            {appState.selectedFolderName || "Inbox"}
+          </h2>
+          <div class="flex items-center gap-2">
+            <button
+              onclick={handleComposeClick}
+              disabled={!appState.selectedAccountId}
+              class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              ✉️ Compose
+            </button>
+            <button
+              onclick={handleManualRefresh}
+              disabled={!appState.selectedAccountId || appState.isSyncing}
+              class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
+            >
+              {appState.isSyncing ? "🔄 Syncing..." : "🔄 Refresh"}
+            </button>
+          </div>
+        </div>
+        <EmailList
+          emails={appState.emails}
+          selectedEmailUid={appState.selectedEmailUid}
+          isLoading={appState.isLoadingEmails}
+          error={appState.error}
+          selectedAccountId={appState.selectedAccountId}
+          currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
+          onEmailClick={handleEmailClick}
+        />
+      </div>
 
-  <EmailList
-    emails={appState.emails}
-    selectedEmailUid={appState.selectedEmailUid}
-    isLoading={appState.isLoadingEmails}
-    error={appState.error}
-    selectedAccountId={appState.selectedAccountId}
-    currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
-    onEmailClick={handleEmailClick}
-  />
-
-  <EmailBody
-    email={appState.selectedEmail}
-    body={appState.emailBody}
-    attachments={appState.attachments}
-    isLoadingBody={appState.isLoadingBody}
-    isLoadingAttachments={appState.isLoadingAttachments}
-    error={appState.error}
-    onReply={handleReplyClick}
-    onForward={handleForwardClick}
-    onDelete={handleDeleteEmail}
-    onDownloadAttachment={downloadAttachment}
-    onToggleRead={handleToggleReadStatus}
-  />
+      <!-- Right Column: Email Body -->
+      <div class="flex-1">
+        <EmailBody
+          email={appState.selectedEmail}
+          body={appState.emailBody}
+          attachments={appState.attachments}
+          isLoadingBody={appState.isLoadingBody}
+          isLoadingAttachments={appState.isLoadingAttachments}
+          error={appState.error}
+          onReply={handleReplyClick}
+          onForward={handleForwardClick}
+          onDelete={handleDeleteEmail}
+          onDownloadAttachment={downloadAttachment}
+          onToggleRead={handleToggleReadStatus}
+        />
+      </div>
+    </div>
+  </Sidebar.Inset>
 
   <ComposeDialog
     show={appState.showComposeDialog}
@@ -983,5 +1006,5 @@
   />
 
   <Toaster />
-</div>
+</Sidebar.Provider>
 
