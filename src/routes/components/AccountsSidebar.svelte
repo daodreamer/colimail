@@ -6,6 +6,7 @@
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Badge } from "$lib/components/ui/badge";
   import { Separator } from "$lib/components/ui/separator";
+  import * as ButtonGroup from "$lib/components/ui/button-group";
 
   // Props
   let {
@@ -77,24 +78,28 @@
     </div>
   </ScrollArea>
 
-  <div class="space-y-2 p-3">
-    <Button
-      variant="default"
-      class="w-full bg-green-600 hover:bg-green-700"
-      onclick={onCompose}
-      disabled={!selectedAccountId}
-    >
-      ✉️ Compose
-    </Button>
+  <div class="space-y-3 p-3">
+    <ButtonGroup.Root orientation="vertical" class="w-full">
+      <Button
+        variant="default"
+        class="w-full justify-start"
+        onclick={onCompose}
+        disabled={!selectedAccountId}
+      >
+        <span class="text-base">✉️</span>
+        <span class="ml-2">Compose</span>
+      </Button>
 
-    <Button
-      variant="default"
-      class="w-full bg-blue-600 hover:bg-blue-700"
-      onclick={onRefresh}
-      disabled={!selectedAccountId || isSyncing}
-    >
-      {isSyncing ? "🔄 Syncing..." : "🔄 Refresh"}
-    </Button>
+      <Button
+        variant="default"
+        class="w-full justify-start"
+        onclick={onRefresh}
+        disabled={!selectedAccountId || isSyncing}
+      >
+        <span class="text-base">🔄</span>
+        <span class="ml-2">{isSyncing ? "Syncing..." : "Refresh"}</span>
+      </Button>
+    </ButtonGroup.Root>
 
     {#if selectedAccountId && lastSyncTime > 0}
       <p class="text-center text-xs text-muted-foreground">
@@ -104,8 +109,16 @@
 
     <Separator />
 
-    <Button variant="default" class="w-full" href="/account">+ Add Account</Button>
-    <Button variant="secondary" class="w-full" href="/settings">⚙️ Settings</Button>
+    <ButtonGroup.Root orientation="vertical" class="w-full">
+      <Button variant="outline" class="w-full justify-start" href="/account">
+        <span class="text-base">+</span>
+        <span class="ml-2">Add Account</span>
+      </Button>
+      <Button variant="outline" class="w-full justify-start" href="/settings">
+        <span class="text-base">⚙️</span>
+        <span class="ml-2">Settings</span>
+      </Button>
+    </ButtonGroup.Root>
   </div>
 </aside>
 

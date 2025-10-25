@@ -6,6 +6,7 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
+  import * as ButtonGroup from "$lib/components/ui/button-group";
 
   // Props
   let {
@@ -151,10 +152,12 @@
     </div>
 
     <DialogFooter class="gap-2">
-      <Button variant="secondary" onclick={onCancel} disabled={isSending}>Cancel</Button>
-      <Button variant="default" onclick={onSend} disabled={isSending}>
-        {isSending ? "Sending..." : "Send"}
-      </Button>
+      <ButtonGroup.Root>
+        <Button variant="outline" onclick={onCancel} disabled={isSending}>Cancel</Button>
+        <Button variant="default" onclick={onSend} disabled={isSending}>
+          {isSending ? "Sending..." : "Send"}
+        </Button>
+      </ButtonGroup.Root>
     </DialogFooter>
   </DialogContent>
 </Dialog>

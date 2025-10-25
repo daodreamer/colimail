@@ -46,31 +46,29 @@
     <p class="flex flex-1 items-center justify-center text-sm text-destructive">{error}</p>
   {:else if emails.length > 0}
     <ScrollArea class="flex-1 p-2">
-      <div class="space-y-2">
+      <div class="space-y-1.5">
         {#each emails as email (email.uid)}
           <Card
-            class="cursor-pointer transition-colors hover:bg-accent {email.uid === selectedEmailUid ? 'border-l-4 border-l-primary bg-accent' : ''}"
+            class="cursor-pointer transition-all hover:shadow-sm {email.uid === selectedEmailUid ? 'border-primary bg-accent shadow-sm' : 'hover:border-muted-foreground/20'}"
             onclick={() => onEmailClick(email.uid)}
           >
-            <div class="p-3">
-              <div class="flex items-start gap-2">
-                <div class="flex flex-wrap items-center gap-1">
+            <div class="p-3.5">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <div class="flex min-w-0 flex-1 items-center gap-2">
                   {#if !email.seen}
-                    <Badge variant="default" class="h-2 w-2 rounded-full bg-blue-500 p-0" title="Unread email" />
+                    <Badge variant="default" class="h-2 w-2 rounded-full bg-primary p-0" title="Unread email" />
+                  {/if}
+                  <span class="truncate text-sm font-medium {!email.seen ? 'font-semibold' : ''}">{email.from}</span>
+                  {#if isCcRecipient(email)}
+                    <Badge variant="secondary" class="shrink-0 text-[10px] px-1 py-0 h-4" title="You received this as CC">CC</Badge>
                   {/if}
                   {#if email.has_attachments}
-                    <span class="text-sm opacity-70" title="This email has attachments">📎</span>
+                    <span class="shrink-0 text-xs opacity-60" title="This email has attachments">📎</span>
                   {/if}
-                  {#if isCcRecipient(email)}
-                    <Badge variant="secondary" class="text-xs" title="You received this as CC">CC</Badge>
-                  {/if}
-                </div>
-                <div class="flex-1 min-w-0">
-                  <div class="text-sm {!email.seen ? 'font-bold' : 'font-medium'}">{email.from}</div>
-                  <div class="text-sm {!email.seen ? 'font-bold' : ''} truncate">{email.subject}</div>
                 </div>
                 <time class="shrink-0 text-xs text-muted-foreground">{formatLocalDateTime(email.timestamp)}</time>
               </div>
+              <div class="truncate text-sm {!email.seen ? 'font-medium' : 'text-muted-foreground'}">{email.subject}</div>
             </div>
           </Card>
         {/each}

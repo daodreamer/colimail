@@ -26,20 +26,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **UI Components**: Implemented shadcn-svelte components across all views
-  - `AccountsSidebar`: Button, ScrollArea, Badge, Separator
+  - `AccountsSidebar`: Button, ScrollArea, Badge, Separator, ButtonGroup (vertical orientation)
   - `FoldersSidebar`: Button, ScrollArea
-  - `EmailList`: Card, ScrollArea, Badge
-  - `EmailBody`: Card, Button, ScrollArea, Separator
-  - `ComposeDialog`: Dialog, Input, Textarea, Button, Label, Badge
+  - `EmailList`: Card, ScrollArea, Badge - refined card hover states and typography
+  - `EmailBody`: Card, Button, ScrollArea, Separator, ButtonGroup (action toolbar)
+  - `ComposeDialog`: Dialog, Input, Textarea, Button, Label, Badge, ButtonGroup (footer actions)
   - `AttachmentList`: Button, Badge
   - `Settings Page`: Card, Input, Label, Separator
-  - `Account Page`: Card, Input, Label, Button - OAuth2 and manual configuration forms
+  - `Account Page`: Card, Input, Label, Button, ButtonGroup - OAuth2 and manual configuration forms
   - `Notification Window`: Tailwind CSS styling for toast notifications
+- **Button Groups**: Added official shadcn-svelte ButtonGroup component for better visual hierarchy
+  - Grouped related actions (Reply/Forward, Compose/Refresh, etc.)
+  - Consistent spacing and borders following shadcn design patterns
+  - Improved accessibility with proper ARIA roles
 - **Notifications**: Replaced custom toast with Sonner toast library for professional notifications
 - **Typography**: Added Tailwind Typography for better email body rendering
 
 ### Improved
-- **Design Consistency**: All UI elements now follow a unified design system
+- **Design Consistency**: All UI elements now follow shadcn-svelte official design patterns
+  - Refined button sizes and spacing to match shadcn documentation
+  - Improved visual hierarchy with proper font weights and colors
+  - Better hover states and focus indicators
+  - Consistent use of muted colors for secondary information
 - **User Experience**: Smoother interactions and transitions
 - **Code Maintainability**: Simplified component code with utility-first CSS
 - **Performance**: Optimized component rendering with Tailwind's JIT compiler

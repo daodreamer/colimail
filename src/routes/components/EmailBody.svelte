@@ -6,6 +6,7 @@
   import { Button } from "$lib/components/ui/button";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
   import { Separator } from "$lib/components/ui/separator";
+  import * as ButtonGroup from "$lib/components/ui/button-group";
 
   // Props
   let {
@@ -63,15 +64,29 @@
         </div>
       </div>
 
-      <div class="mt-4 flex flex-wrap gap-2">
-        <Button variant="default" size="sm" onclick={onReply}>↩ Reply</Button>
-        <Button variant="default" size="sm" class="bg-green-600 hover:bg-green-700" onclick={onForward}>
-          ➡ Forward
+      <div class="mt-6 flex items-center gap-2">
+        <ButtonGroup.Root>
+          <Button variant="default" size="sm" onclick={onReply}>
+            <span class="text-base">↩</span>
+            <span class="ml-1.5">Reply</span>
+          </Button>
+          <Button variant="default" size="sm" onclick={onForward}>
+            <span class="text-base">➡</span>
+            <span class="ml-1.5">Forward</span>
+          </Button>
+        </ButtonGroup.Root>
+
+        <ButtonGroup.Root>
+          <Button variant="outline" size="sm" onclick={onToggleRead}>
+            <span class="text-base">{email.seen ? "✉" : "✅"}</span>
+            <span class="ml-1.5">{email.seen ? "Mark Unread" : "Mark Read"}</span>
+          </Button>
+        </ButtonGroup.Root>
+
+        <Button variant="outline" size="sm" class="text-destructive hover:bg-destructive hover:text-destructive-foreground" onclick={onDelete}>
+          <span class="text-base">🗑</span>
+          <span class="ml-1.5">Delete</span>
         </Button>
-        <Button variant="secondary" size="sm" onclick={onToggleRead}>
-          {email.seen ? "✉ Mark Unread" : "✅ Mark Read"}
-        </Button>
-        <Button variant="destructive" size="sm" onclick={onDelete}>🗑 Delete</Button>
       </div>
     </div>
 

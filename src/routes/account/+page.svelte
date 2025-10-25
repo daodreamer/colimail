@@ -5,6 +5,7 @@
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
+  import * as ButtonGroup from "$lib/components/ui/button-group";
 
   let authMode: "manual" | "oauth" = $state("manual");
   let selectedProvider: "google" | "outlook" = $state("google");
@@ -139,22 +140,22 @@
     </div>
 
     <!-- Authentication Mode Selector -->
-    <div class="flex gap-2 border-b">
+    <ButtonGroup.Root class="w-full border-b">
       <Button
         variant={authMode === 'oauth' ? 'default' : 'ghost'}
-        class="rounded-b-none"
+        class="flex-1 rounded-b-none"
         onclick={() => (authMode = "oauth")}
       >
         OAuth2 认证 (推荐)
       </Button>
       <Button
         variant={authMode === 'manual' ? 'default' : 'ghost'}
-        class="rounded-b-none"
+        class="flex-1 rounded-b-none"
         onclick={() => (authMode = "manual")}
       >
         手动配置
       </Button>
-    </div>
+    </ButtonGroup.Root>
 
     {#if authMode === "oauth"}
       <!-- OAuth2 Flow -->
@@ -169,28 +170,28 @@
           <!-- Provider Selection -->
           <div class="space-y-2">
             <Label>选择邮箱服务商</Label>
-            <div class="grid grid-cols-2 gap-4">
+            <ButtonGroup.Root class="w-full">
               <Button
                 variant={selectedProvider === 'google' ? 'default' : 'outline'}
-                class="h-16 text-base"
+                class="h-14 flex-1 text-base"
                 onclick={() => (selectedProvider = "google")}
               >
-                <span class="mr-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <span class="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                   G
                 </span>
                 Google
               </Button>
               <Button
                 variant={selectedProvider === 'outlook' ? 'default' : 'outline'}
-                class="h-16 text-base"
+                class="h-14 flex-1 text-base"
                 onclick={() => (selectedProvider = "outlook")}
               >
-                <span class="mr-2 flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                <span class="mr-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold">
                   M
                 </span>
                 Outlook
               </Button>
-            </div>
+            </ButtonGroup.Root>
           </div>
 
           <!-- Email Input -->
