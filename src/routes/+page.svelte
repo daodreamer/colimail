@@ -926,10 +926,12 @@
     folders={appState.folders}
     selectedFolderName={appState.selectedFolderName}
     isLoadingFolders={appState.isLoadingFolders}
+    isSyncing={appState.isSyncing}
     onAccountSelect={handleAccountClick}
     onFolderClick={handleFolderClick}
     onAddAccount={() => window.location.href = '/account'}
     onSettings={() => window.location.href = '/settings'}
+    onSyncMail={handleManualRefresh}
   />
   <Sidebar.Inset>
     <div class="flex h-screen flex-1 overflow-hidden">
@@ -947,13 +949,6 @@
               class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
             >
               ✉️ Compose
-            </button>
-            <button
-              onclick={handleManualRefresh}
-              disabled={!appState.selectedAccountId || appState.isSyncing}
-              class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-            >
-              {appState.isSyncing ? "🔄 Syncing..." : "🔄 Refresh"}
             </button>
           </div>
         </div>

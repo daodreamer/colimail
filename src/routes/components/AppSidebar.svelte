@@ -7,7 +7,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { Separator } from "$lib/components/ui/separator";
   import type { AccountConfig, Folder } from "../lib/types";
-  import { ChevronDown, ChevronUp, Mail, Folder as FolderIcon, Plus, Settings, LogOut } from "lucide-svelte";
+  import { ChevronDown, ChevronUp, Mail, Folder as FolderIcon, Plus, Settings, LogOut, RefreshCw } from "lucide-svelte";
 
   // Props
   let {
@@ -16,20 +16,24 @@
     folders = [] as Folder[],
     selectedFolderName = "INBOX",
     isLoadingFolders = false,
+    isSyncing = false,
     onAccountSelect,
     onFolderClick,
     onAddAccount,
     onSettings,
+    onSyncMail,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
     folders?: Folder[];
     selectedFolderName?: string;
     isLoadingFolders?: boolean;
+    isSyncing?: boolean;
     onAccountSelect: (accountId: number) => void;
     onFolderClick: (folderName: string) => void;
     onAddAccount: () => void;
     onSettings: () => void;
+    onSyncMail: () => void;
   } = $props();
 
   // Get selected account
@@ -131,6 +135,17 @@
 
   <Sidebar.Footer>
     <Sidebar.Menu>
+      <Sidebar.MenuItem>
+        <Sidebar.MenuButton onclick={onSyncMail}>
+          {#snippet child({ props }: { props: Record<string, any> })}
+            <button {...props} disabled={!selectedAccountId || isSyncing}>
+              <RefreshCw class="size-4 {isSyncing ? 'animate-spin' : ''}" />
+              <span>{isSyncing ? "Syncing..." : "Sync Mail"}</span>
+            </button>
+          {/snippet}
+        </Sidebar.MenuButton>
+      </Sidebar.MenuItem>
+      <Sidebar.Separator />
       <Sidebar.MenuItem>
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>

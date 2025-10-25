@@ -40,6 +40,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Dark mode: Deep backgrounds with proper contrast ratios
   - Removed color tints for professional appearance
   - Updated text contrast in sidebar for better readability
+- **Email List Density**: Optimized email card spacing for higher information density
+  - Reduced vertical padding from 4px to 2px per card
+  - Maintained card spacing at 4px between items
+  - Preserved font sizes and readability while showing more emails per screen
+  - Total card height reduced to ~46px for compact display
+- **Sync Mail Button**: Relocated global email sync control to sidebar footer
+  - Renamed from "Refresh" to "Sync Mail" for clarity
+  - Moved from header to left sidebar footer (above User Account menu)
+  - Added RefreshCw icon with rotate animation during sync
+  - Clearly indicates purpose: synchronize all accounts and folders
+  - Improved accessibility with proper disabled states
 
 ### Added
 - **Sidebar Component**: Official shadcn-svelte Sidebar with advanced features
@@ -82,6 +93,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved visual hierarchy with proper font weights and colors
   - Better hover states and focus indicators
   - Consistent use of muted colors for secondary information
+- **Email List Compactness**: Achieved mobile-app-like density without sacrificing readability
+  - Card vertical padding reduced to 2px (from previous 4px)
+  - Inter line spacing optimized to 2px between sender and subject
+  - Maintains full card styling with rounded corners and borders
+  - Space-efficient layout shows ~30% more emails per screen
+- **Sidebar Layout**: Enhanced sidebar footer organization
+  - Sync Mail button prominently positioned above user menu
+  - Clear visual separation with separator line
+  - Improved button hierarchy and accessibility
 - **User Experience**: Smoother interactions and transitions
 - **Code Maintainability**: Simplified component code with utility-first CSS
 - **Performance**: Optimized component rendering with Tailwind's JIT compiler

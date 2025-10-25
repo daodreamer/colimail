@@ -42,11 +42,11 @@
 
 <div class="flex h-screen flex-col border-r">
   {#if isLoading}
-    <ScrollArea class="flex-1 p-2">
-      <div class="space-y-1.5">
+    <ScrollArea class="flex-1 px-1.5 py-1">
+      <div class="space-y-1">
         {#each Array(8) as _, i}
-          <Card class="p-3.5">
-            <div class="mb-2 flex items-center justify-between gap-2">
+          <Card class="px-2 py-0.5">
+            <div class="mb-0.5 flex items-center justify-between gap-2">
               <div class="flex min-w-0 flex-1 items-center gap-2">
                 <Skeleton class="h-2 w-2 rounded-full" />
                 <Skeleton class="h-4 w-32" />
@@ -61,15 +61,15 @@
   {:else if error && emails.length === 0}
     <p class="flex flex-1 items-center justify-center text-sm text-destructive">{error}</p>
   {:else if emails.length > 0}
-    <ScrollArea class="flex-1 p-2">
-      <div class="space-y-1.5">
+    <ScrollArea class="flex-1 px-1.5 py-1">
+      <div class="space-y-1">
         {#each emails as email (email.uid)}
           <Card
             class="cursor-pointer transition-all hover:shadow-sm {email.uid === selectedEmailUid ? 'border-primary bg-accent shadow-sm' : 'hover:border-muted-foreground/20'}"
             onclick={() => onEmailClick(email.uid)}
           >
-            <div class="p-3.5">
-              <div class="mb-2 flex items-center justify-between gap-2">
+            <div class="px-2 py-0.5">
+              <div class="mb-0.5 flex items-center justify-between gap-2">
                 <div class="flex min-w-0 flex-1 items-center gap-2">
                   {#if !email.seen}
                     <Badge variant="default" class="h-2 w-2 rounded-full bg-primary p-0" title="Unread email" />
