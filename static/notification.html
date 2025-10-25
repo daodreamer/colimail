@@ -4,33 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>通知</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            width: 380px;
-            height: 120px;
-            overflow: hidden;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
-            background: transparent;
-        }
-
-        .toast {
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border-radius: 12px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            color: white;
-            display: flex;
-            flex-direction: column;
-            animation: slideIn 0.3s ease-out;
-        }
-
         @keyframes slideIn {
             from {
                 opacity: 0;
@@ -42,82 +17,34 @@
             }
         }
 
-        .toast-header {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 1rem 1rem 0.75rem 1rem;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .toast-icon {
-            font-size: 1.5rem;
-            line-height: 1;
-        }
-
-        .toast-title {
-            flex: 1;
-            font-weight: 600;
-            font-size: 1rem;
-        }
-
-        .close-button {
-            background: none;
-            border: none;
-            color: white;
-            font-size: 1.5rem;
-            line-height: 1;
-            cursor: pointer;
-            padding: 0;
-            width: 24px;
-            height: 24px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: background-color 0.2s;
-        }
-
-        .close-button:hover {
-            background-color: rgba(255, 255, 255, 0.2);
-        }
-
-        .toast-body {
-            padding: 0.75rem 1rem 1rem 1rem;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .toast-from {
-            font-size: 0.9rem;
-            margin-bottom: 0.25rem;
-            opacity: 0.95;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .toast-subject {
-            font-size: 0.85rem;
-            opacity: 0.9;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        .toast {
+            animation: slideIn 0.3s ease-out;
         }
     </style>
 </head>
-<body>
-    <div class="toast">
-        <div class="toast-header">
-            <span class="toast-icon">📧</span>
-            <span class="toast-title" id="title">新邮件</span>
-            <button class="close-button" id="closeBtn" aria-label="关闭">×</button>
+<body class="m-0 h-[120px] w-[380px] overflow-hidden bg-transparent">
+    <div class="toast flex h-full w-full flex-col rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-2xl">
+        <!-- Header -->
+        <div class="flex items-center gap-3 border-b border-white/20 px-4 pb-3 pt-4">
+            <span class="text-2xl">📧</span>
+            <span class="flex-1 text-base font-semibold" id="title">新邮件</span>
+            <button
+                id="closeBtn"
+                class="flex h-6 w-6 items-center justify-center rounded transition-colors hover:bg-white/20"
+                aria-label="关闭"
+            >
+                <span class="text-2xl leading-none">×</span>
+            </button>
         </div>
-        <div class="toast-body">
-            <div class="toast-from" id="from">发件人: </div>
-            <div class="toast-subject" id="subject">主题: </div>
+
+        <!-- Body -->
+        <div class="flex flex-1 flex-col justify-center px-4 pb-4 pt-3">
+            <div class="mb-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm opacity-95" id="from">
+                发件人:
+            </div>
+            <div class="overflow-hidden text-ellipsis whitespace-nowrap text-xs opacity-90" id="subject">
+                主题:
+            </div>
         </div>
     </div>
 

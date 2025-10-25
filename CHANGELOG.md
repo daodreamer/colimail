@@ -33,6 +33,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `ComposeDialog`: Dialog, Input, Textarea, Button, Label, Badge
   - `AttachmentList`: Button, Badge
   - `Settings Page`: Card, Input, Label, Separator
+  - `Account Page`: Card, Input, Label, Button - OAuth2 and manual configuration forms
+  - `Notification Window`: Tailwind CSS styling for toast notifications
 - **Notifications**: Replaced custom toast with Sonner toast library for professional notifications
 - **Typography**: Added Tailwind Typography for better email body rendering
 
