@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Plus, RefreshCw, PenSquare } from "lucide-svelte";
+  import { Mail, Plus, RefreshCw, PenSquare, MailPlus } from "lucide-svelte";
   import CircleUserRound from "lucide-svelte/icons/circle-user-round";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
@@ -138,7 +138,24 @@
     <Sidebar.Group>
       <Sidebar.GroupContent class="px-1.5 md:px-0">
         <Sidebar.Menu>
-          {#if isLoadingFolders}
+          {#if accounts.length === 0}
+            <!-- Show add account button when no accounts exist -->
+            <Sidebar.MenuItem>
+              <Sidebar.MenuButton
+                tooltipContentProps={{
+                  hidden: false,
+                }}
+                onclick={onAddAccount}
+                class="px-2.5 md:px-2"
+              >
+                {#snippet tooltipContent()}
+                  Add Account
+                {/snippet}
+                <MailPlus class="size-4" />
+                <span>Add Account</span>
+              </Sidebar.MenuButton>
+            </Sidebar.MenuItem>
+          {:else if isLoadingFolders}
             {#each Array(6) as _, i (i)}
               <Sidebar.MenuItem>
                 <Sidebar.MenuSkeleton />
@@ -170,17 +187,6 @@
                 No folders found
               </div>
             </Sidebar.MenuItem>
-          {:else}
-            <!-- Show add account button when no accounts exist -->
-            <div class="flex items-center justify-center min-h-[200px]">
-              <button
-                onclick={onAddAccount}
-                class="flex size-16 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-transparent hover:border-muted-foreground/50 hover:bg-accent transition-colors"
-                aria-label="Add Account"
-              >
-                <Plus class="size-8 text-muted-foreground" />
-              </button>
-            </div>
           {/if}
         </Sidebar.Menu>
       </Sidebar.GroupContent>
