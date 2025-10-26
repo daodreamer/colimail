@@ -103,11 +103,13 @@ pub async fn fetch_emails(
         }
 
         // IMAP sequence numbers start at 1, not 0
-        // Get last 20 messages (or all if less than 20)
-        let start = total.saturating_sub(19).max(1);
-        let seq_range = format!("{}:{}", start, total);
+        // Fetch all messages in the mailbox
+        let seq_range = format!("1:{}", total);
 
-        println!("Fetching messages with sequence range: {}", seq_range);
+        println!(
+            "Fetching all {} messages with sequence range: {}",
+            total, seq_range
+        );
 
         let messages = imap_session
             .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")

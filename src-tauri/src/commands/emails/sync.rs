@@ -137,14 +137,13 @@ async fn incremental_sync(
                     // Full sync needed: UIDVALIDITY changed
                     println!("⚠️ UIDVALIDITY changed! Full resync required.");
 
-                    // Fetch recent emails (last 100)
+                    // Fetch all emails in the mailbox
                     if server_exists == 0 {
                         Vec::new()
                     } else {
-                        let start = server_exists.saturating_sub(99).max(1);
-                        let seq_range = format!("{}:{}", start, server_exists);
+                        let seq_range = format!("1:{}", server_exists);
 
-                        println!("📥 Fetching messages: {}", seq_range);
+                        println!("📥 Fetching all {} messages: {}", server_exists, seq_range);
 
                         let messages = imap_session
                             .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
@@ -262,14 +261,13 @@ async fn incremental_sync(
                 // Full sync needed: no previous state
                 println!("🆕 First sync for this folder.");
 
-                // Fetch recent emails (last 100)
+                // Fetch all emails in the mailbox
                 if server_exists == 0 {
                     Vec::new()
                 } else {
-                    let start = server_exists.saturating_sub(99).max(1);
-                    let seq_range = format!("{}:{}", start, server_exists);
+                    let seq_range = format!("1:{}", server_exists);
 
-                    println!("📥 Fetching messages: {}", seq_range);
+                    println!("📥 Fetching all {} messages: {}", server_exists, seq_range);
 
                     let messages = imap_session
                         .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
