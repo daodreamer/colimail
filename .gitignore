@@ -13,8 +13,6 @@ vite.config.ts.timestamp-*
 /.history
 /.vscode
 /.claude
-/.cargo
-/.github
 
 # Debug and example folders
 /debug_pics
