@@ -1,7 +1,0 @@
-# This configuration attempts to work around a bug in the MSVC linker (LNK1318).
-# It instructs rustc to generate a single, consolidated PDB file ("packed") 
-# for the entire build, instead of one for each crate, thus avoiding the 
-# PDB-merging step in the linker where the bug occurs.
-
-[profile.dev]
-split-debuginfo = "packed"

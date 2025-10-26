@@ -1,7 +1,0 @@
-# This configuration switches the linker from Microsoft's `link.exe` to
-# LLVM's `rust-lld.exe`, which is included with the Rust toolchain. 
-# This is a robust workaround for persistent LNK1318 errors, as it 
-# completely bypasses the buggy MSVC linker.
-
-[target.x86_64-pc-windows-msvc]
-linker = "rust-lld.exe"

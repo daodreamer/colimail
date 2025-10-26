@@ -8,6 +8,14 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# IDE and editor folders
 /.history
+/.vscode
+/.claude
+/.cargo
+/.github
+
+# Debug and example folders
 /debug_pics
 /rust_example
