@@ -37,7 +37,7 @@
   } = $props();
 </script>
 
-<main class="flex h-screen flex-col">
+<main class="flex flex-1 flex-col overflow-hidden">
   {#if isLoadingBody}
     <!-- Skeleton loading state -->
     <div class="flex-shrink-0 border-b bg-muted/40 p-6">

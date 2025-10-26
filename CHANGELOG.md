@@ -14,6 +14,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.2.1] - 2025-10-26
+
+### Changed
+- **UI Architecture**: Migrated to official shadcn-svelte sidebar-09 nested sidebar pattern
+  - Implemented three-layer layout following shadcn-svelte best practices
+  - First sidebar (icon-only): Account switcher and folder navigation with icons
+  - Second sidebar (medium width): Email list with search and filters
+  - Main content area: Email body viewer with independent scrolling
+  - Each section now scrolls independently without affecting others
+  - Eliminated multiple scrollbars issue on main content area
+- **Sidebar Components**: Complete reorganization using nested Sidebar.Root pattern
+  - `AccountFolderSidebar`: Icon-only left sidebar with account dropdown and folder list
+  - `EmailListSidebar`: Middle sidebar with email list, compose button, and unread filter
+  - EmailBody now properly constrained within Sidebar.Inset with flex layout
+  - Proper z-index layering for header elements
+- **Email List Display**: Optimized content layout and typography
+  - Removed truncate classes that caused content cutoff with inline badges
+  - Sender names and subjects display fully without being cut off by CC/attachment icons
+  - Font sizes match official shadcn-svelte examples (text-sm for main content, text-xs for metadata)
+  - Improved spacing between inline elements (badges, icons) with gap-1.5
+  - Unread indicator (blue dot) properly aligned with sender name
+- **Scrolling Behavior**: Fixed independent scrolling for each UI section
+  - Email list scrolls independently within second sidebar
+  - Email body scrolls independently within main content area
+  - Scrolling email body no longer affects email list or overall page
+  - Proper overflow constraints with flex-1 and overflow-hidden containers
+
+### Added
+- **Unread Filter**: Toggle switch in email list header to show only unread emails
+  - Labeled "Unreads" with Switch component
+  - Filters email list in real-time without server requests
+  - Persistent state during navigation
+- **NavUser Component**: Official shadcn-svelte user account menu in sidebar footer
+  - Avatar display with user initials fallback
+  - Dropdown menu with account management options
+  - Professional styling matching shadcn design patterns
+
+### Fixed
+- **Layout Issues**: Resolved multiple visual and functional problems
+  - Fixed extra scrollbar appearing on right side of email body
+  - Corrected email list content being truncated/cut off
+  - Resolved cascading scroll behavior where scrolling one section affected others
+  - EmailBody now uses flex-1 with overflow-hidden instead of h-screen
+  - Proper flex layout hierarchy: Sidebar.Inset > flex flex-col > flex-1 overflow-hidden > EmailBody
+
+### Improved
+- **Component Organization**: Better separation of concerns following shadcn patterns
+  - AccountFolderSidebar handles account/folder navigation only
+  - EmailListSidebar handles email browsing and filtering
+  - Clear props interface between components
+  - Reduced component coupling for better maintainability
+
 ## [0.2.0] - TBD
 
 ### Changed

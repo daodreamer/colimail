@@ -8,8 +8,8 @@
   import * as Sidebar from "$lib/components/ui/sidebar";
 
   // Components
-  import AppSidebar from "./components/AppSidebar.svelte";
-  import EmailList from "./components/EmailList.svelte";
+  import AccountFolderSidebar from "./components/AccountFolderSidebar.svelte";
+  import EmailListSidebar from "./components/EmailListSidebar.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
 
@@ -919,66 +919,56 @@
   }
 </script>
 
-<Sidebar.Provider>
-  <AppSidebar
-    accounts={appState.accounts}
-    selectedAccountId={appState.selectedAccountId}
-    folders={appState.folders}
-    selectedFolderName={appState.selectedFolderName}
-    isLoadingFolders={appState.isLoadingFolders}
-    isSyncing={appState.isSyncing}
-    onAccountSelect={handleAccountClick}
-    onFolderClick={handleFolderClick}
-    onAddAccount={() => window.location.href = '/account'}
-    onSettings={() => window.location.href = '/settings'}
-    onSyncMail={handleManualRefresh}
-  />
-  <Sidebar.Inset>
-    <div class="flex h-screen flex-1 overflow-hidden">
-      <!-- Middle Column: Email List -->
-      <div class="w-[400px] border-r">
-        <div class="flex h-14 items-center justify-between border-b px-4">
-          <Sidebar.Trigger />
-          <h2 class="text-sm font-semibold">
-            {appState.selectedFolderName || "Inbox"}
-          </h2>
-          <div class="flex items-center gap-2">
-            <button
-              onclick={handleComposeClick}
-              disabled={!appState.selectedAccountId}
-              class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors hover:bg-accent disabled:opacity-50"
-            >
-              ✉️ Compose
-            </button>
-          </div>
-        </div>
-        <EmailList
-          emails={appState.emails}
-          selectedEmailUid={appState.selectedEmailUid}
-          isLoading={appState.isLoadingEmails}
-          error={appState.error}
-          selectedAccountId={appState.selectedAccountId}
-          currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
-          onEmailClick={handleEmailClick}
-        />
-      </div>
+<Sidebar.Provider style="--sidebar-width: 350px;">
+  <Sidebar.Root
+    collapsible="icon"
+    class="overflow-hidden [&>[data-sidebar=sidebar]]:flex-row"
+  >
+    <AccountFolderSidebar
+      accounts={appState.accounts}
+      selectedAccountId={appState.selectedAccountId}
+      folders={appState.folders}
+      selectedFolderName={appState.selectedFolderName}
+      isLoadingFolders={appState.isLoadingFolders}
+      isSyncing={appState.isSyncing}
+      onAccountSelect={handleAccountClick}
+      onFolderClick={handleFolderClick}
+      onAddAccount={() => window.location.href = '/account'}
+      onSettings={() => window.location.href = '/settings'}
+      onSyncMail={handleManualRefresh}
+    />
 
-      <!-- Right Column: Email Body -->
-      <div class="flex-1">
-        <EmailBody
-          email={appState.selectedEmail}
-          body={appState.emailBody}
-          attachments={appState.attachments}
-          isLoadingBody={appState.isLoadingBody}
-          isLoadingAttachments={appState.isLoadingAttachments}
-          error={appState.error}
-          onReply={handleReplyClick}
-          onForward={handleForwardClick}
-          onDelete={handleDeleteEmail}
-          onDownloadAttachment={downloadAttachment}
-          onToggleRead={handleToggleReadStatus}
-        />
-      </div>
+    <EmailListSidebar
+      emails={appState.emails}
+      selectedEmailUid={appState.selectedEmailUid}
+      isLoading={appState.isLoadingEmails}
+      error={appState.error}
+      selectedAccountId={appState.selectedAccountId}
+      selectedFolderName={appState.selectedFolderName}
+      currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
+      onEmailClick={handleEmailClick}
+      onComposeClick={handleComposeClick}
+    />
+  </Sidebar.Root>
+
+  <Sidebar.Inset class="flex flex-col">
+    <header class="sticky top-0 flex shrink-0 items-center gap-2 border-b bg-background p-4 z-10">
+      <Sidebar.Trigger class="-ml-1" />
+    </header>
+    <div class="flex-1 overflow-hidden">
+      <EmailBody
+        email={appState.selectedEmail}
+        body={appState.emailBody}
+        attachments={appState.attachments}
+        isLoadingBody={appState.isLoadingBody}
+        isLoadingAttachments={appState.isLoadingAttachments}
+        error={appState.error}
+        onReply={handleReplyClick}
+        onForward={handleForwardClick}
+        onDelete={handleDeleteEmail}
+        onDownloadAttachment={downloadAttachment}
+        onToggleRead={handleToggleReadStatus}
+      />
     </div>
   </Sidebar.Inset>
 
