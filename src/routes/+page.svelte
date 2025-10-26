@@ -12,11 +12,17 @@
   import EmailListSidebar from "./components/EmailListSidebar.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
+  import SettingsDialog from "./components/SettingsDialog.svelte";
+  import AddAccountDialog from "./components/AddAccountDialog.svelte";
 
   // Types and utilities
   import type { AccountConfig, EmailHeader, IdleEvent, Folder } from "./lib/types";
   import { state as appState } from "./lib/state.svelte";
   import { isTrashFolder } from "./lib/utils";
+
+  // Settings dialog state
+  let showSettingsDialog = $state(false);
+  let showAddAccountDialog = $state(false);
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -925,6 +931,21 @@
       console.warn(`⚠️ IDLE connection lost for account ${idleEvent.account_id}`);
     }
   }
+  
+  // Handle account added callback
+  async function handleAccountAdded() {
+    try {
+      // Reload accounts
+      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+      
+      // Auto-select the newly added account if it's the first one
+      if (appState.accounts.length === 1 && !appState.selectedAccountId) {
+        await handleAccountClick(appState.accounts[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to reload accounts:", error);
+    }
+  }
 </script>
 
 <Sidebar.Provider style="--sidebar-width: 350px;">
@@ -941,8 +962,8 @@
       isSyncing={appState.isSyncing}
       onAccountSelect={handleAccountClick}
       onFolderClick={handleFolderClick}
-      onAddAccount={() => window.location.href = '/account'}
-      onSettings={() => window.location.href = '/settings'}
+      onAddAccount={() => showAddAccountDialog = true}
+      onSettings={() => showSettingsDialog = true}
       onSyncMail={handleManualRefresh}
       onComposeClick={handleComposeClick}
     />
@@ -997,6 +1018,14 @@
     onCancel={handleCloseCompose}
     onAttachmentAdd={handleAttachmentSelect}
     onAttachmentRemove={removeAttachment}
+  />
+
+  <SettingsDialog bind:open={showSettingsDialog} onOpenChange={(open) => showSettingsDialog = open} />
+  
+  <AddAccountDialog 
+    bind:open={showAddAccountDialog} 
+    onOpenChange={(open) => showAddAccountDialog = open}
+    onAccountAdded={handleAccountAdded}
   />
 
   <Toaster />

@@ -1,12 +1,21 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
-  import { open } from "@tauri-apps/plugin-shell";
+  import { open as openUrl } from "@tauri-apps/plugin-shell";
+  import { toast } from "svelte-sonner";
+  import * as Dialog from "$lib/components/ui/dialog";
   import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "$lib/components/ui/card";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Tabs from "$lib/components/ui/tabs";
-  import { toast } from "svelte-sonner";
+
+  interface AddAccountDialogProps {
+    open: boolean;
+    onOpenChange: (open: boolean) => void;
+    onAccountAdded?: () => void;
+  }
+
+  let { open = $bindable(), onOpenChange, onAccountAdded }: AddAccountDialogProps = $props();
 
   let selectedProvider: "google" | "outlook" = $state("google");
   let oauthEmail = $state("");
@@ -51,6 +60,7 @@
       }
 
       toast.success("Account configuration saved successfully!");
+      
       // Reset form
       accountConfig = {
         email: "",
@@ -60,6 +70,12 @@
         smtp_server: "",
         smtp_port: 465,
       };
+
+      // Close dialog and notify parent
+      onOpenChange(false);
+      if (onAccountAdded) {
+        onAccountAdded();
+      }
     } catch (error) {
       console.error("Failed to save configuration:", error);
       toast.error("Failed to save account configuration");
@@ -89,7 +105,7 @@
       );
 
       // Open browser for user authentication
-      await open(response.auth_url);
+      await openUrl(response.auth_url);
 
       // Wait for callback
       const [code, state] = await callbackPromise as [string, string];
@@ -123,6 +139,12 @@
 
       toast.success(`${selectedProvider === 'google' ? 'Google' : 'Outlook'} account added successfully!`);
       oauthEmail = "";
+      
+      // Close dialog and notify parent
+      onOpenChange(false);
+      if (onAccountAdded) {
+        onAccountAdded();
+      }
     } catch (error) {
       console.error("OAuth2 authentication failed:", error);
       toast.error(`OAuth2 authentication failed: ${error}`);
@@ -132,12 +154,12 @@
   }
 </script>
 
-<div class="flex min-h-svh flex-col items-center justify-center gap-6 bg-muted p-6 md:p-10">
-  <div class="flex w-full max-w-sm flex-col gap-6">
-    <Button variant="ghost" href="/" class="self-start">
-      ← Back
-    </Button>
-    <Card>
+<Dialog.Root bind:open {onOpenChange}>
+  <Dialog.Content class="max-w-[500px] p-0" trapFocus={false}>
+    <Dialog.Title class="sr-only">Add an email account</Dialog.Title>
+    <Dialog.Description class="sr-only">Connect your email using OAuth2 or manual configuration</Dialog.Description>
+    
+    <Card class="border-0 shadow-none">
       <CardHeader class="text-center">
         <CardTitle class="text-xl">Add an email account</CardTitle>
         <CardDescription>
@@ -292,10 +314,5 @@
         </Tabs.Root>
       </CardContent>
     </Card>
-    
-    <div class="text-balance text-center text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-primary">
-      By continuing, you agree to our <a href="/">Terms of Service</a> and{" "}
-      <a href="/">Privacy Policy</a>.
-    </div>
-  </div>
-</div>
+  </Dialog.Content>
+</Dialog.Root>

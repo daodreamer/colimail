@@ -17,6 +17,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.3] - 2025-10-26
 
 ### Improved
+- **Settings Dialog UI**: Redesigned settings interface following shadcn-svelte sidebar-13 official pattern
+  - Migrated from full-page route to modal dialog for better UX
+  - Implemented nested sidebar navigation with 5 sections: Notifications, Appearance, Language & region, Privacy & visibility, Advanced
+  - Added breadcrumb navigation (Settings > [Current Section])
+  - Settings now opens as centered dialog overlay on main UI
+  - Main interface remains visible but dimmed when settings is open
+  - Dialog size: 700-800px width (responsive), 500px max height
+  - Left sidebar with icon-based navigation matching official examples
+  - Content area with proper overflow handling and scrolling
+  - Uses official Sidebar, Breadcrumb, and Dialog components from shadcn-svelte
+  - Notifications section fully functional with sync interval and notification preferences
+  - Other sections show placeholder UI (coming soon)
+  - Consistent font sizes, spacing, and colors matching sidebar-13 specification
+- **Add Account Dialog UI**: Converted account creation from full-page to modal dialog
+  - Changed from route navigation (`/account`) to centered dialog overlay
+  - Maintains all functionality: OAuth2 (Google/Outlook) and manual IMAP/SMTP configuration
+  - Dialog width: 500px, centered on screen with overlay
+  - Automatically closes on successful account addition
+  - Triggers account list refresh and auto-selects first account if none selected
+  - Main UI remains visible but dimmed during account setup
+  - Improved user flow: users stay in context instead of navigating away
+  - Uses Tabs component for OAuth2/Manual switching
+  - Provider selection with visual icons and buttons
+  - Form validation and error handling with toast notifications
 - **Folder Display Consistency**: Unified folder name display across all UI components
   - Email list header now shows folder display name (e.g., "Important") instead of IMAP path (e.g., "[Gmail]/Important")
   - Folder names are now consistent between left sidebar and email list header
@@ -66,6 +90,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Menu now includes: Account, Billing, Notifications, Settings, and Log out
 
 ### Technical Details
+- Created `src/routes/components/SettingsDialog.svelte`:
+  - Implements shadcn-svelte sidebar-13 pattern with nested sidebar navigation
+  - Uses `Sidebar.Provider`, `Sidebar.Root`, `Sidebar.Content` for navigation structure
+  - Implements `Sidebar.Menu`, `Sidebar.MenuItem`, `Sidebar.MenuButton` for menu items
+  - Navigation items use Lucide icons: `BellIcon`, `PaintbrushIcon`, `GlobeIcon`, `LockIcon`, `SettingsIcon`
+  - Breadcrumb component shows Settings > [Current Page] navigation path
+  - Content area with `h-[480px]` fixed height and `overflow-y-auto` for scrolling
+  - Settings content cards use `bg-muted/50 rounded-xl p-6` styling
+  - Dialog configuration: `max-w-[700px] lg:max-w-[800px]`, `max-h-[500px]`, `trapFocus={false}`
+  - Implements all notification settings with proper form controls and save functionality
+- Created `src/routes/components/AddAccountDialog.svelte`:
+  - Converted from full-page component to dialog-based component
+  - Uses `Dialog.Root`, `Dialog.Content` with `max-w-[500px]` width
+  - Card component with `border-0 shadow-none` to avoid double borders
+  - Tabs component for OAuth2/Manual configuration switching
+  - Provider selection buttons with SVG icons for Google and Outlook
+  - Form handling with validation and error states
+  - OAuth2 flow with browser redirect handling (`openUrl` renamed to avoid conflict with `open` prop)
+  - Callbacks: `onOpenChange` for dialog state, `onAccountAdded` for parent notification
+  - Auto-closes dialog on successful account creation
+- Modified `src/routes/+page.svelte`:
+  - Added `showSettingsDialog` and `showAddAccountDialog` state variables
+  - Imported `SettingsDialog` and `AddAccountDialog` components
+  - Changed `onSettings` callback from `window.location.href = '/settings'` to `showSettingsDialog = true`
+  - Changed `onAddAccount` callback from `window.location.href = '/account'` to `showAddAccountDialog = true`
+  - Added `handleAccountAdded()` function to reload accounts and auto-select first account
+  - Integrated both dialogs with proper state binding and callbacks
 - Modified `src/routes/+page.svelte`:
   - Added auto-selection logic in `onMount()` lifecycle hook
   - Automatically calls `handleAccountClick()` for first account if available
