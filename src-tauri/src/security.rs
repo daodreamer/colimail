@@ -45,7 +45,7 @@ fn store_long_value(service: &str, account: &str, value: &str) -> Result<(), Str
         // Split on character boundaries to avoid breaking UTF-8
         let mut chunks = Vec::new();
         let mut start = 0;
-        
+
         while start < value.len() {
             let end = (start + MAX_CREDENTIAL_LENGTH).min(value.len());
             // Find a valid character boundary
@@ -117,7 +117,8 @@ fn delete_long_value(service: &str, account: &str) -> Result<(), String> {
             if let Ok(count) = count_str.parse::<usize>() {
                 // Delete all chunks
                 for i in 0..count {
-                    if let Ok(chunk_entry) = Entry::new(service, &format!("{}:chunk{}", account, i)) {
+                    if let Ok(chunk_entry) = Entry::new(service, &format!("{}:chunk{}", account, i))
+                    {
                         if let Err(e) = chunk_entry.delete_credential() {
                             errors.push(format!("chunk{}: {}", i, e));
                         }
@@ -191,11 +192,11 @@ pub fn store_credentials(creds: &AccountCredentials) -> Result<(), String> {
 fn base64_url_safe(email: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    
+
     let mut hasher = DefaultHasher::new();
     email.hash(&mut hasher);
     let hash = hasher.finish();
-    
+
     // Use first 8 characters of hex representation for brevity
     format!("{:x}", hash)[..8].to_string()
 }
@@ -203,7 +204,7 @@ fn base64_url_safe(email: &str) -> String {
 /// Retrieve account credentials from the OS keyring
 pub fn get_credentials(email: &str) -> Result<AccountCredentials, String> {
     let email_hash = base64_url_safe(email);
-    
+
     let mut creds = AccountCredentials {
         email: email.to_string(),
         password: None,
