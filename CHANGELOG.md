@@ -14,6 +14,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.2.3] - 2025-10-26
+
+### Improved
+- **Folder Display Consistency**: Unified folder name display across all UI components
+  - Email list header now shows folder display name (e.g., "Important") instead of IMAP path (e.g., "[Gmail]/Important")
+  - Folder names are now consistent between left sidebar and email list header
+  - Improved visual consistency and user experience
+- **Folder Icons**: Implemented official shadcn-svelte icon system for folder navigation
+  - Migrated from generic folder icon to semantic icons based on folder type
+  - `InboxIcon`: Inbox folders
+  - `FileIcon`: Draft folders
+  - `SendIcon`: Sent folders
+  - `ArchiveXIcon`: Junk/Spam folders
+  - `Trash2Icon`: Trash/Deleted folders
+  - `FolderIcon`: Default icon for other folders
+  - Smart icon selection based on folder name or display name patterns
+  - Icons match the official shadcn-svelte sidebar-09 example design
+
+### Added
+- **Auto-Select First Account**: Application now automatically selects the first email account on startup
+  - Eliminates the need for manual account selection after app launch
+  - Immediately loads folders and emails for better user experience
+  - Only applies when accounts exist and none is currently selected
+- **Empty State UI**: Enhanced empty state when no accounts are configured
+  - Replaced "Select an account" text with a centered add account button
+  - Large square button with plus icon for intuitive account addition
+  - Button uses dashed border with hover effects following shadcn design patterns
+  - Direct navigation to account setup page on click
+
+### Technical Details
+- Modified `src/routes/+page.svelte`:
+  - Added auto-selection logic in `onMount()` lifecycle hook
+  - Automatically calls `handleAccountClick()` for first account if available
+- Updated `src/routes/components/EmailListSidebar.svelte`:
+  - Added `folders` prop to access folder metadata
+  - Created `currentFolderDisplayName` derived state to resolve display name
+  - Changed header to display `display_name` instead of raw `name` field
+- Enhanced `src/routes/components/AccountFolderSidebar.svelte`:
+  - Imported all folder-specific icons from lucide-svelte
+  - Implemented `getFolderIcon()` function for intelligent icon selection
+  - Uses `@const` directive to compute icon component per folder in loop
+  - Supports pattern matching on both `name` and `display_name` fields
+
 ## [0.2.2] - 2025-10-26
 
 ### Fixed

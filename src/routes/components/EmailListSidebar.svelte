@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EmailHeader } from "../lib/types";
+  import type { EmailHeader, Folder } from "../lib/types";
   import { formatLocalDateTime } from "../lib/utils";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { Badge } from "$lib/components/ui/badge";
@@ -15,6 +15,7 @@
     error = null as string | null,
     selectedAccountId = null as number | null,
     selectedFolderName = "INBOX",
+    folders = [] as Folder[],
     currentUserEmail = "",
     onEmailClick,
     onComposeClick,
@@ -25,6 +26,7 @@
     error?: string | null;
     selectedAccountId?: number | null;
     selectedFolderName?: string;
+    folders?: Folder[];
     currentUserEmail?: string;
     onEmailClick: (uid: number) => void;
     onComposeClick: () => void;
@@ -49,13 +51,18 @@
   const filteredEmails = $derived(
     showUnreadsOnly ? emails.filter((email) => !email.seen) : emails
   );
+
+  // Get the display name for the current folder
+  const currentFolderDisplayName = $derived(
+    folders.find((f) => f.name === selectedFolderName)?.display_name || selectedFolderName || "Inbox"
+  );
 </script>
 
 <Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
   <Sidebar.Header class="gap-3.5 border-b p-4">
     <div class="flex w-full items-center justify-between">
       <div class="text-base font-medium text-foreground">
-        {selectedFolderName || "Inbox"}
+        {currentFolderDisplayName}
       </div>
       <Label class="flex items-center gap-2 text-sm">
         <span>Unreads</span>

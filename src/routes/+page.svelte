@@ -28,6 +28,11 @@
         appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
         appState.syncInterval = await invoke<number>("get_sync_interval");
 
+        // Auto-select first account if available and none is selected
+        if (appState.accounts.length > 0 && !appState.selectedAccountId) {
+          await handleAccountClick(appState.accounts[0].id);
+        }
+
         startAutoSyncTimer();
 
         // Start IDLE connections for all accounts
@@ -948,6 +953,7 @@
       error={appState.error}
       selectedAccountId={appState.selectedAccountId}
       selectedFolderName={appState.selectedFolderName}
+      folders={appState.folders}
       currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
       onEmailClick={handleEmailClick}
       onComposeClick={handleComposeClick}

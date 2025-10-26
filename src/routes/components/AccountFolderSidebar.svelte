@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { Mail, Folder as FolderIcon, Plus, RefreshCw } from "lucide-svelte";
+  import { Mail, Plus, RefreshCw } from "lucide-svelte";
+  import InboxIcon from "lucide-svelte/icons/inbox";
+  import FileIcon from "lucide-svelte/icons/file";
+  import SendIcon from "lucide-svelte/icons/send";
+  import ArchiveXIcon from "lucide-svelte/icons/archive-x";
+  import Trash2Icon from "lucide-svelte/icons/trash-2";
+  import FolderIcon from "lucide-svelte/icons/folder";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import { Badge } from "$lib/components/ui/badge";
@@ -44,6 +50,32 @@
     email: selectedAccount?.email || "No account",
     avatar: "/avatars/user.jpg",
   });
+
+  // Get icon for folder based on its name or display name
+  function getFolderIcon(folder: Folder) {
+    const name = folder.name.toLowerCase();
+    const displayName = folder.display_name.toLowerCase();
+    
+    // Check common folder patterns
+    if (name === 'inbox' || displayName === 'inbox') {
+      return InboxIcon;
+    }
+    if (name.includes('draft') || displayName.includes('draft')) {
+      return FileIcon;
+    }
+    if (name.includes('sent') || displayName.includes('sent')) {
+      return SendIcon;
+    }
+    if (name.includes('junk') || name.includes('spam') || displayName.includes('junk') || displayName.includes('spam')) {
+      return ArchiveXIcon;
+    }
+    if (name.includes('trash') || name.includes('deleted') || displayName.includes('trash') || displayName.includes('deleted')) {
+      return Trash2Icon;
+    }
+    
+    // Default folder icon
+    return FolderIcon;
+  }
 </script>
 
 <Sidebar.Root collapsible="none" class="!w-[calc(var(--sidebar-width-icon)_+_1px)] border-r">
@@ -65,7 +97,7 @@
                 </div>
                 <div class="grid flex-1 text-left text-sm leading-tight">
                   <span class="truncate font-medium">Colimail</span>
-                  <span class="truncate text-xs">Email Client</span>
+                  <span class="truncate text-xs">{accounts.length === 0 ? "No accounts" : "Email Client"}</span>
                 </div>
               </Sidebar.MenuButton>
             {/snippet}
@@ -105,6 +137,7 @@
             {/each}
           {:else if folders.length > 0}
             {#each folders as folder (folder.name)}
+              {@const IconComponent = getFolderIcon(folder)}
               <Sidebar.MenuItem>
                 <Sidebar.MenuButton
                   tooltipContentProps={{
@@ -117,7 +150,7 @@
                   {#snippet tooltipContent()}
                     {folder.display_name}
                   {/snippet}
-                  <FolderIcon class="size-4" />
+                  <IconComponent class="size-4" />
                   <span>{folder.display_name}</span>
                 </Sidebar.MenuButton>
               </Sidebar.MenuItem>
@@ -129,11 +162,16 @@
               </div>
             </Sidebar.MenuItem>
           {:else}
-            <Sidebar.MenuItem>
-              <div class="px-2 py-1.5 text-sm text-muted-foreground">
-                Select an account
-              </div>
-            </Sidebar.MenuItem>
+            <!-- Show add account button when no accounts exist -->
+            <div class="flex items-center justify-center min-h-[200px]">
+              <button
+                onclick={onAddAccount}
+                class="flex size-16 items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-transparent hover:border-muted-foreground/50 hover:bg-accent transition-colors"
+                aria-label="Add Account"
+              >
+                <Plus class="size-8 text-muted-foreground" />
+              </button>
+            </div>
           {/if}
         </Sidebar.Menu>
       </Sidebar.GroupContent>
