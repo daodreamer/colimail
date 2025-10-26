@@ -135,8 +135,27 @@
     />
 
     <ScrollArea class="flex-1 p-6">
-      <div class="prose prose-sm max-w-none dark:prose-invert">
-        {@html body}
+      <div class="w-full overflow-auto">
+        <iframe
+          srcdoc={body}
+          title="Email content"
+          class="w-full border-0"
+          style="min-height: 500px; height: 100%;"
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          onload={(e) => {
+            // Auto-resize iframe to fit content
+            const iframe = e.target as HTMLIFrameElement;
+            try {
+              const doc = iframe.contentDocument || iframe.contentWindow?.document;
+              if (doc) {
+                const height = doc.documentElement.scrollHeight;
+                iframe.style.height = `${height}px`;
+              }
+            } catch (err) {
+              console.warn('Cannot access iframe content for auto-resize:', err);
+            }
+          }}
+        ></iframe>
       </div>
     </ScrollArea>
   {:else if error}

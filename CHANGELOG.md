@@ -14,6 +14,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.2.2] - 2025-10-26
+
+### Fixed
+- **HTML Email Rendering**: Fixed critical rendering issue where HTML email content broke page layout
+  - **Root Cause**: Emails containing complete HTML documents (`<!DOCTYPE>`, `<html>`, `<head>`, `<body>`) were being wrapped with another HTML document structure, creating nested HTML that caused rendering chaos
+  - **Solution**: Migrated from `{@html}` inline rendering to `<iframe>` with `srcdoc` attribute
+  - Email content is now completely isolated in its own document context
+  - Email CSS and HTML structure can no longer affect parent page layout
+  - Automatic iframe height adjustment based on content size
+  - Added security sandbox restrictions: `allow-same-origin allow-popups allow-popups-to-escape-sandbox`
+  - HTML fragments (without DOCTYPE) are still wrapped with proper HTML structure and basic styling
+  - Complete HTML documents are rendered as-is within the iframe isolation
+  - Fixed issue where sidebar would disappear or page elements would be overridden by aggressive email styles
+- **Email Body Detection**: Added smart detection to determine if email HTML is a complete document or fragment
+  - Checks for presence of `<!DOCTYPE>` or `<html>` tags to identify document structure
+  - Complete documents rendered directly without additional wrapper
+  - HTML fragments wrapped with proper `<html>`, `<head>`, and `<body>` tags plus responsive CSS
+
+### Technical Details
+- Modified `src-tauri/src/commands/emails/fetch.rs`:
+  - Added HTML document structure detection logic
+  - Removed nested HTML wrapper for complete documents
+  - Preserved wrapper for HTML fragments with improved responsive CSS
+- Updated `src/routes/components/EmailBody.svelte`:
+  - Replaced `{@html body}` with `<iframe srcdoc={body}>` for complete isolation
+  - Added automatic height adjustment via `onload` event handler
+  - Configured security sandbox to prevent malicious email scripts while allowing legitimate links
+- This fix prevents any email content from affecting the application's UI, regardless of how aggressive the email's CSS or HTML structure might be
+
 ## [0.2.1] - 2025-10-26
 
 ### Changed
@@ -66,7 +95,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Clear props interface between components
   - Reduced component coupling for better maintainability
 
-## [0.2.0] - TBD
+## [0.2.0] - 2025-10-25
 
 ### Changed
 - **UI Framework**: Migrated entire frontend to shadcn-svelte component library with Tailwind CSS

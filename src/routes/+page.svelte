@@ -346,6 +346,9 @@
         folder: appState.selectedFolderName,
       });
 
+      console.log(`📧 Loaded email body for UID ${uid}, length: ${appState.emailBody?.length || 0} bytes`);
+      console.log(`📧 Body preview (first 200 chars):`, appState.emailBody?.substring(0, 200));
+
       if (appState.selectedAccountId) {
         loadAttachmentsForEmail(appState.selectedAccountId, uid);
       }

@@ -345,7 +345,57 @@ pub async fn fetch_email_body_with_attachments(
 
             // mail-parser automatically handles multipart messages
             let final_body = if let Some(html_body) = parsed_mail.body_html(0) {
-                html_body.to_string()
+                // Check if the email already contains a complete HTML document
+                let html_lower = html_body.to_lowercase();
+                let is_complete_html = html_lower.contains("<!doctype")
+                    || (html_lower.contains("<html") && html_lower.contains("</html>"));
+
+                if is_complete_html {
+                    // Email already has complete HTML structure, use as-is
+                    html_body.to_string()
+                } else {
+                    // HTML fragment without document structure, wrap it
+                    format!(
+                        r#"<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            margin: 0;
+            padding: 20px;
+        }}
+        img {{
+            max-width: 100%;
+            height: auto;
+        }}
+        table {{
+            max-width: 100%;
+            border-collapse: collapse;
+        }}
+        a {{
+            color: #0066cc;
+            text-decoration: none;
+        }}
+        a:hover {{
+            text-decoration: underline;
+        }}
+    </style>
+</head>
+<body>
+{}
+</body>
+</html>"#,
+                        html_body
+                    )
+                }
             } else if let Some(text_body) = parsed_mail.body_text(0) {
                 format!("<pre>{}</pre>", html_escape::encode_text(&text_body))
             } else {
