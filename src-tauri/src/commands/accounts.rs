@@ -1,18 +1,28 @@
 use crate::db::pool;
 use crate::models::{AccountConfig, AuthType};
+use crate::security;
 use tauri::command;
 
 #[command]
 pub async fn delete_account(email: String) -> Result<(), String> {
     let pool = pool();
 
+    // Delete from database
     sqlx::query("DELETE FROM accounts WHERE email = ?")
         .bind(&email)
         .execute(&*pool)
         .await
         .map_err(|e| format!("Failed to delete account: {}", e))?;
 
-    println!("✅ Account deleted from database: {}", email);
+    // Delete credentials from keyring
+    if let Err(e) = security::delete_credentials(&email) {
+        eprintln!(
+            "⚠️  Warning: Failed to delete credentials from keyring: {}",
+            e
+        );
+    }
+
+    println!("✅ Account deleted: {}", email);
     Ok(())
 }
 
@@ -25,26 +35,34 @@ pub async fn save_account_config(config: AccountConfig) -> Result<(), String> {
         _ => "basic",
     };
 
+    // Save non-sensitive data to database
     sqlx::query(
         "INSERT OR REPLACE INTO accounts
-         (email, password, imap_server, imap_port, smtp_server, smtp_port, auth_type, access_token, refresh_token, token_expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+         (email, imap_server, imap_port, smtp_server, smtp_port, auth_type)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&config.email)
-    .bind(&config.password)
     .bind(&config.imap_server)
     .bind(config.imap_port as i64)
     .bind(&config.smtp_server)
     .bind(config.smtp_port as i64)
     .bind(auth_type)
-    .bind(&config.access_token)
-    .bind(&config.refresh_token)
-    .bind(config.token_expires_at)
     .execute(&*pool)
     .await
     .map_err(|e| e.to_string())?;
 
-    println!("✅ Account saved to database: {}", config.email);
+    // Save sensitive credentials to OS keyring
+    let credentials = security::AccountCredentials {
+        email: config.email.clone(),
+        password: config.password,
+        access_token: config.access_token,
+        refresh_token: config.refresh_token,
+        token_expires_at: config.token_expires_at,
+    };
+
+    security::store_credentials(&credentials)?;
+
+    println!("✅ Account saved securely: {}", config.email);
     Ok(())
 }
 
@@ -52,32 +70,53 @@ pub async fn save_account_config(config: AccountConfig) -> Result<(), String> {
 pub async fn load_account_configs() -> Result<Vec<AccountConfig>, String> {
     let pool = pool();
 
-    let accounts = sqlx::query_as::<_, (i64, String, Option<String>, String, i64, String, i64, String, Option<String>, Option<String>, Option<i64>)>(
-        "SELECT id, email, password, imap_server, imap_port, smtp_server, smtp_port, auth_type, access_token, refresh_token, token_expires_at FROM accounts",
+    // Load non-sensitive data from database
+    let accounts = sqlx::query_as::<_, (i64, String, String, i64, String, i64, String)>(
+        "SELECT id, email, imap_server, imap_port, smtp_server, smtp_port, auth_type FROM accounts",
     )
     .fetch_all(&*pool)
     .await
     .map_err(|e| e.to_string())?
     .into_iter()
     .map(
-        |(id, email, password, imap_server, imap_port, smtp_server, smtp_port, auth_type, access_token, refresh_token, token_expires_at)| {
+        |(id, email, imap_server, imap_port, smtp_server, smtp_port, auth_type)| {
             let auth_type_enum = match auth_type.as_str() {
                 "oauth2" => Some(AuthType::OAuth2),
                 _ => Some(AuthType::Basic),
             };
 
-            AccountConfig {
-                id: Some(id as i32),
-                email,
-                password,
-                imap_server,
-                imap_port: imap_port as u16,
-                smtp_server,
-                smtp_port: smtp_port as u16,
-                auth_type: auth_type_enum,
-                access_token,
-                refresh_token,
-                token_expires_at,
+            // Load sensitive credentials from keyring
+            match security::get_credentials(&email) {
+                Ok(creds) => AccountConfig {
+                    id: Some(id as i32),
+                    email,
+                    password: creds.password,
+                    imap_server,
+                    imap_port: imap_port as u16,
+                    smtp_server,
+                    smtp_port: smtp_port as u16,
+                    auth_type: auth_type_enum,
+                    access_token: creds.access_token,
+                    refresh_token: creds.refresh_token,
+                    token_expires_at: creds.token_expires_at,
+                },
+                Err(e) => {
+                    eprintln!("⚠️  Failed to load credentials for {}: {}", email, e);
+                    // Return account config without credentials
+                    AccountConfig {
+                        id: Some(id as i32),
+                        email,
+                        password: None,
+                        imap_server,
+                        imap_port: imap_port as u16,
+                        smtp_server,
+                        smtp_port: smtp_port as u16,
+                        auth_type: auth_type_enum,
+                        access_token: None,
+                        refresh_token: None,
+                        token_expires_at: None,
+                    }
+                }
             }
         },
     )

@@ -261,13 +261,27 @@ async fn incremental_sync(
                 // Full sync needed: no previous state
                 println!("🆕 First sync for this folder.");
 
-                // Fetch all emails in the mailbox
+                // Fetch only recent emails (last 500) to avoid overwhelming the server
+                // User can manually sync more if needed
                 if server_exists == 0 {
                     Vec::new()
                 } else {
-                    let seq_range = format!("1:{}", server_exists);
+                    // Limit initial sync to last 500 messages for performance
+                    const INITIAL_SYNC_LIMIT: u32 = 500;
+                    let start_seq = if server_exists > INITIAL_SYNC_LIMIT {
+                        server_exists - INITIAL_SYNC_LIMIT + 1
+                    } else {
+                        1
+                    };
+                    let seq_range = format!("{}:{}", start_seq, server_exists);
 
-                    println!("📥 Fetching all {} messages: {}", server_exists, seq_range);
+                    println!(
+                        "📥 Initial sync: fetching last {} messages ({}:{} out of {} total)",
+                        INITIAL_SYNC_LIMIT.min(server_exists),
+                        start_seq,
+                        server_exists,
+                        server_exists
+                    );
 
                     let messages = imap_session
                         .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")

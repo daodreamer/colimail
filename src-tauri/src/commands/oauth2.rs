@@ -1,6 +1,7 @@
 use crate::db::pool;
 use crate::models::{AccountConfig, AuthType, OAuth2StartRequest, OAuth2StartResponse};
 use crate::oauth2_config::OAuth2Provider;
+use crate::security;
 use tauri::command;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
@@ -37,33 +38,40 @@ pub async fn complete_oauth2_flow(
         smtp_port: provider_config.smtp_port,
         auth_type: Some(AuthType::OAuth2),
         access_token: Some(access_token.clone()),
-        refresh_token,
+        refresh_token: refresh_token.clone(),
         token_expires_at: expires_at,
     };
 
-    // Save to database
+    // Save non-sensitive data to database
     let pool = pool();
 
     sqlx::query(
         "INSERT OR REPLACE INTO accounts
-         (email, password, imap_server, imap_port, smtp_server, smtp_port, auth_type, access_token, refresh_token, token_expires_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+         (email, imap_server, imap_port, smtp_server, smtp_port, auth_type)
+         VALUES (?, ?, ?, ?, ?, ?)",
     )
     .bind(&account.email)
-    .bind(&account.password)
     .bind(&account.imap_server)
     .bind(account.imap_port as i64)
     .bind(&account.smtp_server)
     .bind(account.smtp_port as i64)
     .bind("oauth2")
-    .bind(&account.access_token)
-    .bind(&account.refresh_token)
-    .bind(account.token_expires_at)
     .execute(&*pool)
     .await
     .map_err(|e| format!("Failed to save account: {}", e))?;
 
-    println!("✅ OAuth2 account saved to database: {}", email);
+    // Save sensitive credentials to OS keyring
+    let credentials = security::AccountCredentials {
+        email: email.clone(),
+        password: None,
+        access_token: Some(access_token),
+        refresh_token,
+        token_expires_at: expires_at,
+    };
+
+    security::store_credentials(&credentials)?;
+
+    println!("✅ OAuth2 account saved securely: {}", email);
     Ok(account)
 }
 

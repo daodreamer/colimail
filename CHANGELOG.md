@@ -8,10 +8,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Password encryption using platform keychain
-- Secure OAuth2 token storage
 - Calendar integration
 - Multi-language support
+
+## [0.3.0] - 2025-10-26
+
+### Security
+- **Credential Encryption**: Implemented OS-native keyring storage for all sensitive credentials
+  - **Replaced plaintext SQLite storage** with encrypted OS keychain (Windows Credential Manager, macOS Keychain, Linux Secret Service)
+  - All passwords and OAuth2 tokens now encrypted at rest by the operating system
+  - Removed sensitive columns (`password`, `access_token`, `refresh_token`) from SQLite database
+  - Database now stores only non-sensitive metadata (email addresses, server configurations, sync state)
+  - Added `keyring` crate v3.6.3 with `windows-native` feature for proper Windows Credential Manager integration
+  - Credentials stored separately by field type (password, access_token, refresh_token, expiration) to avoid platform size limits
+  - Implemented hash-based short keys (8-character identifiers) to comply with Windows naming constraints
+  - **Automatic chunking** for long values (OAuth2 tokens): Values exceeding 1200 characters split into multiple keyring entries
+  - Windows UTF-16 encoding overhead handled correctly (2 bytes per character)
+  - Each credential chunk limited to 1200 UTF-8 characters (~2400 UTF-16 bytes) to stay under Windows 2560-byte limit
+  - Seamless retrieval of chunked credentials reassembled from multiple keyring entries
+  - **Backward compatibility**: Existing accounts automatically migrated to secure storage on next login
+  - Enhanced security for both Basic Authentication and OAuth2 flows (Gmail, Outlook, custom IMAP)
+  
+### Added
+- **Security Module** (`src-tauri/src/security.rs`): Complete credential management system
+  - `store_credentials()`: Securely stores account credentials in OS keyring
+  - `get_credentials()`: Retrieves encrypted credentials from OS keyring
+  - `delete_credentials()`: Removes credentials from OS keyring on account deletion
+  - `update_credentials()`: Updates specific credential fields (e.g., refreshed OAuth2 tokens)
+  - Supports partial updates without affecting other fields
+  - Smart chunking for values exceeding platform limits
+  - Email-to-hash mapping for efficient credential lookup
+
+### Technical Details
+- Added dependency: `keyring = { version = "3.6", features = ["windows-native"] }`
+- Service name for keyring entries: `com.colimail.app`
+- Maximum credential length: 1200 UTF-8 characters (accounts for UTF-16 encoding overhead)
+- Credential key format: `{8-char-hash}:{field-type}` (e.g., `6bafc6a9:at` for access token)
+- Field types: `pwd` (password), `at` (access_token), `rt` (refresh_token), `exp` (expiration), `email` (email mapping)
+- Chunked credential format: `{key}:count` stores chunk count, `{key}:chunk{N}` stores each chunk
+- Database schema updated: Removed `password` and OAuth2 token columns from `accounts` table
+- Modified commands: `save_account_config`, `load_account_configs`, `delete_account_config`, `complete_oauth2_flow`, `ensure_valid_token`
+- UTF-8 character boundary awareness: Chunking algorithm preserves valid UTF-8 sequences
+- Error handling: Detailed error messages for debugging keyring operations
+- Cross-platform support: Windows Credential Manager, macOS Keychain, Linux Secret Service (libsecret)
 
 ## [0.2.5] - 2025-10-26
 

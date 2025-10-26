@@ -6,6 +6,7 @@ mod db;
 mod idle_manager;
 mod models;
 mod oauth2_config;
+mod security;
 
 use commands::{
     complete_oauth2_flow, delete_account, delete_email, download_attachment, fetch_email_body,
