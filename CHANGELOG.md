@@ -10,9 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Planned
 - Password encryption using platform keychain
 - Secure OAuth2 token storage
-- Email search functionality
 - Calendar integration
 - Multi-language support
+
+## [0.2.5] - 2025-10-26
+
+### Improved
+- **Release Builds**: Enhanced GitHub Actions workflow for better cross-platform support
+  - Added Linux support with Ubuntu 20.04 base for maximum compatibility
+  - Generates both `.deb` and `.AppImage` packages for Linux
+  - Optimized macOS DMG packaging configuration with proper window layout
+  - Added macOS minimum system version requirement (10.13)
+  - Improved build reliability with explicit dependency installation
+  - All three platforms (Windows, macOS, Linux) build independently without affecting each other
+
+### Technical Details
+- Updated `.github/workflows/release.yml`:
+  - Added `ubuntu-20.04` platform to matrix builds
+  - Installed Linux dependencies: `libgtk-3-dev`, `libwebkit2gtk-4.0-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`, `libssl-dev`
+  - Added Linux artifact upload step for `.deb` and `.AppImage` files
+  - Enhanced macOS dependency installation step
+  - Added `tauriScript` configuration for consistent build commands
+  - Added optional Tauri signing environment variables support
+- Updated `src-tauri/tauri.conf.json`:
+  - Added macOS-specific bundle configuration with DMG window layout
+  - Set minimum macOS version to 10.13 for broader compatibility
+  - Configured app and Applications folder positions in DMG
 
 ## [0.2.4] - 2025-10-26
 
