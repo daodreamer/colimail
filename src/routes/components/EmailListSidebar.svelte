@@ -6,6 +6,7 @@
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { Label } from "$lib/components/ui/label";
   import { Switch } from "$lib/components/ui/switch";
+  import Pagination from "./Pagination.svelte";
 
   // Props
   let {
@@ -17,7 +18,10 @@
     selectedFolderName = "INBOX",
     folders = [] as Folder[],
     currentUserEmail = "",
+    currentPage = 1,
+    pageSize = 50,
     onEmailClick,
+    onPageChange,
   }: {
     emails?: EmailHeader[];
     selectedEmailUid?: number | null;
@@ -27,7 +31,10 @@
     selectedFolderName?: string;
     folders?: Folder[];
     currentUserEmail?: string;
+    currentPage?: number;
+    pageSize?: number;
     onEmailClick: (uid: number) => void;
+    onPageChange: (page: number) => void;
   } = $props();
 
   // Check if the current user is a CC recipient (not in To field)
@@ -62,6 +69,21 @@
     return result;
   });
 
+  // Pagination calculations
+  const totalPages = $derived(Math.ceil(filteredEmails().length / pageSize));
+  const paginatedEmails = $derived(() => {
+    const start = (currentPage - 1) * pageSize;
+    const end = start + pageSize;
+    return filteredEmails().slice(start, end);
+  });
+
+  // If current page exceeds total pages due to filtering, reset to page 1
+  $effect(() => {
+    if (totalPages > 0 && currentPage > totalPages) {
+      onPageChange(1);
+    }
+  });
+
   // Get the display name for the current folder
   const currentFolderDisplayName = $derived(
     folders.find((f) => f.name === selectedFolderName)?.display_name || selectedFolderName || "Inbox"
@@ -69,7 +91,7 @@
 </script>
 
 <Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
-  <Sidebar.Header class="gap-3.5 border-b p-4">
+  <Sidebar.Header class="gap-1 border-b p-1">
     <div class="flex w-full items-center justify-between">
       <div class="text-base font-medium text-foreground">
         {currentFolderDisplayName}
@@ -80,6 +102,15 @@
       </Label>
     </div>
     <Sidebar.Input bind:value={searchQuery} placeholder="Type to search..." />
+    
+    <!-- Pagination component -->
+    <Pagination 
+      currentPage={currentPage}
+      totalPages={totalPages}
+      pageSize={pageSize}
+      totalItems={filteredEmails().length}
+      onPageChange={onPageChange}
+    />
   </Sidebar.Header>
 
   <Sidebar.Content>
@@ -97,8 +128,8 @@
           {/each}
         {:else if error && emails.length === 0}
           <div class="p-4 text-center text-sm text-destructive">{error}</div>
-        {:else if filteredEmails().length > 0}
-          {#each filteredEmails() as email (email.uid)}
+        {:else if paginatedEmails().length > 0}
+          {#each paginatedEmails() as email (email.uid)}
             <button
               onclick={() => onEmailClick(email.uid)}
               class="flex w-full flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0 text-left transition-colors {email.uid === selectedEmailUid ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}"

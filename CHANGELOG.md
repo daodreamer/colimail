@@ -17,6 +17,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.4] - 2025-10-26
 
 ### Added
+- **Email Pagination**: Implemented pagination for email list to improve performance with large mailboxes
+  - Default 50 emails per page for optimal loading speed
+  - Compact pagination controls between search box and email list
+  - Page navigation with previous/next arrow buttons
+  - Direct page jump by entering page number (press Enter to confirm)
+  - Email range display showing current range (e.g., "1-50/2300")
+  - Total email count indicator for folder visibility
+  - Automatic page reset when switching folders or applying filters
+  - Smart page adjustment when filtering reduces results beyond current page
+- **Full Email Sync**: Removed development limitations to enable complete mailbox synchronization
+  - Changed from fetching recent 20-100 emails to fetching all emails in mailbox
+  - `fetch_emails` command now retrieves complete email list from IMAP server
+  - `sync_emails` command performs full synchronization on first sync or UIDVALIDITY change
+  - Incremental sync continues to work efficiently for new messages
+  - Enables proper email management for users with large email archives
 - **Manage Account Dialog**: New centralized account management interface
   - Added "Manage Account" option in account dropdown menu (below "Add Account")
   - Uses `CircleUserRound` icon from Lucide Svelte for better visual representation
@@ -30,6 +45,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses Breadcrumb navigation showing current selected account
 
 ### Improved
+- **Pagination UI**: Optimized layout for compact and clean appearance
+  - Reduced element spacing from `gap-3` to `gap-1.5` for tighter layout
+  - Minimized button size from `h-7 w-7` to `h-6 w-6`
+  - Reduced icon size from `h-4 w-4` to `h-3.5 w-3.5`
+  - Compacted input box from `h-7 w-12` to `h-6 w-10`
+  - Reduced internal spacing with `gap-1` in page number section
+  - Added `whitespace-nowrap` and `shrink-0` to prevent layout breaking
+  - All pagination elements fit comfortably in one line
+  - Sidebar header spacing optimized from `gap-3.5` to `gap-1` with `p-1` padding
+  - Removed redundant border-bottom from pagination component (email list already has borders)
 - **Delete Account Confirmation**: Enhanced delete confirmation with shadcn-svelte Alert Dialog
   - Replaced native confirmation dialog with styled Alert Dialog component
   - Features destructive variant Alert with red warning style
@@ -48,6 +73,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - More visible and professional than previous toast notification
 
 ### Technical Details
+- Created `src/routes/components/Pagination.svelte`:
+  - Compact pagination control with previous/next buttons and page input
+  - Props: `currentPage`, `totalPages`, `pageSize`, `totalItems`, `onPageChange`
+  - Displays email range: `{startItem}-{endItem}/{totalItems}`
+  - Input validation for page numbers with Enter key submission
+  - Automatic reset to valid page on invalid input
+  - Uses Lucide icons: `ChevronLeft`, `ChevronRight`
+  - Responsive sizing with minimal footprint (`text-xs`, compact buttons)
+- Modified `src/routes/lib/state.svelte.ts`:
+  - Added `currentPage` state (default: 1)
+  - Added `pageSize` state (default: 50)
+  - Updated `resetFolderState()` to reset `currentPage` to 1
+- Updated `src/routes/components/EmailListSidebar.svelte`:
+  - Added pagination props: `currentPage`, `pageSize`, `onPageChange`
+  - Implemented `paginatedEmails` derived function to slice email array
+  - Calculated `totalPages` based on filtered email count
+  - Added safety check to reset page when exceeds total pages (e.g., after filtering)
+  - Integrated `Pagination` component between search box and email list
+  - Optimized header spacing with `gap-1` and `p-1` for compact layout
+- Updated `src/routes/+page.svelte`:
+  - Added `handlePageChange()` function to update `currentPage` state
+  - Clears selected email when changing pages for cleaner navigation
+  - Passes pagination props to `EmailListSidebar` component
+- Modified `src-tauri/src/commands/emails/fetch.rs`:
+  - Changed `fetch_emails` sequence range from `{start}:{total}` (last 20) to `1:{total}` (all emails)
+  - Updated log messages to indicate fetching all messages
+- Modified `src-tauri/src/commands/emails/sync.rs`:
+  - Changed full sync from fetching last 100 to fetching all emails (`1:{total}`)
+  - Applied to both UIDVALIDITY change scenario and first sync scenario
+  - Incremental sync logic unchanged (still fetches only new messages)
 - Created `src/routes/components/ManageAccountDialog.svelte`:
   - Implements shadcn-svelte sidebar layout pattern matching Settings dialog
   - Uses `Sidebar.Provider`, `Sidebar.Root`, `Sidebar.Content` for account list navigation

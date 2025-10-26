@@ -19,6 +19,10 @@ class AppState {
   selectedEmailUid = $state<number | null>(null);
   isLoadingEmails = $state<boolean>(false);
 
+  // Pagination state
+  currentPage = $state<number>(1);
+  pageSize = $state<number>(50); // Default 50 emails per page
+
   // Email body state
   emailBody = $state<string | null>(null);
   isLoadingBody = $state<boolean>(false);
@@ -79,6 +83,7 @@ class AppState {
   resetFolderState() {
     this.emails = [];
     this.resetEmailState();
+    this.currentPage = 1; // Reset to first page when switching folders
   }
 }
 

@@ -391,6 +391,14 @@
     }
   }
 
+  function handlePageChange(page: number) {
+    appState.currentPage = page;
+    // Reset selected email when changing pages
+    appState.selectedEmailUid = null;
+    appState.emailBody = null;
+    appState.attachments = [];
+  }
+
   async function loadAttachmentsForEmail(accountId: number, uid: number) {
     appState.isLoadingAttachments = true;
     try {
@@ -1020,7 +1028,10 @@
       selectedFolderName={appState.selectedFolderName}
       folders={appState.folders}
       currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
+      currentPage={appState.currentPage}
+      pageSize={appState.pageSize}
       onEmailClick={handleEmailClick}
+      onPageChange={handlePageChange}
     />
   </Sidebar.Root>
 
