@@ -1,6 +1,6 @@
 [package]
 name = "colimail"
-version = "0.2.4"
+version = "0.2.6"
 description = "Colimail - A Lightweight Email Client"
 authors = ["you"]
 edition = "2021"
