@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Plus, RefreshCw } from "lucide-svelte";
+  import { Mail, Plus, RefreshCw, PenSquare } from "lucide-svelte";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
   import SendIcon from "lucide-svelte/icons/send";
@@ -25,6 +25,7 @@
     onAddAccount,
     onSettings,
     onSyncMail,
+    onComposeClick,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -37,6 +38,7 @@
     onAddAccount: () => void;
     onSettings: () => void;
     onSyncMail: () => void;
+    onComposeClick: () => void;
   } = $props();
 
   // Get selected account
@@ -182,6 +184,21 @@
     <Sidebar.Menu>
       <Sidebar.MenuItem>
         <Sidebar.MenuButton
+          onclick={!selectedAccountId ? undefined : onComposeClick}
+          tooltipContentProps={{
+            hidden: false,
+          }}
+          class="px-2.5 md:px-2 bg-primary text-primary-foreground hover:bg-primary/90 {!selectedAccountId ? 'opacity-50 cursor-not-allowed' : ''}"
+        >
+          {#snippet tooltipContent()}
+            Compose Email
+          {/snippet}
+          <PenSquare class="size-4" />
+          <span>Compose</span>
+        </Sidebar.MenuButton>
+      </Sidebar.MenuItem>
+      <Sidebar.MenuItem>
+        <Sidebar.MenuButton
           onclick={!selectedAccountId || isSyncing ? undefined : onSyncMail}
           tooltipContentProps={{
             hidden: false,
@@ -196,6 +213,6 @@
         </Sidebar.MenuButton>
       </Sidebar.MenuItem>
     </Sidebar.Menu>
-    <NavUser user={userData} />
+    <NavUser user={userData} onSettings={onSettings} />
   </Sidebar.Footer>
 </Sidebar.Root>

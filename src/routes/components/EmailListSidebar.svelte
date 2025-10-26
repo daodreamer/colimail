@@ -18,7 +18,6 @@
     folders = [] as Folder[],
     currentUserEmail = "",
     onEmailClick,
-    onComposeClick,
   }: {
     emails?: EmailHeader[];
     selectedEmailUid?: number | null;
@@ -29,7 +28,6 @@
     folders?: Folder[];
     currentUserEmail?: string;
     onEmailClick: (uid: number) => void;
-    onComposeClick: () => void;
   } = $props();
 
   // Check if the current user is a CC recipient (not in To field)
@@ -47,10 +45,22 @@
   }
 
   let showUnreadsOnly = $state(false);
+  let searchQuery = $state("");
 
-  const filteredEmails = $derived(
-    showUnreadsOnly ? emails.filter((email) => !email.seen) : emails
-  );
+  const filteredEmails = $derived(() => {
+    let result = showUnreadsOnly ? emails.filter((email) => !email.seen) : emails;
+    
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((email) => 
+        email.subject.toLowerCase().includes(query) ||
+        email.from.toLowerCase().includes(query) ||
+        email.to.toLowerCase().includes(query)
+      );
+    }
+    
+    return result;
+  });
 
   // Get the display name for the current folder
   const currentFolderDisplayName = $derived(
@@ -69,13 +79,7 @@
         <Switch bind:checked={showUnreadsOnly} class="shadow-none" />
       </Label>
     </div>
-    <button
-      onclick={onComposeClick}
-      disabled={!selectedAccountId}
-      class="w-full rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      ✉️ Compose
-    </button>
+    <Sidebar.Input bind:value={searchQuery} placeholder="Type to search..." />
   </Sidebar.Header>
 
   <Sidebar.Content>
@@ -93,8 +97,8 @@
           {/each}
         {:else if error && emails.length === 0}
           <div class="p-4 text-center text-sm text-destructive">{error}</div>
-        {:else if filteredEmails.length > 0}
-          {#each filteredEmails as email (email.uid)}
+        {:else if filteredEmails().length > 0}
+          {#each filteredEmails() as email (email.uid)}
             <button
               onclick={() => onEmailClick(email.uid)}
               class="flex w-full flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0 text-left transition-colors {email.uid === selectedEmailUid ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}"
@@ -117,6 +121,8 @@
               <span class="font-medium {!email.seen ? 'font-semibold' : ''}">{email.subject}</span>
             </button>
           {/each}
+        {:else if searchQuery.trim()}
+          <div class="p-4 text-center text-sm text-muted-foreground">No emails match your search</div>
         {:else if showUnreadsOnly}
           <div class="p-4 text-center text-sm text-muted-foreground">No unread emails</div>
         {:else if selectedAccountId}

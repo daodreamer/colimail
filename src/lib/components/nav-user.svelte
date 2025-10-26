@@ -5,13 +5,20 @@
 	import CreditCardIcon from "@lucide/svelte/icons/credit-card";
 	import LogOutIcon from "@lucide/svelte/icons/log-out";
 	import SparklesIcon from "@lucide/svelte/icons/sparkles";
+	import SettingsIcon from "@lucide/svelte/icons/settings";
 
 	import * as Avatar from "$lib/components/ui/avatar/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { useSidebar } from "$lib/components/ui/sidebar/index.js";
 
-	let { user }: { user: { name: string; email: string; avatar: string } } = $props();
+	let { 
+		user,
+		onSettings
+	}: { 
+		user: { name: string; email: string; avatar: string };
+		onSettings?: () => void;
+	} = $props();
 
 	const sidebar = useSidebar();
 </script>
@@ -77,6 +84,12 @@
 						<BellIcon />
 						Notifications
 					</DropdownMenu.Item>
+					{#if onSettings}
+						<DropdownMenu.Item onclick={onSettings}>
+							<SettingsIcon />
+							Settings
+						</DropdownMenu.Item>
+					{/if}
 				</DropdownMenu.Group>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item>

@@ -944,6 +944,7 @@
       onAddAccount={() => window.location.href = '/account'}
       onSettings={() => window.location.href = '/settings'}
       onSyncMail={handleManualRefresh}
+      onComposeClick={handleComposeClick}
     />
 
     <EmailListSidebar
@@ -956,7 +957,6 @@
       folders={appState.folders}
       currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
       onEmailClick={handleEmailClick}
-      onComposeClick={handleComposeClick}
     />
   </Sidebar.Root>
 

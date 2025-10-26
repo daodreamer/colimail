@@ -42,20 +42,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Large square button with plus icon for intuitive account addition
   - Button uses dashed border with hover effects following shadcn design patterns
   - Direct navigation to account setup page on click
+- **Compose Button Relocation**: Moved email composition button to more prominent location
+  - Relocated from email list sidebar to left navigation sidebar
+  - Now positioned above Sync Mail button in sidebar footer
+  - Uses `PenSquare` icon for better visual recognition of compose action
+  - Styled with primary color theme for high visibility
+  - Includes hover effects and tooltip ("Compose Email")
+  - Disabled state when no account is selected
+- **Email Search Functionality**: Added real-time search capability to email list
+  - Search input placed at top of email list sidebar (below folder name)
+  - Placeholder text: "Type to search..." matching official shadcn design
+  - Searches across email subject, sender (from), and recipient (to) fields
+  - Case-insensitive partial matching for flexible searching
+  - Works seamlessly with "Unreads" filter - both can be active simultaneously
+  - Shows "No emails match your search" when no results found
+  - Real-time filtering as user types with no lag
+
+### Fixed
+- **Settings Menu Item**: Restored missing Settings option in user account menu
+  - Re-added Settings menu item below Notifications in user dropdown
+  - Uses `SettingsIcon` (gear icon) for clear identification
+  - Properly connects to existing Settings page (`/settings`)
+  - Menu now includes: Account, Billing, Notifications, Settings, and Log out
 
 ### Technical Details
 - Modified `src/routes/+page.svelte`:
   - Added auto-selection logic in `onMount()` lifecycle hook
   - Automatically calls `handleAccountClick()` for first account if available
+  - Updated `AccountFolderSidebar` to receive `onComposeClick` callback
+  - Removed `onComposeClick` from `EmailListSidebar` props
 - Updated `src/routes/components/EmailListSidebar.svelte`:
   - Added `folders` prop to access folder metadata
   - Created `currentFolderDisplayName` derived state to resolve display name
   - Changed header to display `display_name` instead of raw `name` field
+  - Removed Compose button from email list header
+  - Added `searchQuery` state variable for search functionality
+  - Implemented `filteredEmails` derived function with dual filtering (unreads + search)
+  - Added `Sidebar.Input` component for search functionality
+  - Enhanced empty state handling for search results
 - Enhanced `src/routes/components/AccountFolderSidebar.svelte`:
   - Imported all folder-specific icons from lucide-svelte
   - Implemented `getFolderIcon()` function for intelligent icon selection
   - Uses `@const` directive to compute icon component per folder in loop
   - Supports pattern matching on both `name` and `display_name` fields
+  - Added `onComposeClick` prop and callback handler
+  - Added Compose button with `PenSquare` icon in sidebar footer
+  - Positioned Compose button above Sync Mail button
+  - Applied primary color styling for visual prominence
+  - Added `onSettings` callback pass-through to `NavUser` component
+- Updated `src/lib/components/nav-user.svelte`:
+  - Imported `SettingsIcon` from lucide-svelte
+  - Added optional `onSettings` callback prop
+  - Added Settings menu item with conditional rendering
+  - Positioned Settings below Notifications, above Log out separator
 
 ## [0.2.2] - 2025-10-26
 
