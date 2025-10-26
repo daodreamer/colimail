@@ -1,14 +1,20 @@
 // Type definitions for email client
 // This file contains all TypeScript interfaces used throughout the application
 
+export type AuthType = "basic" | "oauth2";
+
 export interface AccountConfig {
   id: number;
   email: string;
-  password: string;
+  password?: string;
   imap_server: string;
   imap_port: number;
   smtp_server: string;
   smtp_port: number;
+  auth_type?: AuthType;
+  access_token?: string;
+  refresh_token?: string;
+  token_expires_at?: number;
 }
 
 export interface EmailHeader {

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { Mail, Plus, RefreshCw, PenSquare } from "lucide-svelte";
+  import CircleUserRound from "lucide-svelte/icons/circle-user-round";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
   import SendIcon from "lucide-svelte/icons/send";
@@ -23,6 +24,7 @@
     onAccountSelect,
     onFolderClick,
     onAddAccount,
+    onManageAccounts,
     onSettings,
     onSyncMail,
     onComposeClick,
@@ -36,6 +38,7 @@
     onAccountSelect: (accountId: number) => void;
     onFolderClick: (folderName: string) => void;
     onAddAccount: () => void;
+    onManageAccounts: () => void;
     onSettings: () => void;
     onSyncMail: () => void;
     onComposeClick: () => void;
@@ -120,6 +123,10 @@
             <DropdownMenu.Item onclick={onAddAccount}>
               <Plus class="size-4" />
               <span>Add Account</span>
+            </DropdownMenu.Item>
+            <DropdownMenu.Item onclick={onManageAccounts}>
+              <CircleUserRound class="size-4" />
+              <span>Manage Account</span>
             </DropdownMenu.Item>
           </DropdownMenu.Content>
         </DropdownMenu.Root>

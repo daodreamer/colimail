@@ -14,6 +14,7 @@
   import ComposeDialog from "./components/ComposeDialog.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import AddAccountDialog from "./components/AddAccountDialog.svelte";
+  import ManageAccountDialog from "./components/ManageAccountDialog.svelte";
 
   // Types and utilities
   import type { AccountConfig, EmailHeader, IdleEvent, Folder } from "./lib/types";
@@ -23,6 +24,7 @@
   // Settings dialog state
   let showSettingsDialog = $state(false);
   let showAddAccountDialog = $state(false);
+  let showManageAccountDialog = $state(false);
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -946,6 +948,46 @@
       console.error("Failed to reload accounts:", error);
     }
   }
+
+  // Handle account deleted callback
+  async function handleAccountDeleted(email: string) {
+    try {
+      // Reload accounts
+      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+      
+      // If the deleted account was selected, clear selection or select another
+      const deletedAccount = appState.accounts.find((acc) => acc.email === email);
+      if (!deletedAccount && appState.selectedAccountId) {
+        // Check if deleted account was the selected one
+        const stillExists = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+        if (!stillExists) {
+          appState.selectedAccountId = null;
+          appState.selectedFolderName = "INBOX";
+          appState.folders = [];
+          appState.emails = [];
+          appState.selectedEmailUid = null;
+          appState.emailBody = null;
+
+          // Select first available account if any
+          if (appState.accounts.length > 0) {
+            await handleAccountClick(appState.accounts[0].id);
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Failed to reload accounts:", error);
+    }
+  }
+
+  // Handle account updated callback
+  async function handleAccountUpdated() {
+    try {
+      // Reload accounts
+      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+    } catch (error) {
+      console.error("Failed to reload accounts:", error);
+    }
+  }
 </script>
 
 <Sidebar.Provider style="--sidebar-width: 350px;">
@@ -963,6 +1005,7 @@
       onAccountSelect={handleAccountClick}
       onFolderClick={handleFolderClick}
       onAddAccount={() => showAddAccountDialog = true}
+      onManageAccounts={() => showManageAccountDialog = true}
       onSettings={() => showSettingsDialog = true}
       onSyncMail={handleManualRefresh}
       onComposeClick={handleComposeClick}
@@ -1026,6 +1069,13 @@
     bind:open={showAddAccountDialog} 
     onOpenChange={(open) => showAddAccountDialog = open}
     onAccountAdded={handleAccountAdded}
+  />
+
+  <ManageAccountDialog
+    bind:open={showManageAccountDialog}
+    accounts={appState.accounts}
+    onAccountDeleted={handleAccountDeleted}
+    onAccountUpdated={handleAccountUpdated}
   />
 
   <Toaster />

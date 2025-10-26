@@ -14,6 +14,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.2.4] - 2025-10-26
+
+### Added
+- **Manage Account Dialog**: New centralized account management interface
+  - Added "Manage Account" option in account dropdown menu (below "Add Account")
+  - Uses `CircleUserRound` icon from Lucide Svelte for better visual representation
+  - Follows shadcn-svelte design patterns with sidebar navigation layout
+  - View all configured email accounts in a sidebar list
+  - View detailed account information including authentication type, IMAP/SMTP servers
+  - Edit account configuration for Basic authentication accounts
+  - OAuth2 accounts show informative message that configuration cannot be edited manually
+  - Delete accounts with confirmation dialog
+  - Auto-selects first account when dialog opens for better UX
+  - Uses Breadcrumb navigation showing current selected account
+
+### Improved
+- **Delete Account Confirmation**: Enhanced delete confirmation with shadcn-svelte Alert Dialog
+  - Replaced native confirmation dialog with styled Alert Dialog component
+  - Features destructive variant Alert with red warning style
+  - Shows `AlertCircle` icon for visual warning indication
+  - Lists all data that will be permanently deleted:
+    - Account configuration
+    - All emails
+    - All folders
+    - All attachments
+  - Clear "Cancel" and "Delete Account" action buttons
+- **Delete Success Feedback**: Improved post-deletion user feedback
+  - Replaced toast notification with prominent Alert component
+  - Shows green success Alert with `CheckCircle2` icon
+  - Displays deleted email address for confirmation
+  - Auto-dismisses after 5 seconds
+  - More visible and professional than previous toast notification
+
+### Technical Details
+- Created `src/routes/components/ManageAccountDialog.svelte`:
+  - Implements shadcn-svelte sidebar layout pattern matching Settings dialog
+  - Uses `Sidebar.Provider`, `Sidebar.Root`, `Sidebar.Content` for account list navigation
+  - Each account shows email address and authentication type badge (OAuth2/Basic)
+  - Main content area shows account details in card format with `bg-muted/50 rounded-xl p-6` styling
+  - Dialog size: `md:max-w-[700px] lg:max-w-[900px]`, height: `600px`
+  - Edit mode uses grid layout for IMAP/SMTP fields (2 columns)
+  - Integrated Alert Dialog component for delete confirmation
+  - Integrated Alert component for success/warning messages
+  - Added `showDeleteDialog`, `showSuccessAlert`, and `deletedEmail` state management
+- Updated `src/routes/lib/types.ts`:
+  - Added `AuthType` type: `"basic" | "oauth2"`
+  - Extended `AccountConfig` interface with OAuth2 fields:
+    - `auth_type?: AuthType`
+    - `access_token?: string`
+    - `refresh_token?: string`
+    - `token_expires_at?: number`
+  - Changed `password` field to optional to support OAuth2 accounts
+- Updated `src/routes/components/AccountFolderSidebar.svelte`:
+  - Added `onManageAccounts` callback prop
+  - Added "Manage Account" menu item with `CircleUserRound` icon
+- Updated `src/routes/+page.svelte`:
+  - Added `showManageAccountDialog` state
+  - Added `handleAccountDeleted` function to handle account deletion
+  - Added `handleAccountUpdated` function to refresh account list
+  - Integrated ManageAccountDialog component with proper callbacks
+- Installed new shadcn-svelte components:
+  - `alert-dialog`: For delete confirmation
+  - `alert`: For success/warning messages
+
 ## [0.2.3] - 2025-10-26
 
 ### Improved

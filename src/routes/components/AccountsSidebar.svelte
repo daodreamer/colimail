@@ -19,6 +19,7 @@
     onCompose,
     onRefresh,
     onDeleteAccount,
+    onManageAccounts,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -29,6 +30,7 @@
     onCompose: () => void;
     onRefresh: () => void;
     onDeleteAccount: (email: string, event: MouseEvent) => void;
+    onManageAccounts: () => void;
   } = $props();
 </script>
 
@@ -113,6 +115,10 @@
       <Button variant="outline" class="w-full justify-start" href="/account">
         <span class="text-base">+</span>
         <span class="ml-2">Add Account</span>
+      </Button>
+      <Button variant="outline" class="w-full justify-start" onclick={onManageAccounts}>
+        <span class="text-base">⚙️</span>
+        <span class="ml-2">Manage Account</span>
       </Button>
       <Button variant="outline" class="w-full justify-start" href="/settings">
         <span class="text-base">⚙️</span>
