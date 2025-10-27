@@ -132,24 +132,24 @@
           {#each paginatedEmails() as email (email.uid)}
             <button
               onclick={() => onEmailClick(email.uid)}
-              class="flex w-full flex-col items-start gap-2 border-b p-4 text-sm leading-tight last:border-b-0 text-left transition-colors {email.uid === selectedEmailUid ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}"
+              class="flex w-full flex-col items-start gap-2 whitespace-nowrap border-b p-4 text-sm leading-tight last:border-b-0 text-left transition-colors {email.uid === selectedEmailUid ? 'bg-sidebar-accent text-sidebar-accent-foreground' : 'hover:bg-sidebar-accent hover:text-sidebar-accent-foreground'}"
             >
-              <div class="flex w-full items-center gap-2">
-                <span class="{!email.seen ? 'font-semibold' : ''} flex items-center gap-1.5">
+              <div class="flex w-[252px] items-center gap-2">
+                <span class="{!email.seen ? 'font-semibold' : ''} flex min-w-0 flex-1 items-center gap-1.5">
                   {#if !email.seen}
                     <span class="h-2 w-2 rounded-full bg-primary shrink-0" title="Unread email"></span>
                   {/if}
-                  {email.from}
                   {#if isCcRecipient(email)}
-                    <Badge variant="secondary" class="shrink-0 text-[10px] px-1 py-0 h-4" title="You received this as CC">CC</Badge>
+                    <Badge variant="secondary" class="shrink-0 text-xs px-1 py-0 h-4" title="You received this as CC">CC</Badge>
                   {/if}
                   {#if email.has_attachments}
-                    <span class="shrink-0 text-xs opacity-60" title="This email has attachments">📎</span>
+                    <span class="shrink-0 text-md opacity-100" title="This email has attachments">📎</span>
                   {/if}
+                  <span class="truncate text-xs">{email.from}</span>
                 </span>
-                <span class="ml-auto text-xs">{formatLocalDateTime(email.timestamp)}</span>
+                <span class="ml-auto shrink-0 text-xs">{formatLocalDateTime(email.timestamp)}</span>
               </div>
-              <span class="font-medium {!email.seen ? 'font-semibold' : ''}">{email.subject}</span>
+              <span class="line-clamp-1 w-[252px] whitespace-normal font-medium {!email.seen ? 'font-semibold' : ''}">{email.subject}</span>
             </button>
           {/each}
         {:else if searchQuery.trim()}
