@@ -19,8 +19,8 @@ pub async fn save_emails_to_cache(
         // Use INSERT with ON CONFLICT to preserve cached body
         let result = sqlx::query(
             "INSERT INTO emails
-            (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, seen, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, has_attachments, seen, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(account_id, folder_name, uid) DO UPDATE SET
                 subject = excluded.subject,
                 from_addr = excluded.from_addr,
@@ -28,6 +28,7 @@ pub async fn save_emails_to_cache(
                 cc_addr = excluded.cc_addr,
                 date = excluded.date,
                 timestamp = excluded.timestamp,
+                has_attachments = excluded.has_attachments,
                 seen = excluded.seen,
                 synced_at = excluded.synced_at",
         )
@@ -40,6 +41,7 @@ pub async fn save_emails_to_cache(
         .bind(&email.cc)
         .bind(&email.date)
         .bind(email.timestamp)
+        .bind(email.has_attachments as i64)
         .bind(email.seen as i64)
         .bind(current_time)
         .execute(pool.as_ref())

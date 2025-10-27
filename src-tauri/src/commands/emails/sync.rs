@@ -3,7 +3,7 @@
 
 use crate::commands::emails::cache::{load_emails_from_cache, save_emails_to_cache};
 use crate::commands::emails::codec::{
-    decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
+    check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
 };
 use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
@@ -134,9 +134,8 @@ async fn incremental_sync(
                                 count
                             );
 
-                            // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
-                            // The has_attachments flag will be determined when fetching the email body
-                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE)") {
+                            // Fetch BODYSTRUCTURE to detect attachments immediately
+                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
                                 Ok(messages) => {
                                     let batch_headers = parse_email_headers(messages.iter());
                                     all_headers.extend(batch_headers);
@@ -233,8 +232,8 @@ async fn incremental_sync(
                                     .collect::<Vec<_>>()
                                     .join(",");
 
-                                // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
-                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE FLAGS INTERNALDATE)") {
+                                // Fetch BODYSTRUCTURE to detect attachments immediately
+                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
                                     Ok(messages) => {
                                         let count = messages.len();
                                         if count > 0 {
@@ -320,9 +319,8 @@ async fn incremental_sync(
                             count
                         );
 
-                        // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
-                        // The has_attachments flag will be determined when fetching the email body
-                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE)") {
+                        // Fetch BODYSTRUCTURE to detect attachments immediately
+                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
                             Ok(messages) => {
                                 let batch_headers = parse_email_headers(messages.iter());
                                 all_headers.extend(batch_headers);
@@ -544,9 +542,11 @@ where
             })
             .unwrap_or_else(|| "".to_string());
 
-        // Note: We don't fetch BODYSTRUCTURE during sync to avoid parsing issues with non-ASCII filenames
-        // has_attachments will be set to false initially and updated when the email body is fetched
-        let has_attachments = false;
+        // Check if email has attachments by examining BODYSTRUCTURE
+        let has_attachments = msg
+            .bodystructure()
+            .map(check_for_attachments)
+            .unwrap_or(false);
 
         // Check if email has been read by examining FLAGS
         let seen = msg

@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - INTERNALDATE provides reliable server-side timestamp even when email's Date header is corrupted
   - Particularly fixes GMX inbox emails and other providers with unreliable Date headers
   - Example: Email with Date="Thu, 26 Jun 2025 09:34:37 +0200" (future date) now correctly shows INTERNALDATE="Sun, 31 Mar 2024 10:51:26 +0000" (actual receive time)
+- **Attachment Detection in Email List**: Fixed attachment indicators not showing immediately when emails are fetched
+  - **Root Cause**: Email sync operations skipped fetching BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment filenames
+  - Attachment detection only occurred when users clicked to open an email, causing paperclip icons (📎) to appear belatedly
+  - **Solution**: Re-enabled BODYSTRUCTURE fetching during all sync operations (full sync, incremental sync, and initial sync)
+  - Updated `parse_email_headers()` in `sync.rs` to use `check_for_attachments()` function on BODYSTRUCTURE data
+  - Modified `save_emails_to_cache()` in `cache.rs` to properly persist `has_attachments` flag to database
+  - IMAP FETCH command updated from `"(UID ENVELOPE FLAGS INTERNALDATE)"` to `"(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)"`
+  - Attachment indicators now display immediately in email list upon sync, matching behavior of direct fetch operations
+  - Users can see which emails have attachments without needing to open them first
+  - `check_for_attachments()` uses debug format string matching which is immune to non-ASCII filename encoding issues
 
 ### Improved
 - **Console Logging Optimization**: Reduced excessive debug output during email synchronization
