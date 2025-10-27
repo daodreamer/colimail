@@ -58,13 +58,13 @@ export const EMAIL_PROVIDER_PRESETS: EmailProviderPreset[] = [
     description: "Fastmail (requires app password)"
   },
   {
-    name: "GMX Mail",
+    name: "GMX Mail (Germany)",
     value: "gmx",
-    imap_server: "imap.gmx.com",
+    imap_server: "imap.gmx.net",
     imap_port: 993,
-    smtp_server: "smtp.gmx.com",
-    smtp_port: 465,
-    description: "GMX Mail"
+    smtp_server: "smtp.gmx.net",
+    smtp_port: 587,
+    description: "GMX Mail (Germany)"
   },
   {
     name: "Mail.com",
