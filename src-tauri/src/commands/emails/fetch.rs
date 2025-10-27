@@ -7,11 +7,11 @@ use crate::commands::emails::cache::{
 use crate::commands::emails::codec::{
     check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date,
 };
+use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
-use crate::models::{AccountConfig, Attachment, AuthType, EmailHeader};
+use crate::models::{AccountConfig, Attachment, EmailHeader};
 use mail_parser::MimeHeaders;
-use native_tls::TlsConnector;
 use tauri::command;
 
 /// OAuth2 authenticator for IMAP
@@ -45,48 +45,8 @@ pub async fn fetch_emails(
     let folder_for_log = folder_name.clone();
 
     let emails = tokio::task::spawn_blocking(move || -> Result<Vec<EmailHeader>, String> {
-        let domain = config.imap_server.as_str();
-        let port = config.imap_port;
-        let email = config.email.as_str();
-
-        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-        let mut imap_session = match config.auth_type {
-            Some(AuthType::OAuth2) => {
-                let access_token = config
-                    .access_token
-                    .as_ref()
-                    .ok_or("Access token is required for OAuth2 authentication")?;
-
-                println!("🔐 Attempting OAuth2 authentication for: {}", email);
-                println!("   Server: {}:{}", domain, port);
-                println!("   Token length: {} chars", access_token.len());
-
-                // OAuth2 XOAUTH2 authentication
-                let oauth2 = OAuth2 {
-                    user: email.to_string(),
-                    access_token: access_token.clone(),
-                };
-
-                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
-                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                    eprintln!("   Possible causes:");
-                    eprintln!("   1. Expired or invalid access token");
-                    eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
-                    eprintln!("   3. IMAP not enabled for this mailbox");
-                    format!("OAuth2 authentication failed: {}", e.0)
-                })?
-            }
-            _ => {
-                let password = config
-                    .password
-                    .as_ref()
-                    .ok_or("Password is required for basic authentication")?;
-
-                client.login(email, password).map_err(|e| e.0.to_string())?
-            }
-        };
+        // Use helper function for connection with imap 3.0.0 API
+        let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
         println!("IMAP authentication successful");
 
@@ -137,8 +97,8 @@ pub async fn fetch_emails(
                         .iter()
                         .map(|addr| {
                             // Try to get the display name first
-                            if let Some(name_bytes) = addr.name {
-                                let name = decode_bytes_to_string(name_bytes);
+                            if let Some(ref name_bytes) = addr.name {
+                                let name = decode_bytes_to_string(name_bytes.as_ref());
                                 // Only use the name if it's not empty
                                 if !name.trim().is_empty() {
                                     // Decode RFC 2047 encoded words
@@ -146,8 +106,12 @@ pub async fn fetch_emails(
                                 }
                             }
                             // Fall back to email address if no display name
-                            let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                            let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                            let mailbox = decode_bytes_to_string(
+                                addr.mailbox.clone().unwrap_or_default().as_ref(),
+                            );
+                            let host = decode_bytes_to_string(
+                                addr.host.clone().unwrap_or_default().as_ref(),
+                            );
                             format!("{}@{}", mailbox, host)
                         })
                         .collect::<Vec<_>>()
@@ -158,7 +122,7 @@ pub async fn fetch_emails(
             let date = envelope
                 .date
                 .as_ref()
-                .map(|d| decode_bytes_to_string(d))
+                .map(|d| decode_bytes_to_string(d.as_ref()))
                 .unwrap_or_else(|| "(No Date)".to_string());
 
             // Parse date to timestamp for sorting and local time conversion
@@ -172,8 +136,8 @@ pub async fn fetch_emails(
                         .iter()
                         .map(|addr| {
                             // Try to get the display name first
-                            if let Some(name_bytes) = addr.name {
-                                let name = decode_bytes_to_string(name_bytes);
+                            if let Some(ref name_bytes) = addr.name {
+                                let name = decode_bytes_to_string(name_bytes.as_ref());
                                 // Only use the name if it's not empty
                                 if !name.trim().is_empty() {
                                     // Decode RFC 2047 encoded words
@@ -181,8 +145,12 @@ pub async fn fetch_emails(
                                 }
                             }
                             // Fall back to email address if no display name
-                            let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                            let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                            let mailbox = decode_bytes_to_string(
+                                addr.mailbox.clone().unwrap_or_default().as_ref(),
+                            );
+                            let host = decode_bytes_to_string(
+                                addr.host.clone().unwrap_or_default().as_ref(),
+                            );
                             format!("{}@{}", mailbox, host)
                         })
                         .collect::<Vec<_>>()
@@ -197,14 +165,18 @@ pub async fn fetch_emails(
                     addrs
                         .iter()
                         .map(|addr| {
-                            if let Some(name_bytes) = addr.name {
-                                let name = decode_bytes_to_string(name_bytes);
+                            if let Some(ref name_bytes) = addr.name {
+                                let name = decode_bytes_to_string(name_bytes.as_ref());
                                 if !name.trim().is_empty() {
                                     return decode_header(&name);
                                 }
                             }
-                            let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                            let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                            let mailbox = decode_bytes_to_string(
+                                addr.mailbox.clone().unwrap_or_default().as_ref(),
+                            );
+                            let host = decode_bytes_to_string(
+                                addr.host.clone().unwrap_or_default().as_ref(),
+                            );
                             format!("{}@{}", mailbox, host)
                         })
                         .collect::<Vec<_>>()
@@ -273,48 +245,8 @@ pub async fn fetch_email_body_with_attachments(
 
     let (body, attachments) =
         tokio::task::spawn_blocking(move || -> Result<(String, Vec<Attachment>), String> {
-            let domain = config.imap_server.as_str();
-            let port = config.imap_port;
-            let email = config.email.as_str();
-
-            let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-            let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-            let mut imap_session = match config.auth_type {
-                Some(AuthType::OAuth2) => {
-                    let access_token = config
-                        .access_token
-                        .as_ref()
-                        .ok_or("Access token is required for OAuth2 authentication")?;
-
-                    println!("🔐 Attempting OAuth2 authentication for: {}", email);
-                    println!("   Server: {}:{}", domain, port);
-                    println!("   Token length: {} chars", access_token.len());
-
-                    // OAuth2 XOAUTH2 authentication
-                    let oauth2 = OAuth2 {
-                        user: email.to_string(),
-                        access_token: access_token.clone(),
-                    };
-
-                    client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
-                        eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                        eprintln!("   Possible causes:");
-                        eprintln!("   1. Expired or invalid access token");
-                        eprintln!("   2. Incorrect OAuth2 scopes in Azure AD");
-                        eprintln!("   3. IMAP not enabled for this mailbox");
-                        format!("OAuth2 authentication failed: {}", e.0)
-                    })?
-                }
-                _ => {
-                    let password = config
-                        .password
-                        .as_ref()
-                        .ok_or("Password is required for basic authentication")?;
-
-                    client.login(email, password).map_err(|e| e.0.to_string())?
-                }
-            };
+            // Use helper function for connection with imap 3.0.0 API
+            let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
             imap_session.select(&folder_name).map_err(|e| {
                 eprintln!(
@@ -331,7 +263,8 @@ pub async fn fetch_email_body_with_attachments(
                     e.to_string()
                 })?;
 
-            let message = messages.first().ok_or_else(|| {
+            // In imap 3.0.0, Fetches implements Iterator, use iter().next() instead of first()
+            let message = messages.iter().next().ok_or_else(|| {
                 eprintln!("❌ No message found for UID {}", uid);
                 "No message found for UID".to_string()
             })?;

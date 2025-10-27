@@ -1,7 +1,7 @@
+use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
-use crate::models::{AccountConfig, AuthType};
-use native_tls::TlsConnector;
+use crate::models::AccountConfig;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -61,22 +61,6 @@ pub enum IdleEventType {
     Expunge { uid: u32 },
     FlagsChanged { uid: u32 },
     ConnectionLost,
-}
-
-/// OAuth2 authenticator for IMAP
-struct OAuth2 {
-    user: String,
-    access_token: String,
-}
-
-impl imap::Authenticator for OAuth2 {
-    type Response = String;
-    fn process(&self, _: &[u8]) -> Self::Response {
-        format!(
-            "user={}\x01auth=Bearer {}\x01\x01",
-            self.user, self.access_token
-        )
-    }
 }
 
 /// Global IDLE manager instance
@@ -337,6 +321,8 @@ impl IdleManager {
         folder_name: &str,
         config: &AccountConfig,
     ) -> Result<(), String> {
+        use imap::types::UnsolicitedResponse;
+
         // Ensure we have a valid access token (refresh if needed)
         let config_refreshed = ensure_valid_token(config.clone()).await?;
 
@@ -345,147 +331,137 @@ impl IdleManager {
         let app_handle_clone = app_handle.clone();
 
         tokio::task::spawn_blocking(move || {
-            let domain = config_clone.imap_server.as_str();
-            let port = config_clone.imap_port;
-            let email = config_clone.email.as_str();
-
-            let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-            let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-            // Authenticate
-            let mut imap_session = match config_clone.auth_type {
-                Some(AuthType::OAuth2) => {
-                    let access_token = config_clone
-                        .access_token
-                        .as_ref()
-                        .ok_or("Access token is required for OAuth2 authentication")?;
-
-                    let oauth2 = OAuth2 {
-                        user: email.to_string(),
-                        access_token: access_token.clone(),
-                    };
-
-                    client
-                        .authenticate("XOAUTH2", &oauth2)
-                        .map_err(|e| format!("OAuth2 authentication failed: {}", e.0))?
-                }
-                _ => {
-                    let password = config_clone
-                        .password
-                        .as_ref()
-                        .ok_or("Password is required for basic authentication")?;
-
-                    client.login(email, password).map_err(|e| e.0.to_string())?
-                }
-            };
+            // Use helper function for connection with imap 3.0.0 API
+            let mut imap_session = imap_helpers::connect_and_login(&config_clone)?;
 
             println!("✅ IDLE IMAP authentication successful");
 
             // SELECT folder
-            let _mailbox = imap_session
+            let mailbox = imap_session
                 .select(&folder_name_owned)
                 .map_err(|e| format!("Cannot select folder: {}", e))?;
 
             println!("📥 IDLE mode activated for {}", folder_name_owned);
+            println!(
+                "📊 Initial mailbox state - EXISTS: {}, RECENT: {}",
+                mailbox.exists, mailbox.recent
+            );
 
-            // IDLE loop with 15-minute timeout (recommended by RFC)
-            let idle_duration = Duration::from_secs(15 * 60);
-            let start = std::time::Instant::now();
+            // Track initial state
+            let mut prev_exists = mailbox.exists;
 
-            // Track previous mailbox state to detect changes
-            let mut prev_exists: u32 = _mailbox.exists;
-            let mut prev_recent: u32 = _mailbox.recent;
+            // Start IDLE session with imap 3.0.0 API
+            // Note: .idle() returns Handle directly, not Result
+            let mut idle_handle = imap_session.idle();
 
-            loop {
-                // Check if we should refresh IDLE (every 15 minutes)
-                if start.elapsed() >= idle_duration {
-                    println!("🔄 Refreshing IDLE connection (15-minute timeout)");
-                    break;
-                }
+            // Set keepalive to true (default, but explicit for clarity)
+            idle_handle.keepalive(true);
 
-                // Enter IDLE mode
-                let idle_handle = imap_session
-                    .idle()
-                    .map_err(|e| format!("Failed to enter IDLE: {}", e))?;
+            // Set timeout to 29 minutes (default, per RFC 2177)
+            idle_handle.timeout(Duration::from_secs(29 * 60));
 
-                // Wait for notifications with keep-alive
-                let idle_result = idle_handle.wait_keepalive();
+            println!("⏳ IDLE waiting for changes...");
 
-                match idle_result {
-                    Ok(()) => {
-                        println!("📬 Received IDLE notification");
+            // Wait for mailbox changes using the new wait_while API
+            let wait_result = idle_handle.wait_while(|response: UnsolicitedResponse| {
+                match response {
+                    UnsolicitedResponse::Exists(count) => {
+                        println!("📨 IDLE: EXISTS = {}", count);
 
-                        // Re-examine the mailbox to see what changed
-                        let mailbox = imap_session
-                            .examine(&folder_name_owned)
-                            .map_err(|e| format!("Failed to examine mailbox: {}", e))?;
+                        // Detect new messages
+                        if count > prev_exists {
+                            let new_count = count - prev_exists;
+                            println!("✨ Detected {} new message(s)", new_count);
 
-                        let curr_exists = mailbox.exists;
-                        let curr_recent = mailbox.recent;
-
-                        println!(
-                            "📊 Mailbox state: EXISTS {} (was {}), RECENT {} (was {})",
-                            curr_exists, prev_exists, curr_recent, prev_recent
-                        );
-
-                        // Detect different types of changes
-                        let events = detect_mailbox_changes(
-                            prev_exists,
-                            curr_exists,
-                            prev_recent,
-                            curr_recent,
-                        );
-
-                        for event_type in events.clone() {
-                            // Send notification for new messages
-                            if let IdleEventType::NewMessages { count } = event_type {
-                                // Clone app_handle for async operation
-                                let app_handle_for_notif = app_handle_clone.clone();
-                                let folder_for_notif = folder_name_owned.clone();
-
-                                // Spawn async task to send notification
-                                tokio::spawn(async move {
-                                    send_notification(
-                                        &app_handle_for_notif,
-                                        account_id,
-                                        &folder_for_notif,
-                                        count,
-                                    )
-                                    .await;
-                                });
-                            }
-
+                            // Emit event to frontend
                             let _ = app_handle_clone.emit(
                                 "idle-event",
                                 IdleEvent {
                                     account_id,
                                     folder_name: folder_name_owned.clone(),
-                                    event_type,
+                                    event_type: IdleEventType::NewMessages { count: new_count },
                                 },
                             );
+
+                            // Send desktop notification
+                            let app_handle_clone2 = app_handle_clone.clone();
+                            let folder_name_clone = folder_name_owned.clone();
+                            tokio::spawn(async move {
+                                send_notification(
+                                    &app_handle_clone2,
+                                    account_id,
+                                    &folder_name_clone,
+                                    new_count,
+                                )
+                                .await;
+                            });
                         }
 
-                        // Update tracked state
-                        prev_exists = curr_exists;
-                        prev_recent = curr_recent;
+                        prev_exists = count;
 
-                        println!("✨ IDLE notification processed");
+                        // Return false to stop IDLE after detecting change
+                        false
                     }
-                    Err(e) => {
-                        eprintln!("⚠️ IDLE wait error: {}", e);
-                        return Err(format!("IDLE wait error: {}", e));
+                    UnsolicitedResponse::Recent(count) => {
+                        println!("📬 IDLE: RECENT = {}", count);
+                        // Continue waiting
+                        true
+                    }
+                    UnsolicitedResponse::Expunge(seq) => {
+                        println!("🗑️ IDLE: EXPUNGE seq={}", seq);
+
+                        // Emit expunge event
+                        let _ = app_handle_clone.emit(
+                            "idle-event",
+                            IdleEvent {
+                                account_id,
+                                folder_name: folder_name_owned.clone(),
+                                event_type: IdleEventType::Expunge { uid: seq },
+                            },
+                        );
+
+                        // Continue waiting
+                        true
+                    }
+                    UnsolicitedResponse::Fetch { id, .. } => {
+                        println!("🏴 IDLE: FETCH id={}", id);
+
+                        // Emit flags changed event
+                        let _ = app_handle_clone.emit(
+                            "idle-event",
+                            IdleEvent {
+                                account_id,
+                                folder_name: folder_name_owned.clone(),
+                                event_type: IdleEventType::FlagsChanged { uid: id },
+                            },
+                        );
+
+                        // Continue waiting
+                        true
+                    }
+                    _ => {
+                        println!("📡 IDLE: Other response: {:?}", response);
+                        // Continue waiting for other responses
+                        true
                     }
                 }
+            });
 
-                // Small delay before re-entering IDLE
-                std::thread::sleep(Duration::from_millis(100));
+            match wait_result {
+                Ok(_outcome) => {
+                    println!("✅ IDLE session completed successfully");
+                    Ok(())
+                }
+                Err(e) => {
+                    eprintln!("❌ IDLE wait error: {}", e);
+                    Err(format!("IDLE error: {}", e))
+                }
             }
-
-            let _ = imap_session.logout();
-            Ok(())
         })
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| format!("Task join error: {}", e))??;
+
+        Ok(())
     }
 
     /// Check if a connection is active
@@ -750,47 +726,4 @@ fn create_notification_window(app_handle: &AppHandle, title: &str, from: &str, s
             eprintln!("❌ Failed to create notification window: {}", e);
         }
     }
-}
-
-/// Detect mailbox changes by comparing previous and current state
-fn detect_mailbox_changes(
-    prev_exists: u32,
-    curr_exists: u32,
-    prev_recent: u32,
-    curr_recent: u32,
-) -> Vec<IdleEventType> {
-    let mut events = Vec::new();
-
-    // Check for new messages
-    if curr_exists > prev_exists {
-        let new_count = curr_exists - prev_exists;
-        println!("📨 Detected {} new message(s)", new_count);
-        events.push(IdleEventType::NewMessages { count: new_count });
-    }
-
-    // Check for deleted messages (EXPUNGE)
-    if curr_exists < prev_exists {
-        let deleted_count = prev_exists - curr_exists;
-        println!("🗑️ Detected {} message(s) deleted", deleted_count);
-        // Emit a generic expunge event (we don't know which specific UIDs)
-        events.push(IdleEventType::Expunge { uid: 0 });
-    }
-
-    // Check for flags changed (e.g., marked as read)
-    // RECENT count decreasing without EXISTS changing means flags changed
-    if curr_recent != prev_recent && curr_exists == prev_exists {
-        println!(
-            "🏴 Detected FLAGS change (RECENT: {} -> {})",
-            prev_recent, curr_recent
-        );
-        events.push(IdleEventType::FlagsChanged { uid: 0 });
-    }
-
-    // If nothing specific detected but IDLE triggered, treat as generic update
-    if events.is_empty() {
-        println!("📬 Mailbox changed (no specific event detected)");
-        events.push(IdleEventType::NewMessages { count: 1 });
-    }
-
-    events
 }

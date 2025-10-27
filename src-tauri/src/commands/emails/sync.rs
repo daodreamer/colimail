@@ -2,15 +2,12 @@
 // This module handles incremental sync using UIDVALIDITY and UIDs
 
 use crate::commands::emails::cache::{load_emails_from_cache, save_emails_to_cache};
-use crate::commands::emails::codec::{
-    check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date,
-};
-use crate::commands::emails::fetch::OAuth2;
+use crate::commands::emails::codec::{decode_bytes_to_string, decode_header, parse_email_date};
+use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
-use crate::models::{AccountConfig, AuthType, EmailHeader};
+use crate::models::{AccountConfig, EmailHeader};
 use chrono::Utc;
-use native_tls::TlsConnector;
 use tauri::command;
 
 /// Struct to hold sync state from database
@@ -81,40 +78,8 @@ async fn incremental_sync(
     // Connect to IMAP and check current state
     let (server_uidvalidity, _server_exists, new_emails) =
         tokio::task::spawn_blocking(move || -> Result<(u32, u32, Vec<EmailHeader>), String> {
-            let domain = config.imap_server.as_str();
-            let port = config.imap_port;
-            let email = config.email.as_str();
-
-            let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-            let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-            let mut imap_session = match config.auth_type {
-                Some(AuthType::OAuth2) => {
-                    let access_token = config
-                        .access_token
-                        .as_ref()
-                        .ok_or("Access token is required for OAuth2 authentication")?;
-
-                    println!("🔐 OAuth2 authentication for incremental sync: {}", email);
-
-                    let oauth2 = OAuth2 {
-                        user: email.to_string(),
-                        access_token: access_token.clone(),
-                    };
-
-                    client
-                        .authenticate("XOAUTH2", &oauth2)
-                        .map_err(|e| format!("OAuth2 authentication failed: {}", e.0))?
-                }
-                _ => {
-                    let password = config
-                        .password
-                        .as_ref()
-                        .ok_or("Password is required for basic authentication")?;
-
-                    client.login(email, password).map_err(|e| e.0.to_string())?
-                }
-            };
+            // Use new imap_helpers to connect and login
+            let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
             println!("✅ IMAP authentication successful");
 
@@ -137,19 +102,80 @@ async fn incremental_sync(
                     // Full sync needed: UIDVALIDITY changed
                     println!("⚠️ UIDVALIDITY changed! Full resync required.");
 
-                    // Fetch all emails in the mailbox
+                    // Fetch all emails in the mailbox in batches
                     if server_exists == 0 {
                         Vec::new()
                     } else {
-                        let seq_range = format!("1:{}", server_exists);
+                        // Fetch in batches to avoid overwhelming the IMAP server and parser
+                        // Start with a conservative batch size for maximum compatibility
+                        // Some servers (like GMX) have issues with larger batch sizes
+                        let mut batch_size = 50u32;
+                        let mut all_headers = Vec::new();
+                        let mut current_pos = 1u32;
 
-                        println!("📥 Fetching all {} messages: {}", server_exists, seq_range);
+                        println!(
+                            "📥 Full resync: fetching all {} messages in batches of up to {} messages",
+                            server_exists, batch_size
+                        );
 
-                        let messages = imap_session
-                            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
-                            .map_err(|e| e.to_string())?;
+                        let mut batch_num = 0u32;
+                        while current_pos <= server_exists {
+                            batch_num += 1;
+                            let end_seq = (current_pos + batch_size - 1).min(server_exists);
+                            let seq_range = format!("{}:{}", current_pos, end_seq);
+                            let count = end_seq - current_pos + 1;
 
-                        parse_email_headers(messages.iter().rev())
+                            println!(
+                                "  📦 Batch {}: fetching messages {} ({} messages)",
+                                batch_num,
+                                seq_range,
+                                count
+                            );
+
+                            // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
+                            // The has_attachments flag will be determined when fetching the email body
+                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS)") {
+                                Ok(messages) => {
+                                    let batch_headers = parse_email_headers(messages.iter());
+                                    all_headers.extend(batch_headers);
+
+                                    println!(
+                                        "  ✓ Batch {} complete, {} total emails so far",
+                                        batch_num,
+                                        all_headers.len()
+                                    );
+
+                                    current_pos = end_seq + 1;
+
+                                    // Gradually increase batch size if successful
+                                    if batch_size < 200 {
+                                        batch_size = (batch_size * 2).min(200);
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("❌ IMAP FETCH failed for batch {}", batch_num);
+                                    eprintln!("   Range: {}", seq_range);
+                                    eprintln!("   Batch size: {}", batch_size);
+                                    eprintln!("   Error details: {:?}", e);
+
+                                    // If batch size is already very small, give up
+                                    if batch_size <= 10 {
+                                        return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
+                                    }
+
+                                    // Reduce batch size and retry
+                                    batch_size = (batch_size / 2).max(10);
+                                    println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
+                                    // Don't increment current_pos, we'll retry this range
+                                }
+                            }
+                        }
+
+                        // Sort by timestamp descending (newest first)
+                        all_headers.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+                        println!("✅ Full resync complete: fetched {} emails in {} batch(es)", all_headers.len(), batch_num);
+                        all_headers
                     }
                 } else {
                     // Incremental sync: fetch only new messages
@@ -205,7 +231,8 @@ async fn incremental_sync(
                                     .collect::<Vec<_>>()
                                     .join(",");
 
-                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE FLAGS)") {
+                                // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
+                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE FLAGS)") {
                                     Ok(messages) => {
                                         let count = messages.len();
                                         if count > 0 {
@@ -261,33 +288,80 @@ async fn incremental_sync(
                 // Full sync needed: no previous state
                 println!("🆕 First sync for this folder.");
 
-                // Fetch only recent emails (last 500) to avoid overwhelming the server
-                // User can manually sync more if needed
+                // Fetch all emails in the mailbox
                 if server_exists == 0 {
                     Vec::new()
                 } else {
-                    // Limit initial sync to last 500 messages for performance
-                    const INITIAL_SYNC_LIMIT: u32 = 500;
-                    let start_seq = if server_exists > INITIAL_SYNC_LIMIT {
-                        server_exists - INITIAL_SYNC_LIMIT + 1
-                    } else {
-                        1
-                    };
-                    let seq_range = format!("{}:{}", start_seq, server_exists);
+                    // Fetch in batches to avoid overwhelming the IMAP server and parser
+                    // Start with a conservative batch size for maximum compatibility
+                    // Some servers (like GMX) have issues with larger batch sizes
+                    let mut batch_size = 50u32;
+                    let mut all_headers = Vec::new();
+                    let mut current_pos = 1u32;
 
                     println!(
-                        "📥 Initial sync: fetching last {} messages ({}:{} out of {} total)",
-                        INITIAL_SYNC_LIMIT.min(server_exists),
-                        start_seq,
-                        server_exists,
-                        server_exists
+                        "📥 Initial sync: fetching all {} messages in batches of up to {} messages",
+                        server_exists, batch_size
                     );
 
-                    let messages = imap_session
-                        .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
-                        .map_err(|e| e.to_string())?;
+                    let mut batch_num = 0u32;
+                    while current_pos <= server_exists {
+                        batch_num += 1;
+                        let end_seq = (current_pos + batch_size - 1).min(server_exists);
+                        let seq_range = format!("{}:{}", current_pos, end_seq);
+                        let count = end_seq - current_pos + 1;
 
-                    parse_email_headers(messages.iter().rev())
+                        println!(
+                            "  📦 Batch {}: fetching messages {} ({} messages)",
+                            batch_num,
+                            seq_range,
+                            count
+                        );
+
+                        // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
+                        // The has_attachments flag will be determined when fetching the email body
+                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS)") {
+                            Ok(messages) => {
+                                let batch_headers = parse_email_headers(messages.iter());
+                                all_headers.extend(batch_headers);
+
+                                println!(
+                                    "  ✓ Batch {} complete, {} total emails so far",
+                                    batch_num,
+                                    all_headers.len()
+                                );
+
+                                current_pos = end_seq + 1;
+
+                                // Gradually increase batch size if successful
+                                if batch_size < 200 {
+                                    batch_size = (batch_size * 2).min(200);
+                                }
+                            }
+                            Err(e) => {
+                                eprintln!("❌ IMAP FETCH failed for batch {}", batch_num);
+                                eprintln!("   Range: {}", seq_range);
+                                eprintln!("   Batch size: {}", batch_size);
+                                eprintln!("   Error details: {:?}", e);
+
+                                // If batch size is already very small, give up
+                                if batch_size <= 10 {
+                                    return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
+                                }
+
+                                // Reduce batch size and retry
+                                batch_size = (batch_size / 2).max(10);
+                                println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
+                                // Don't increment current_pos, we'll retry this range
+                            }
+                        }
+                    }
+
+                    // Sort by timestamp descending (newest first)
+                    all_headers.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+                    println!("✅ Initial sync complete: fetched {} emails in {} batch(es)", all_headers.len(), batch_num);
+                    all_headers
                 }
             };
 
@@ -356,9 +430,10 @@ async fn incremental_sync(
 }
 
 /// Helper function to parse IMAP fetch results into EmailHeader
+/// In imap 3.0.0, Fetch type requires lifetime parameter
 fn parse_email_headers<'a, I>(messages: I) -> Vec<EmailHeader>
 where
-    I: Iterator<Item = &'a imap::types::Fetch>,
+    I: Iterator<Item = &'a imap::types::Fetch<'a>>,
 {
     let mut headers = Vec::new();
 
@@ -372,7 +447,8 @@ where
             .subject
             .as_ref()
             .map(|s| {
-                let raw_subject = decode_bytes_to_string(s);
+                // In imap 3.0.0, envelope fields are Cow<[u8]> instead of &[u8]
+                let raw_subject = decode_bytes_to_string(s.as_ref());
                 decode_header(&raw_subject)
             })
             .unwrap_or_else(|| "(No Subject)".to_string());
@@ -384,14 +460,17 @@ where
                 addrs
                     .iter()
                     .map(|addr| {
-                        if let Some(name_bytes) = addr.name {
-                            let name = decode_bytes_to_string(name_bytes);
+                        if let Some(ref name_bytes) = addr.name {
+                            let name = decode_bytes_to_string(name_bytes.as_ref());
                             if !name.trim().is_empty() {
                                 return decode_header(&name);
                             }
                         }
-                        let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                        let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                        let mailbox = decode_bytes_to_string(
+                            addr.mailbox.clone().unwrap_or_default().as_ref(),
+                        );
+                        let host =
+                            decode_bytes_to_string(addr.host.clone().unwrap_or_default().as_ref());
                         format!("{}@{}", mailbox, host)
                     })
                     .collect::<Vec<_>>()
@@ -402,7 +481,7 @@ where
         let date = envelope
             .date
             .as_ref()
-            .map(|d| decode_bytes_to_string(d))
+            .map(|d| decode_bytes_to_string(d.as_ref()))
             .unwrap_or_else(|| "(No Date)".to_string());
 
         let timestamp = parse_email_date(&date);
@@ -414,14 +493,17 @@ where
                 addrs
                     .iter()
                     .map(|addr| {
-                        if let Some(name_bytes) = addr.name {
-                            let name = decode_bytes_to_string(name_bytes);
+                        if let Some(ref name_bytes) = addr.name {
+                            let name = decode_bytes_to_string(name_bytes.as_ref());
                             if !name.trim().is_empty() {
                                 return decode_header(&name);
                             }
                         }
-                        let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                        let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                        let mailbox = decode_bytes_to_string(
+                            addr.mailbox.clone().unwrap_or_default().as_ref(),
+                        );
+                        let host =
+                            decode_bytes_to_string(addr.host.clone().unwrap_or_default().as_ref());
                         format!("{}@{}", mailbox, host)
                     })
                     .collect::<Vec<_>>()
@@ -436,14 +518,17 @@ where
                 addrs
                     .iter()
                     .map(|addr| {
-                        if let Some(name_bytes) = addr.name {
-                            let name = decode_bytes_to_string(name_bytes);
+                        if let Some(ref name_bytes) = addr.name {
+                            let name = decode_bytes_to_string(name_bytes.as_ref());
                             if !name.trim().is_empty() {
                                 return decode_header(&name);
                             }
                         }
-                        let mailbox = decode_bytes_to_string(addr.mailbox.unwrap_or_default());
-                        let host = decode_bytes_to_string(addr.host.unwrap_or_default());
+                        let mailbox = decode_bytes_to_string(
+                            addr.mailbox.clone().unwrap_or_default().as_ref(),
+                        );
+                        let host =
+                            decode_bytes_to_string(addr.host.clone().unwrap_or_default().as_ref());
                         format!("{}@{}", mailbox, host)
                     })
                     .collect::<Vec<_>>()
@@ -451,10 +536,9 @@ where
             })
             .unwrap_or_else(|| "".to_string());
 
-        let has_attachments = msg
-            .bodystructure()
-            .map(check_for_attachments)
-            .unwrap_or(false);
+        // Note: We don't fetch BODYSTRUCTURE during sync to avoid parsing issues with non-ASCII filenames
+        // has_attachments will be set to false initially and updated when the email body is fetched
+        let has_attachments = false;
 
         // Check if email has been read by examining FLAGS
         let seen = msg
@@ -475,9 +559,7 @@ where
         });
     }
 
-    // Sort by timestamp descending (newest first)
-    headers.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
-
+    // Note: Sorting is now done by the caller
     headers
 }
 
@@ -537,38 +619,8 @@ async fn get_all_server_uids(config: AccountConfig, folder_name: &str) -> Result
     let folder_name_owned = folder_name.to_string();
 
     tokio::task::spawn_blocking(move || -> Result<Vec<u32>, String> {
-        let domain = config.imap_server.as_str();
-        let port = config.imap_port;
-        let email = config.email.as_str();
-
-        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-        let mut imap_session = match config.auth_type {
-            Some(AuthType::OAuth2) => {
-                let access_token = config
-                    .access_token
-                    .as_ref()
-                    .ok_or("Access token is required for OAuth2 authentication")?;
-
-                let oauth2 = OAuth2 {
-                    user: email.to_string(),
-                    access_token: access_token.clone(),
-                };
-
-                client
-                    .authenticate("XOAUTH2", &oauth2)
-                    .map_err(|e| format!("OAuth2 authentication failed: {}", e.0))?
-            }
-            _ => {
-                let password = config
-                    .password
-                    .as_ref()
-                    .ok_or("Password is required for basic authentication")?;
-
-                client.login(email, password).map_err(|e| e.0.to_string())?
-            }
-        };
+        // Use new imap_helpers to connect and login
+        let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
         // SELECT the folder
         imap_session

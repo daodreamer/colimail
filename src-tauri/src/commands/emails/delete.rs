@@ -1,16 +1,18 @@
 // Email deletion operations
 // This module handles moving emails to trash and permanent deletion
 
-use crate::commands::emails::fetch::OAuth2;
+use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
-use crate::models::{AccountConfig, AuthType};
-use native_tls::TlsConnector;
+use crate::models::AccountConfig;
 use tauri::command;
+
+// Import NameAttribute from imap-proto for folder attribute checking
+use imap_proto::types::NameAttribute;
 
 /// Helper function to find the trash/deleted folder for an account
 /// Different providers use different names for the trash folder
 fn find_trash_folder(
-    imap_session: &mut imap::Session<native_tls::TlsStream<std::net::TcpStream>>,
+    imap_session: &mut imap::Session<Box<dyn imap::ImapConnection>>,
 ) -> Result<String, String> {
     // Common trash folder names used by different providers
     let trash_candidates = vec![
@@ -46,12 +48,14 @@ fn find_trash_folder(
                 || lower_name.contains("deleted")
                 || lower_name.contains("垃圾")
             {
-                // Verify the folder is selectable
-                if !mailbox
+                // In imap 3.0.0, NameAttribute is from imap_proto crate
+                // Check if the folder is NOT NoSelect (i.e., is selectable)
+                let has_noselect = mailbox
                     .attributes()
                     .iter()
-                    .any(|attr| matches!(attr, imap::types::NameAttribute::NoSelect))
-                {
+                    .any(|attr| matches!(attr, NameAttribute::NoSelect));
+
+                if !has_noselect {
                     println!("Found trash folder: {}", folder_name);
                     return Ok(folder_name.to_string());
                 }
@@ -82,41 +86,9 @@ pub async fn move_email_to_trash(
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let folder_name = folder_name_for_task;
-        let domain = config.imap_server.as_str();
-        let port = config.imap_port;
-        let email = config.email.as_str();
 
-        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-        let mut imap_session = match config.auth_type {
-            Some(AuthType::OAuth2) => {
-                let access_token = config
-                    .access_token
-                    .as_ref()
-                    .ok_or("Access token is required for OAuth2 authentication")?;
-
-                println!("🔐 Attempting OAuth2 authentication for: {}", email);
-
-                let oauth2 = OAuth2 {
-                    user: email.to_string(),
-                    access_token: access_token.clone(),
-                };
-
-                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
-                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                    format!("OAuth2 authentication failed: {}", e.0)
-                })?
-            }
-            _ => {
-                let password = config
-                    .password
-                    .as_ref()
-                    .ok_or("Password is required for basic authentication")?;
-
-                client.login(email, password).map_err(|e| e.0.to_string())?
-            }
-        };
+        // Use helper function for connection with imap 3.0.0 API
+        let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
         println!("IMAP authentication successful");
 
@@ -204,41 +176,9 @@ pub async fn delete_email(
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
         let folder_name = folder_name_for_task;
-        let domain = config.imap_server.as_str();
-        let port = config.imap_port;
-        let email = config.email.as_str();
 
-        let tls = TlsConnector::builder().build().map_err(|e| e.to_string())?;
-        let client = imap::connect((domain, port), domain, &tls).map_err(|e| e.to_string())?;
-
-        let mut imap_session = match config.auth_type {
-            Some(AuthType::OAuth2) => {
-                let access_token = config
-                    .access_token
-                    .as_ref()
-                    .ok_or("Access token is required for OAuth2 authentication")?;
-
-                println!("🔐 Attempting OAuth2 authentication for: {}", email);
-
-                let oauth2 = OAuth2 {
-                    user: email.to_string(),
-                    access_token: access_token.clone(),
-                };
-
-                client.authenticate("XOAUTH2", &oauth2).map_err(|e| {
-                    eprintln!("❌ OAuth2 authentication failed: {}", e.0);
-                    format!("OAuth2 authentication failed: {}", e.0)
-                })?
-            }
-            _ => {
-                let password = config
-                    .password
-                    .as_ref()
-                    .ok_or("Password is required for basic authentication")?;
-
-                client.login(email, password).map_err(|e| e.0.to_string())?
-            }
-        };
+        // Use helper function for connection with imap 3.0.0 API
+        let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
         println!("IMAP authentication successful");
 

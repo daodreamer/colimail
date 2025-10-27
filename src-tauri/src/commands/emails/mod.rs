@@ -7,6 +7,7 @@ pub mod codec;
 pub mod delete;
 pub mod fetch;
 pub mod flags;
+pub mod imap_helpers;
 pub mod sync;
 pub mod sync_interval;
 
