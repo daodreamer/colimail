@@ -8,6 +8,8 @@
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import * as Tabs from "$lib/components/ui/tabs";
+  import { Combobox } from "$lib/components/ui/combobox";
+  import { EMAIL_PROVIDER_PRESETS, type EmailProviderPreset } from "../lib/email-providers";
 
   interface AddAccountDialogProps {
     open: boolean;
@@ -19,7 +21,32 @@
 
   let selectedProvider: "google" | "outlook" = $state("google");
   let oauthEmail = $state("");
+  let oauthEmailInput = $state(""); // User input before @ symbol
   let isAuthenticating = $state(false);
+  let emailInputError = $state("");
+
+  // Validate and construct full email when input changes
+  $effect(() => {
+    if (oauthEmailInput.includes("@")) {
+      emailInputError = "Email prefix should not contain @ symbol";
+      oauthEmail = "";
+    } else if (oauthEmailInput.trim()) {
+      emailInputError = "";
+      const domain = selectedProvider === "google" ? "@gmail.com" : "@outlook.com";
+      oauthEmail = oauthEmailInput.trim() + domain;
+    } else {
+      emailInputError = "";
+      oauthEmail = "";
+    }
+  });
+
+  // Reset input when provider changes
+  $effect(() => {
+    selectedProvider; // track dependency
+    oauthEmailInput = "";
+    oauthEmail = "";
+    emailInputError = "";
+  });
 
   let accountConfig = $state({
     email: "",
@@ -29,6 +56,97 @@
     smtp_server: "",
     smtp_port: 465,
   });
+
+  let selectedPreset = $state("");
+  let isTesting = $state(false);
+  let testResult = $state<{
+    imap_success: boolean;
+    imap_error?: string;
+    smtp_success: boolean;
+    smtp_error?: string;
+  } | null>(null);
+
+  // Computed value for button disabled state
+  const isTestPassed = $derived(
+    testResult !== null && 
+    testResult.imap_success === true && 
+    testResult.smtp_success === true
+  );
+
+  // Debug effect to track isTestPassed changes
+  $effect(() => {
+    console.log("isTestPassed changed:", isTestPassed);
+    console.log("testResult:", testResult);
+  });
+
+  // Apply preset when selected
+  function applyPreset(presetValue: string) {
+    console.log("Applying preset:", presetValue);
+    const preset = EMAIL_PROVIDER_PRESETS.find(p => p.value === presetValue);
+    if (preset && preset.value !== "custom") {
+      accountConfig.imap_server = preset.imap_server;
+      accountConfig.imap_port = preset.imap_port;
+      accountConfig.smtp_server = preset.smtp_server;
+      accountConfig.smtp_port = preset.smtp_port;
+      console.log("Preset applied:", {
+        imap: `${preset.imap_server}:${preset.imap_port}`,
+        smtp: `${preset.smtp_server}:${preset.smtp_port}`
+      });
+    }
+  }
+
+  // Watch for preset changes - use separate effect to ensure it triggers
+  $effect(() => {
+    const preset = selectedPreset;
+    if (preset) {
+      console.log("Selected preset changed to:", preset);
+      applyPreset(preset);
+      // Clear test results when preset changes
+      testResult = null;
+    }
+  });
+
+  // Note: We don't auto-clear testResult when config changes because
+  // it causes the button to disable right after successful test.
+  // Users should re-test manually if they change settings.
+
+  async function testConnection() {
+    if (!accountConfig.email || !accountConfig.password || !accountConfig.imap_server || !accountConfig.smtp_server) {
+      toast.error("Please fill in all required fields before testing");
+      return;
+    }
+
+    isTesting = true;
+    testResult = null;
+
+    try {
+      const result = await invoke<{
+        imap_success: boolean;
+        imap_error?: string;
+        smtp_success: boolean;
+        smtp_error?: string;
+      }>("test_connection", {
+        config: {
+          ...accountConfig,
+          auth_type: "basic"
+        }
+      });
+
+      testResult = result;
+      console.log("Test result:", testResult);
+
+      if (result.imap_success && result.smtp_success) {
+        toast.success("Connection test successful! Both IMAP and SMTP are working.");
+      } else {
+        toast.error("Connection test failed. Please check the details below.");
+      }
+    } catch (error) {
+      console.error("Failed to test connection:", error);
+      toast.error(`Connection test failed: ${error}`);
+    } finally {
+      isTesting = false;
+    }
+  }
 
   async function saveConfig(event: SubmitEvent) {
     event.preventDefault();
@@ -139,6 +257,8 @@
 
       toast.success(`${selectedProvider === 'google' ? 'Google' : 'Outlook'} account added successfully!`);
       oauthEmail = "";
+      oauthEmailInput = "";
+      emailInputError = "";
       
       // Close dialog and notify parent
       onOpenChange(false);
@@ -209,13 +329,26 @@
             
             <div class="space-y-2">
               <Label for="oauth-email">Email</Label>
-              <Input
-                id="oauth-email"
-                type="email"
-                bind:value={oauthEmail}
-                placeholder="m@example.com"
-                disabled={isAuthenticating}
-              />
+              <div class="flex items-center gap-2">
+                <Input
+                  id="oauth-email"
+                  type="text"
+                  bind:value={oauthEmailInput}
+                  placeholder={selectedProvider === "google" ? "username" : "username"}
+                  disabled={isAuthenticating}
+                  class={emailInputError ? "border-red-500" : ""}
+                />
+                <span class="text-sm text-muted-foreground whitespace-nowrap">
+                  {selectedProvider === "google" ? "@gmail.com" : "@outlook.com"}
+                </span>
+              </div>
+              {#if emailInputError}
+                <p class="text-xs text-red-500">{emailInputError}</p>
+              {:else}
+                <p class="text-xs text-muted-foreground">
+                  Enter only the part before {selectedProvider === "google" ? "@gmail.com" : "@outlook.com"}
+                </p>
+              {/if}
             </div>
 
             <Button
@@ -235,81 +368,163 @@
 
           <Tabs.Content value="manual" class="space-y-4 mt-4">
             <form onsubmit={saveConfig} class="space-y-4">
+              <!-- Provider Preset -->
               <div class="space-y-2">
-                <Label for="email">Email</Label>
-                <Input 
-                  id="email" 
-                  type="email" 
-                  bind:value={accountConfig.email} 
-                  placeholder="m@example.com"
-                  required 
+                <Label for="preset">Email Provider Preset</Label>
+                <Combobox
+                  options={EMAIL_PROVIDER_PRESETS.map(p => ({ value: p.value, label: p.name }))}
+                  bind:value={selectedPreset}
+                  placeholder="Select a provider..."
+                  searchPlaceholder="Search providers..."
+                  emptyText="No provider found."
                 />
-                <p class="text-xs text-muted-foreground">
-                  Your email address for this account.
+                {#if selectedPreset && EMAIL_PROVIDER_PRESETS.find(p => p.value === selectedPreset)?.description}
+                  <p class="text-xs text-muted-foreground">
+                    {EMAIL_PROVIDER_PRESETS.find(p => p.value === selectedPreset)?.description}
+                  </p>
+                {/if}
+              </div>
+
+              <!-- Email/Password (Left) and IMAP/SMTP Settings (Right) in Two Columns -->
+              <div class="grid grid-cols-2 gap-4">
+                <!-- Left Column: Email and Password -->
+                <div class="space-y-4">
+                  <div class="space-y-2">
+                    <Label for="email">Email</Label>
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      bind:value={accountConfig.email} 
+                      placeholder="m@example.com"
+                      required 
+                    />
+                  </div>
+                  
+                  <div class="space-y-2">
+                    <Label for="password">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      bind:value={accountConfig.password}
+                      placeholder="Use app-specific password if available"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <!-- Right Column: IMAP and SMTP Settings -->
+                <div class="space-y-4">
+                  <!-- IMAP Settings -->
+                  <div class="space-y-2">
+                    <Label>IMAP Settings</Label>
+                    <div class="flex gap-2">
+                      <Input 
+                        id="imap-server" 
+                        bind:value={accountConfig.imap_server} 
+                        placeholder="imap.example.com"
+                        class="flex-1"
+                        required 
+                      />
+                      <Input
+                        id="imap-port"
+                        type="number"
+                        bind:value={accountConfig.imap_port}
+                        placeholder="993"
+                        class="w-20"
+                        required
+                      />
+                    </div>
+                  </div>
+                  
+                  <!-- SMTP Settings -->
+                  <div class="space-y-2">
+                    <Label>SMTP Settings</Label>
+                    <div class="flex gap-2">
+                      <Input 
+                        id="smtp-server" 
+                        bind:value={accountConfig.smtp_server}
+                        placeholder="smtp.example.com"
+                        class="flex-1"
+                        required 
+                      />
+                      <Input
+                        id="smtp-port"
+                        type="number"
+                        bind:value={accountConfig.smtp_port}
+                        placeholder="465"
+                        class="w-20"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Test Connection Button -->
+              <Button
+                type="button"
+                variant="outline"
+                class="w-full"
+                onclick={testConnection}
+                disabled={isTesting || !accountConfig.email || !accountConfig.password || !accountConfig.imap_server || !accountConfig.smtp_server}
+              >
+                {isTesting ? "Testing Connection..." : "Test Connection"}
+              </Button>
+              
+              <!-- Test Results -->
+              {#if testResult}
+                <div class="space-y-2 rounded-lg border border-border p-3 text-sm bg-card">
+                  <div class="flex items-center gap-2">
+                    <span class="text-xl font-bold" style:color={testResult.imap_success ? '#16a34a' : '#dc2626'}>
+                      {testResult.imap_success ? "✓" : "✗"}
+                    </span>
+                    <span class="font-medium">IMAP:</span>
+                    <span class="font-semibold" style:color={testResult.imap_success ? '#16a34a' : '#dc2626'}>
+                      {testResult.imap_success ? "Connected" : "Failed"}
+                    </span>
+                  </div>
+                  {#if testResult.imap_error}
+                    <p class="text-xs ml-8" style:color="#dc2626">{testResult.imap_error}</p>
+                  {/if}
+                  
+                  <div class="flex items-center gap-2">
+                    <span class="text-xl font-bold" style:color={testResult.smtp_success ? '#16a34a' : '#dc2626'}>
+                      {testResult.smtp_success ? "✓" : "✗"}
+                    </span>
+                    <span class="font-medium">SMTP:</span>
+                    <span class="font-semibold" style:color={testResult.smtp_success ? '#16a34a' : '#dc2626'}>
+                      {testResult.smtp_success ? "Connected" : "Failed"}
+                    </span>
+                  </div>
+                  {#if testResult.smtp_error}
+                    <p class="text-xs ml-8" style:color="#dc2626">{testResult.smtp_error}</p>
+                  {/if}
+                </div>
+              {/if}
+              
+              <!-- Create Account Button - Only enabled after successful test -->
+              <Button 
+                type="submit" 
+                class="w-full"
+                disabled={!isTestPassed}
+              >
+                Create Account
+              </Button>
+
+              {#if !testResult}
+                <p class="text-center text-xs text-muted-foreground">
+                  Please test connection before creating account
                 </p>
-              </div>
-              
-              <div class="space-y-2">
-                <Label for="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  bind:value={accountConfig.password}
-                  required
-                />
-                <p class="text-xs text-muted-foreground">
-                  Use an app-specific password if available.
+              {:else if !isTestPassed}
+                <p class="text-center text-xs font-medium" style:color="#dc2626">
+                  ⚠ Connection test must pass before creating account
                 </p>
-              </div>
-              
-              <div class="space-y-2">
-                <Label for="imap-server">IMAP Server</Label>
-                <Input 
-                  id="imap-server" 
-                  bind:value={accountConfig.imap_server} 
-                  placeholder="imap.example.com"
-                  required 
-                />
-              </div>
-              
-              <div class="space-y-2">
-                <Label for="imap-port">IMAP Port</Label>
-                <Input
-                  id="imap-port"
-                  type="number"
-                  bind:value={accountConfig.imap_port}
-                  placeholder="993"
-                  required
-                />
-              </div>
-              
-              <div class="space-y-2">
-                <Label for="smtp-server">SMTP Server</Label>
-                <Input 
-                  id="smtp-server" 
-                  bind:value={accountConfig.smtp_server}
-                  placeholder="smtp.example.com" 
-                  required 
-                />
-              </div>
-              
-              <div class="space-y-2">
-                <Label for="smtp-port">SMTP Port</Label>
-                <Input
-                  id="smtp-port"
-                  type="number"
-                  bind:value={accountConfig.smtp_port}
-                  placeholder="465"
-                  required
-                />
-              </div>
-              
-              <Button type="submit" class="w-full">Create Account</Button>
+              {:else}
+                <p class="text-center text-xs font-medium" style:color="#16a34a">
+                  ✓ Connection test passed! You can now create the account.
+                </p>
+              {/if}
             </form>
-            
-            <div class="text-center text-xs text-muted-foreground">
-              For self-hosted or custom email servers
-            </div>
           </Tabs.Content>
         </Tabs.Root>
       </CardContent>

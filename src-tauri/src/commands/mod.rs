@@ -4,6 +4,7 @@ pub mod folders;
 pub mod notifications;
 pub mod oauth2;
 pub mod send;
+pub mod test_connection;
 pub mod utils; // Public so idle_manager can access ensure_valid_token
 
 pub use accounts::{delete_account, load_account_configs, save_account_config};
@@ -19,3 +20,4 @@ pub use notifications::{
 };
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
+pub use test_connection::test_connection;

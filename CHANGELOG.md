@@ -13,6 +13,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-10-27
 
+### Added
+- **Email Provider Presets**: Added 13 pre-configured email provider presets for manual account configuration
+  - Includes popular providers: Yahoo Mail, iCloud Mail, Zoho Mail, ProtonMail, Fastmail, GMX, AOL, QQ Mail, 163 Mail, 126 Mail, Sina Mail
+  - Custom option for advanced users to configure any email provider
+  - Combobox component with search functionality for easy provider selection
+  - Auto-fills IMAP/SMTP server addresses and ports when provider is selected
+  - Reduces configuration errors and improves user experience
+  - Each preset includes descriptive text (e.g., "Apple iCloud Mail (requires app-specific password)")
+- **Connection Testing**: Implemented pre-validation connection test before account creation
+  - Added "Test Connection" button to verify IMAP and SMTP settings
+  - Tests both IMAP and SMTP connections independently
+  - Visual feedback with green checkmarks (✓) for successful connections and red crosses (✗) for failures
+  - Displays specific error messages if connection fails (e.g., authentication failure, server unreachable)
+  - "Create Account" button only enables after successful connection test
+  - Prevents users from adding non-functional accounts to the system
+  - Async testing with loading state: "Testing Connection..." indicator
+- **OAuth2 Email Input Validation**: Enhanced OAuth2 email input to prevent common mistakes
+  - Automatically validates email format as user types
+  - Prevents users from entering full email addresses like "username@gmail.com"
+  - Users only need to enter username portion (e.g., "username")
+  - System automatically appends provider domain (@gmail.com or @outlook.com)
+  - Displays warning message when "@" symbol is detected in input
+  - Reduces authentication errors caused by incorrect email format
+
+### Improved
+- **Add Account Dialog Layout**: Optimized manual configuration form for better visual hierarchy
+  - Two-column layout: Email/Password fields on left, IMAP/SMTP settings on right
+  - IMAP and SMTP server/port inputs displayed horizontally (server and port on same line)
+  - Server address inputs use `flex-1` to automatically fill available space
+  - Port inputs maintain fixed width (`w-20`) for consistent sizing
+  - Reduced visual clutter and improved form compactness
+  - Better utilization of dialog width for more efficient space usage
+
 ### Fixed
 - **Email Date Parsing**: Resolved incorrect date display issue for emails with malformed or missing Date headers
   - **Root Cause**: Some emails have empty or invalid Date headers (e.g., future dates, missing Date field)

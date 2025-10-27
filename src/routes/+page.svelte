@@ -1087,6 +1087,10 @@
     accounts={appState.accounts}
     onAccountDeleted={handleAccountDeleted}
     onAccountUpdated={handleAccountUpdated}
+    onAddAccount={() => {
+      showManageAccountDialog = false;
+      showAddAccountDialog = true;
+    }}
   />
 
   <Toaster />

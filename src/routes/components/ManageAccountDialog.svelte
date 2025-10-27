@@ -22,11 +22,13 @@
     accounts = [] as AccountConfig[],
     onAccountDeleted,
     onAccountUpdated,
+    onAddAccount,
   }: {
     open?: boolean;
     accounts?: AccountConfig[];
     onAccountDeleted: (email: string) => void;
     onAccountUpdated: () => void;
+    onAddAccount?: () => void;
   } = $props();
 
   let selectedAccount = $state<AccountConfig | null>(null);
@@ -151,7 +153,12 @@
     {#if accounts.length === 0}
       <div class="py-12 px-6 text-center">
         <p class="text-muted-foreground mb-4">No accounts configured.</p>
-        <Button href="/account">Add your first account</Button>
+        <Button onclick={() => {
+          open = false;
+          if (onAddAccount) {
+            onAddAccount();
+          }
+        }}>Add your first account</Button>
       </div>
     {:else}
       <Sidebar.Provider class="items-start">

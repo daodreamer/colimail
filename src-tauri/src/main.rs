@@ -16,7 +16,7 @@ use commands::{
     load_folders, mark_email_as_read, mark_email_as_unread, move_email_to_trash, reply_email,
     save_account_config, save_attachment_to_file, send_email, set_notification_enabled,
     set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow, sync_emails,
-    sync_folders,
+    sync_folders, test_connection,
 };
 use idle_manager::{IdleCommand, IdleManager};
 use models::AccountConfig;
@@ -228,6 +228,7 @@ async fn main() {
             save_attachment_to_file,
             mark_email_as_read,
             mark_email_as_unread,
+            test_connection,
             start_idle,
             stop_idle,
             stop_all_idle,
