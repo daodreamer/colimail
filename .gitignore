@@ -17,3 +17,5 @@ vite.config.ts.timestamp-*
 # Debug and example folders
 /debug_pics
 /rust_example
+
+/target
