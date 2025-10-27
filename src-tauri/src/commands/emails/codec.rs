@@ -188,7 +188,15 @@ pub fn decode_bytes_to_string(bytes: &[u8]) -> String {
 
 /// Parse RFC 2822 date string to Unix timestamp
 /// Email dates are in format like: "Mon, 15 Jan 2024 14:30:00 +0800"
+/// If the Date header cannot be parsed and an INTERNALDATE is provided, use it instead
+#[allow(dead_code)]
 pub fn parse_email_date(date_str: &str) -> i64 {
+    parse_email_date_with_fallback(date_str, None)
+}
+
+/// Parse email date with optional INTERNALDATE fallback
+/// INTERNALDATE is the server's received time (more reliable than Date header)
+pub fn parse_email_date_with_fallback(date_str: &str, internaldate: Option<&str>) -> i64 {
     // Try to parse the RFC 2822 format date
     if let Ok(dt) = DateTime::parse_from_rfc2822(date_str) {
         return dt.timestamp();
@@ -205,8 +213,32 @@ pub fn parse_email_date(date_str: &str) -> i64 {
         return dt.timestamp();
     }
 
-    // If all parsing fails, return current timestamp as fallback
-    eprintln!("⚠️ Failed to parse date: {}", date_str);
+    // If Date header parsing failed, try to use INTERNALDATE as fallback
+    if let Some(internal_date_str) = internaldate {
+        // Only log if the Date header was not just empty
+        // "(No Date)" means the email didn't have a Date header, which is common
+        if date_str != "(No Date)" {
+            eprintln!("⚠️ Failed to parse Date header: {}", date_str);
+            eprintln!("   Using INTERNALDATE as fallback: {}", internal_date_str);
+        }
+
+        // Try to parse INTERNALDATE (also RFC 2822 format)
+        if let Ok(dt) = DateTime::parse_from_rfc2822(internal_date_str) {
+            return dt.timestamp();
+        }
+
+        // Only log INTERNALDATE parsing failure if it actually fails
+        eprintln!(
+            "⚠️ Failed to parse both Date ('{}') and INTERNALDATE ('{}')",
+            date_str, internal_date_str
+        );
+    } else if date_str != "(No Date)" {
+        // Only log if we had a Date header that failed to parse and no INTERNALDATE
+        eprintln!("⚠️ Failed to parse Date header: {}", date_str);
+    }
+
+    // If all parsing fails, return current timestamp as last resort fallback
+    eprintln!("⚠️ Using current time as fallback for date parsing");
     Utc::now().timestamp()
 }
 

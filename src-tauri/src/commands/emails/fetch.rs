@@ -5,7 +5,7 @@ use crate::commands::emails::cache::{
     load_email_body_from_cache, save_attachments_to_cache, save_email_body_to_cache,
 };
 use crate::commands::emails::codec::{
-    check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date,
+    check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
 };
 use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
@@ -72,7 +72,7 @@ pub async fn fetch_emails(
         );
 
         let messages = imap_session
-            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS)")
+            .fetch(seq_range, "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)")
             .map_err(|e| e.to_string())?;
 
         let mut headers = Vec::new();
@@ -125,8 +125,14 @@ pub async fn fetch_emails(
                 .map(|d| decode_bytes_to_string(d.as_ref()))
                 .unwrap_or_else(|| "(No Date)".to_string());
 
+            // Get INTERNALDATE as a fallback for date parsing
+            let internal_date = msg
+                .internal_date()
+                .map(|d| format!("{}", d.format("%a, %d %b %Y %H:%M:%S %z")));
+
             // Parse date to timestamp for sorting and local time conversion
-            let timestamp = parse_email_date(&date);
+            // Use INTERNALDATE as fallback if Date header parsing fails
+            let timestamp = parse_email_date_with_fallback(&date, internal_date.as_deref());
 
             let to = envelope
                 .to

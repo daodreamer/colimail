@@ -2,7 +2,9 @@
 // This module handles incremental sync using UIDVALIDITY and UIDs
 
 use crate::commands::emails::cache::{load_emails_from_cache, save_emails_to_cache};
-use crate::commands::emails::codec::{decode_bytes_to_string, decode_header, parse_email_date};
+use crate::commands::emails::codec::{
+    decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
+};
 use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
@@ -134,7 +136,7 @@ async fn incremental_sync(
 
                             // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
                             // The has_attachments flag will be determined when fetching the email body
-                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS)") {
+                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE)") {
                                 Ok(messages) => {
                                     let batch_headers = parse_email_headers(messages.iter());
                                     all_headers.extend(batch_headers);
@@ -232,7 +234,7 @@ async fn incremental_sync(
                                     .join(",");
 
                                 // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
-                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE FLAGS)") {
+                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE FLAGS INTERNALDATE)") {
                                     Ok(messages) => {
                                         let count = messages.len();
                                         if count > 0 {
@@ -320,7 +322,7 @@ async fn incremental_sync(
 
                         // Note: We skip BODYSTRUCTURE to avoid parsing issues with non-ASCII attachment names
                         // The has_attachments flag will be determined when fetching the email body
-                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS)") {
+                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE)") {
                             Ok(messages) => {
                                 let batch_headers = parse_email_headers(messages.iter());
                                 all_headers.extend(batch_headers);
@@ -484,7 +486,13 @@ where
             .map(|d| decode_bytes_to_string(d.as_ref()))
             .unwrap_or_else(|| "(No Date)".to_string());
 
-        let timestamp = parse_email_date(&date);
+        // Get INTERNALDATE as a fallback for date parsing
+        let internal_date = msg
+            .internal_date()
+            .map(|d| format!("{}", d.format("%a, %d %b %Y %H:%M:%S %z")));
+
+        // Use INTERNALDATE as fallback if Date header parsing fails
+        let timestamp = parse_email_date_with_fallback(&date, internal_date.as_deref());
 
         let to = envelope
             .to

@@ -16,11 +16,8 @@ pub async fn save_emails_to_cache(
     let current_time = Utc::now().timestamp();
 
     for email in emails {
-        // Debug: Log the UID being saved
-        println!("  💾 Saving email UID {} to cache", email.uid);
-
         // Use INSERT with ON CONFLICT to preserve cached body
-        sqlx::query(
+        let result = sqlx::query(
             "INSERT INTO emails
             (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, seen, synced_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -46,8 +43,16 @@ pub async fn save_emails_to_cache(
         .bind(email.seen as i64)
         .bind(current_time)
         .execute(pool.as_ref())
-        .await
-        .map_err(|e| format!("Failed to save email to cache: {}", e))?;
+        .await;
+
+        // Only log if there's an error
+        if let Err(e) = result {
+            eprintln!("❌ Failed to save email UID {} to cache: {}", email.uid, e);
+            return Err(format!(
+                "Failed to save email UID {} to cache: {}",
+                email.uid, e
+            ));
+        }
     }
 
     println!(

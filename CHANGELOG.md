@@ -13,6 +13,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.0] - 2025-10-27
 
+### Fixed
+- **Email Date Parsing**: Resolved incorrect date display issue for emails with malformed or missing Date headers
+  - **Root Cause**: Some emails have empty or invalid Date headers (e.g., future dates, missing Date field)
+  - When Date header parsing failed, system used current time (`Utc::now()`) as fallback, showing email fetch time instead of actual email time
+  - **Solution**: Implemented three-tier date parsing fallback mechanism
+    1. First attempt: Parse standard Date header (RFC 2822/3339 formats)
+    2. Second attempt: Use IMAP INTERNALDATE (server's received time) when Date header fails
+    3. Last resort: Use current time only when both previous methods fail
+  - Added INTERNALDATE to all FETCH commands: `"(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)"`
+  - INTERNALDATE provides reliable server-side timestamp even when email's Date header is corrupted
+  - Particularly fixes GMX inbox emails and other providers with unreliable Date headers
+  - Example: Email with Date="Thu, 26 Jun 2025 09:34:37 +0200" (future date) now correctly shows INTERNALDATE="Sun, 31 Mar 2024 10:51:26 +0000" (actual receive time)
+
+### Improved
+- **Console Logging Optimization**: Reduced excessive debug output during email synchronization
+  - **Email Cache Logging**: Changed `save_emails_to_cache()` to output single success message instead of logging each email individually
+    - Before: `💾 Saving email UID XXX to cache` × N times (where N = number of emails)
+    - After: `✅ Saved N emails to cache for folder XXX` (single message)
+    - Error cases still output individual UID and error details for debugging
+  - **Date Parsing Logging**: Silenced verbose date parsing messages for common scenarios
+    - Emails with empty Date headers (`(No Date)`) no longer generate console output when INTERNALDATE succeeds
+    - Only logs warnings when Date header has invalid content (not just empty)
+    - Maintains detailed error logging when both Date and INTERNALDATE parsing fail
+  - Result: Syncing 5000+ emails now produces clean, readable logs instead of thousands of repetitive messages
+
 ### Changed
 - **CRITICAL: imap Crate Migration**: Upgraded from `imap 2.4.1` to `imap 3.0.0-alpha.15` to resolve critical limitations
   - **Motivation**: Version 2.4.1 had severe limitations with GMX email provider (500-email fetch limit) and crashes on complex BODYSTRUCTURE parsing
