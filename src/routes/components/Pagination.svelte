@@ -68,7 +68,7 @@
 </script>
 
 {#if totalPages > 1}
-  <div class="flex items-center justify-center gap-1.5 px-4 py-2 text-xs">
+  <div class="flex items-center justify-center gap-0.1 px-1 py-1 text-[11px]">
     <!-- Email range display -->
     <span class="text-muted-foreground whitespace-nowrap">
       {startItem}-{endItem}/{totalItems}
@@ -93,7 +93,7 @@
         oninput={handlePageInputChange}
         onkeydown={handlePageInputKeydown}
         onblur={handlePageInputBlur}
-        class="h-6 w-10 px-1.5 text-center text-xs"
+        class="h-5 w-9 px-0.5 text-center text-[7px]"
         aria-label="Current page"
       />
       <span class="text-muted-foreground whitespace-nowrap">of {totalPages}</span>
