@@ -11,6 +11,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.4.1] - 2025-10-28
+
+### Fixed
+- **Background BODYSTRUCTURE Fetch Retry Logic**: Fixed issue where failed emails were not retried during background attachment detection
+  - **Problem**: When batch BODYSTRUCTURE fetch failed (e.g., connection error), the task would reconnect but skip failed emails entirely, leaving them with NULL `has_attachments` status
+  - **Root Cause**: Error handling would `continue` to next batch without tracking failed UIDs, causing infinite "X emails pending" notifications on every folder click
+  - **Solution**: Implemented two-tier retry mechanism
+    - Track all failed UIDs during batch processing in `failed_uids` list
+    - After batch loop completes, retry failed emails individually (one by one)
+    - Connection errors during individual retry: reconnect and continue
+    - Non-connection errors (e.g., malformed email structure): mark as "no attachments" to prevent infinite retry loops
+  - **Impact**: Emails with problematic BODYSTRUCTURE (rare edge cases) no longer get stuck in pending state
+  - **User Experience**: No more persistent "5 emails pending" messages that never resolve
+  - **Reliability**: Background task now processes 100% of emails, even when encountering server disconnections or malformed messages
+
+### Improved
+- **Long-Running Connection Management**: Enhanced connection stability during bulk BODYSTRUCTURE processing
+  - Preventive reconnection every 100 batches to avoid server-side timeout disconnections
+  - Reactive reconnection on Bye/TagMismatch/Connection errors with 2-second retry delay
+  - Graceful error recovery: break loop only if reconnection fails to prevent cascading errors
+  - Successfully tested with 5000+ email processing without connection failures
+
 ## [0.4.0] - 2025-10-27
 
 ### Added

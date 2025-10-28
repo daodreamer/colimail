@@ -41,7 +41,7 @@ pub async fn save_emails_to_cache(
         .bind(&email.cc)
         .bind(&email.date)
         .bind(email.timestamp)
-        .bind(email.has_attachments as i64)
+        .bind(None::<i64>)  // has_attachments: NULL (未检查), 后台任务会填充
         .bind(email.seen as i64)
         .bind(current_time)
         .execute(pool.as_ref())

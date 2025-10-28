@@ -5,11 +5,14 @@ use crate::commands::emails::cache::{load_emails_from_cache, save_emails_to_cach
 use crate::commands::emails::codec::{
     check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
 };
+use crate::commands::emails::fetch_bodystructure;
 use crate::commands::emails::imap_helpers;
 use crate::commands::utils::ensure_valid_token;
 use crate::db;
 use crate::models::{AccountConfig, EmailHeader};
 use chrono::Utc;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use tauri::command;
 
 /// Struct to hold sync state from database
@@ -34,12 +37,30 @@ pub async fn sync_emails(
     );
 
     // Perform incremental sync
-    let emails = incremental_sync(config, account_id, &folder_name).await?;
+    let emails = incremental_sync(config.clone(), account_id, &folder_name).await?;
 
     println!(
         "✅ Incremental sync completed: {} emails in cache",
         emails.len()
     );
+
+    // Start background task to fetch BODYSTRUCTURE (newest first)
+    // This improves perceived performance by showing emails immediately
+    let account_id_i64 = account_id as i64;
+    let folder_name_clone = folder_name.clone();
+    let cancel_token = Arc::new(AtomicBool::new(false));
+
+    tokio::spawn(async move {
+        if let Err(e) = fetch_bodystructure::fetch_bodystructure_background(
+            account_id_i64,
+            folder_name_clone,
+            cancel_token,
+        )
+        .await
+        {
+            eprintln!("⚠️ Background BODYSTRUCTURE fetch failed: {}", e);
+        }
+    });
 
     Ok(emails)
 }
@@ -109,14 +130,14 @@ async fn incremental_sync(
                         Vec::new()
                     } else {
                         // Fetch in batches to avoid overwhelming the IMAP server and parser
-                        // Start with a conservative batch size for maximum compatibility
-                        // Some servers (like GMX) have issues with larger batch sizes
-                        let mut batch_size = 50u32;
+                        // Start with batch size 20, increase exponentially until hitting server limit
+                        let mut batch_size = 20u32;
+                        let mut max_batch_size: Option<u32> = None; // Lock batch size after first Bye error
                         let mut all_headers = Vec::new();
                         let mut current_pos = 1u32;
 
                         println!(
-                            "📥 Full resync: fetching all {} messages in batches of up to {} messages",
+                            "📥 Full resync: fetching all {} messages (starting batch size: {})",
                             server_exists, batch_size
                         );
 
@@ -134,8 +155,8 @@ async fn incremental_sync(
                                 count
                             );
 
-                            // Fetch BODYSTRUCTURE to detect attachments immediately
-                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
+                            // Fetch without BODYSTRUCTURE (causes issues with GMX)
+                            match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE RFC822.SIZE)") {
                                 Ok(messages) => {
                                     let batch_headers = parse_email_headers(messages.iter());
                                     all_headers.extend(batch_headers);
@@ -149,8 +170,16 @@ async fn incremental_sync(
                                     current_pos = end_seq + 1;
 
                                     // Gradually increase batch size if successful
-                                    if batch_size < 200 {
-                                        batch_size = (batch_size * 2).min(200);
+                                    // If max_batch_size is set (after a Bye error), respect that limit
+                                    if let Some(max) = max_batch_size {
+                                        if batch_size < max {
+                                            batch_size = (batch_size * 2).min(max);
+                                            println!("  📈 Increasing batch size to {} (locked max: {})", batch_size, max);
+                                        }
+                                    } else {
+                                        // No limit yet, keep doubling
+                                        batch_size *= 2;
+                                        println!("  📈 Increasing batch size to {}", batch_size);
                                     }
                                 }
                                 Err(e) => {
@@ -159,15 +188,61 @@ async fn incremental_sync(
                                     eprintln!("   Batch size: {}", batch_size);
                                     eprintln!("   Error details: {:?}", e);
 
-                                    // If batch size is already very small, give up
-                                    if batch_size <= 10 {
-                                        return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
-                                    }
+                                    // Check if this is a connection error (Bye)
+                                    if is_connection_error(&e) {
+                                        eprintln!("  🔌 Connection lost (Bye error), attempting to reconnect...");
 
-                                    // Reduce batch size and retry
-                                    batch_size = (batch_size / 2).max(10);
-                                    println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
-                                    // Don't increment current_pos, we'll retry this range
+                                        // Lock to the last successful batch size (before this failed attempt)
+                                        let last_successful_size = (batch_size / 2).max(10);
+                                        if max_batch_size.is_none() {
+                                            max_batch_size = Some(last_successful_size);
+                                            println!("  🔒 Locking batch size to last successful: {}", last_successful_size);
+                                        }
+
+                                        // Try to logout the old session gracefully (ignore errors)
+                                        let _ = imap_session.logout();
+
+                                        // Wait 2 seconds before reconnecting
+                                        println!("  ⏱️ Waiting 2 seconds before reconnecting...");
+                                        std::thread::sleep(std::time::Duration::from_secs(2));
+
+                                        // Reconnect to IMAP server
+                                        match imap_helpers::connect_and_login(&config) {
+                                            Ok(new_session) => {
+                                                imap_session = new_session;
+                                                println!("  ✅ Reconnected successfully");
+
+                                                // Re-select the folder
+                                                match imap_session.select(&folder_name_owned) {
+                                                    Ok(_) => {
+                                                        println!("  ✅ Folder re-selected");
+                                                        // Use the locked batch size
+                                                        batch_size = last_successful_size;
+                                                        println!("  ⚠️ Retrying with safe batch size: {}", batch_size);
+                                                        // Don't increment current_pos, we'll retry this range
+                                                    }
+                                                    Err(select_err) => {
+                                                        return Err(format!("Failed to re-select folder after reconnection: {}", select_err));
+                                                    }
+                                                }
+                                            }
+                                            Err(conn_err) => {
+                                                return Err(format!("Failed to reconnect after Bye error: {}", conn_err));
+                                            }
+                                        }
+                                    } else {
+                                        // Not a connection error, just reduce batch size
+
+                                        // If batch size is already very small, give up
+                                        if batch_size <= 10 {
+                                            return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
+                                        }
+
+                                        // Reduce batch size and retry
+                                        batch_size = (batch_size / 2).max(10);
+                                        println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
+                                        // Don't increment current_pos, we'll retry this range
+                                    }
                                 }
                             }
                         }
@@ -225,62 +300,120 @@ async fn incremental_sync(
                             } else {
                                 println!("📥 Fetching {} new message(s) with UIDs: {:?}", new_uids.len(), new_uids);
 
-                                // Build UID range for FETCH
-                                let uid_list = new_uids
-                                    .iter()
-                                    .map(|uid| uid.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join(",");
+                                // Start with batch size 20, increase exponentially until hitting server limit
+                                let mut batch_size = 20usize;
+                                let mut max_batch_size: Option<usize> = None; // Lock batch size after first Bye error
+                                let mut all_new_headers = Vec::new();
+                                let mut current_idx = 0usize;
+                                let total_count = new_uids.len();
 
-                                // Fetch BODYSTRUCTURE to detect attachments immediately
-                                match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
-                                    Ok(messages) => {
-                                        let count = messages.len();
-                                        if count > 0 {
-                                            println!("✨ Found {} raw message(s) from IMAP", count);
+                                let mut batch_num = 0usize;
+                                while current_idx < total_count {
+                                    batch_num += 1;
+                                    let end_idx = (current_idx + batch_size).min(total_count);
+                                    let uid_chunk = &new_uids[current_idx..end_idx];
+                                    let chunk_size = uid_chunk.len();
 
-                                            // Debug: Log the actual UIDs returned by IMAP
-                                            for (idx, msg) in messages.iter().enumerate() {
-                                                println!("  📋 Message {}: UID = {:?}", idx + 1, msg.uid);
-                                            }
+                                    println!("  📦 Batch {}: fetching {} message(s)", batch_num, chunk_size);
 
-                                            let parsed = parse_email_headers(messages.iter().rev());
+                                    // Build UID list for FETCH
+                                    let uid_list = uid_chunk
+                                        .iter()
+                                        .map(|uid| uid.to_string())
+                                        .collect::<Vec<_>>()
+                                        .join(",");
 
-                                            // Debug: Log the parsed UIDs
-                                            println!("  📝 Parsed UIDs: {:?}", parsed.iter().map(|e| e.uid).collect::<Vec<_>>());
+                                    // Fetch without BODYSTRUCTURE (causes issues with GMX)
+                                    match imap_session.uid_fetch(&uid_list, "(UID ENVELOPE FLAGS INTERNALDATE RFC822.SIZE)") {
+                                        Ok(messages) => {
+                                            let count = messages.len();
+                                            if count > 0 {
+                                                println!("  ✨ Batch {} found {} raw message(s) from IMAP", batch_num, count);
 
-                                            // Filter out emails with UID <= highest_uid
-                                            // This handles cases where IMAP server returns UIDs we already have
-                                            let filtered: Vec<EmailHeader> = parsed
-                                                .into_iter()
-                                                .filter(|email| email.uid > highest_uid as u32)
-                                                .collect();
+                                                // Debug: Log the actual UIDs returned by IMAP
+                                                for (idx, msg) in messages.iter().enumerate() {
+                                                    println!("    📋 Message {}: UID = {:?}", idx + 1, msg.uid);
+                                                }
 
-                                            if filtered.len() < count {
-                                                println!(
-                                                    "  🔍 Filtered out {} duplicate/old email(s), keeping {} new",
-                                                    count - filtered.len(),
-                                                    filtered.len()
-                                                );
-                                            }
+                                                let parsed = parse_email_headers(messages.iter().rev());
 
-                                            if filtered.is_empty() {
-                                                println!("✅ No new messages after filtering");
+                                                // Debug: Log the parsed UIDs
+                                                println!("    📝 Parsed UIDs: {:?}", parsed.iter().map(|e| e.uid).collect::<Vec<_>>());
+
+                                                // Filter out emails with UID <= highest_uid
+                                                // This handles cases where IMAP server returns UIDs we already have
+                                                let filtered: Vec<EmailHeader> = parsed
+                                                    .into_iter()
+                                                    .filter(|email| email.uid > highest_uid as u32)
+                                                    .collect();
+
+                                                if filtered.len() < count {
+                                                    println!(
+                                                        "    🔍 Filtered out {} duplicate/old email(s), keeping {} new",
+                                                        count - filtered.len(),
+                                                        filtered.len()
+                                                    );
+                                                }
+
+                                                all_new_headers.extend(filtered);
                                             } else {
-                                                println!("✨ {} genuinely new message(s)", filtered.len());
+                                                println!("  ✅ Batch {} returned no messages", batch_num);
                                             }
 
-                                            filtered
-                                        } else {
-                                            println!("✅ No new messages");
-                                            Vec::new()
+                                            println!("  ✓ Batch {} complete, {} total new emails so far", batch_num, all_new_headers.len());
+
+                                            // Move to next batch
+                                            current_idx = end_idx;
+
+                                            // Gradually increase batch size if successful
+                                            // If max_batch_size is set (after a Bye error), respect that limit
+                                            if let Some(max) = max_batch_size {
+                                                if batch_size < max {
+                                                    batch_size = (batch_size * 2).min(max);
+                                                    println!("  📈 Increasing batch size to {} (locked max: {})", batch_size, max);
+                                                }
+                                            } else {
+                                                // No limit yet, keep doubling
+                                                batch_size *= 2;
+                                                println!("  📈 Increasing batch size to {}", batch_size);
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("  ⚠️ Batch {} failed to fetch: {}", batch_num, e);
+
+                                            // Check if this is a connection error (Bye)
+                                            if is_connection_error(&e) {
+                                                // Lock to the last successful batch size
+                                                let last_successful_size = (batch_size / 2).max(10);
+                                                if max_batch_size.is_none() {
+                                                    max_batch_size = Some(last_successful_size);
+                                                    println!("  🔒 Locking batch size to last successful: {}", last_successful_size);
+                                                }
+                                                batch_size = last_successful_size;
+                                                println!("  ⚠️ Retrying with safe batch size: {}", batch_size);
+                                                // Don't advance current_idx, retry this batch
+                                            } else {
+                                                // Not a Bye error, reduce batch size and retry
+                                                if batch_size > 10 {
+                                                    batch_size = (batch_size / 2).max(10);
+                                                    println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
+                                                } else {
+                                                    // If already at minimum, skip this batch
+                                                    eprintln!("  ❌ Skipping batch {} (already at minimum batch size)", batch_num);
+                                                    current_idx = end_idx;
+                                                }
+                                            }
                                         }
                                     }
-                                    Err(e) => {
-                                        eprintln!("⚠️ Failed to fetch new messages: {}", e);
-                                        Vec::new()
-                                    }
                                 }
+
+                                if all_new_headers.is_empty() {
+                                    println!("✅ No new messages after fetching all batches");
+                                } else {
+                                    println!("✨ Total {} genuinely new message(s) from all batches", all_new_headers.len());
+                                }
+
+                                all_new_headers
                             }
                         }
                     }
@@ -294,14 +427,14 @@ async fn incremental_sync(
                     Vec::new()
                 } else {
                     // Fetch in batches to avoid overwhelming the IMAP server and parser
-                    // Start with a conservative batch size for maximum compatibility
-                    // Some servers (like GMX) have issues with larger batch sizes
-                    let mut batch_size = 50u32;
+                    // Start with batch size 20, increase exponentially until hitting server limit
+                    let mut batch_size = 20u32;
+                    let mut max_batch_size: Option<u32> = None; // Lock batch size after first Bye error
                     let mut all_headers = Vec::new();
                     let mut current_pos = 1u32;
 
                     println!(
-                        "📥 Initial sync: fetching all {} messages in batches of up to {} messages",
+                        "📥 Initial sync: fetching all {} messages (starting batch size: {})",
                         server_exists, batch_size
                     );
 
@@ -319,8 +452,8 @@ async fn incremental_sync(
                             count
                         );
 
-                        // Fetch BODYSTRUCTURE to detect attachments immediately
-                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE BODYSTRUCTURE FLAGS INTERNALDATE)") {
+                        // Fetch without BODYSTRUCTURE (causes issues with GMX)
+                        match imap_session.fetch(seq_range.as_str(), "(UID ENVELOPE FLAGS INTERNALDATE RFC822.SIZE)") {
                             Ok(messages) => {
                                 let batch_headers = parse_email_headers(messages.iter());
                                 all_headers.extend(batch_headers);
@@ -334,8 +467,16 @@ async fn incremental_sync(
                                 current_pos = end_seq + 1;
 
                                 // Gradually increase batch size if successful
-                                if batch_size < 200 {
-                                    batch_size = (batch_size * 2).min(200);
+                                // If max_batch_size is set (after a Bye error), respect that limit
+                                if let Some(max) = max_batch_size {
+                                    if batch_size < max {
+                                        batch_size = (batch_size * 2).min(max);
+                                        println!("  📈 Increasing batch size to {} (locked max: {})", batch_size, max);
+                                    }
+                                } else {
+                                    // No limit yet, keep doubling
+                                    batch_size *= 2;
+                                    println!("  📈 Increasing batch size to {}", batch_size);
                                 }
                             }
                             Err(e) => {
@@ -344,15 +485,61 @@ async fn incremental_sync(
                                 eprintln!("   Batch size: {}", batch_size);
                                 eprintln!("   Error details: {:?}", e);
 
-                                // If batch size is already very small, give up
-                                if batch_size <= 10 {
-                                    return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
-                                }
+                                // Check if this is a connection error (Bye)
+                                if is_connection_error(&e) {
+                                    eprintln!("  🔌 Connection lost (Bye error), attempting to reconnect...");
 
-                                // Reduce batch size and retry
-                                batch_size = (batch_size / 2).max(10);
-                                println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
-                                // Don't increment current_pos, we'll retry this range
+                                    // Lock to the last successful batch size (before this failed attempt)
+                                    let last_successful_size = (batch_size / 2).max(10);
+                                    if max_batch_size.is_none() {
+                                        max_batch_size = Some(last_successful_size);
+                                        println!("  🔒 Locking batch size to last successful: {}", last_successful_size);
+                                    }
+
+                                    // Try to logout the old session gracefully (ignore errors)
+                                    let _ = imap_session.logout();
+
+                                    // Wait 2 seconds before reconnecting
+                                    println!("  ⏱️ Waiting 2 seconds before reconnecting...");
+                                    std::thread::sleep(std::time::Duration::from_secs(2));
+
+                                    // Reconnect to IMAP server
+                                    match imap_helpers::connect_and_login(&config) {
+                                        Ok(new_session) => {
+                                            imap_session = new_session;
+                                            println!("  ✅ Reconnected successfully");
+
+                                            // Re-select the folder
+                                            match imap_session.select(&folder_name_owned) {
+                                                Ok(_) => {
+                                                    println!("  ✅ Folder re-selected");
+                                                    // Use the locked batch size
+                                                    batch_size = last_successful_size;
+                                                    println!("  ⚠️ Retrying with safe batch size: {}", batch_size);
+                                                    // Don't increment current_pos, we'll retry this range
+                                                }
+                                                Err(select_err) => {
+                                                    return Err(format!("Failed to re-select folder after reconnection: {}", select_err));
+                                                }
+                                            }
+                                        }
+                                        Err(conn_err) => {
+                                            return Err(format!("Failed to reconnect after Bye error: {}", conn_err));
+                                        }
+                                    }
+                                } else {
+                                    // Not a connection error, just reduce batch size
+
+                                    // If batch size is already very small, give up
+                                    if batch_size <= 10 {
+                                        return Err(format!("Failed to fetch batch {} even with minimum batch size: {}", batch_num, e));
+                                    }
+
+                                    // Reduce batch size and retry
+                                    batch_size = (batch_size / 2).max(10);
+                                    println!("  ⚠️ Retrying with smaller batch size: {}", batch_size);
+                                    // Don't increment current_pos, we'll retry this range
+                                }
                             }
                         }
                     }
@@ -427,6 +614,11 @@ async fn incremental_sync(
 
     // Return all cached emails (for display)
     load_emails_from_cache(account_id, Some(folder_name.to_string())).await
+}
+
+/// Check if an IMAP error is a connection error (Bye) that requires reconnection
+fn is_connection_error(error: &imap::Error) -> bool {
+    matches!(error, imap::Error::Bye(_))
 }
 
 /// Helper function to parse IMAP fetch results into EmailHeader
