@@ -120,12 +120,23 @@ pub async fn send_email(
             // The credentials format for XOAUTH2 is: email as username, access_token as password
             let creds = Credentials::new(config.email.clone(), access_token);
 
-            // Use starttls_relay for port 587 (STARTTLS), relay for port 465 (implicit TLS)
-            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
-                .map_err(|e| e.to_string())?
-                .credentials(creds)
-                .authentication(vec![Mechanism::Xoauth2])
-                .build()
+            // Choose connection method based on port
+            if config.smtp_port == 465 {
+                // Port 465: SSL/TLS (implicit TLS)
+                AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
+                    .map_err(|e| e.to_string())?
+                    .credentials(creds)
+                    .port(config.smtp_port)
+                    .authentication(vec![Mechanism::Xoauth2])
+                    .build()
+            } else {
+                // Port 587: STARTTLS
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
+                    .map_err(|e| e.to_string())?
+                    .credentials(creds)
+                    .authentication(vec![Mechanism::Xoauth2])
+                    .build()
+            }
         }
         _ => {
             let password = config
@@ -135,11 +146,23 @@ pub async fn send_email(
 
             let creds = Credentials::new(config.email.clone(), password);
 
-            // Use starttls_relay for most SMTP servers
-            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
-                .map_err(|e| e.to_string())?
-                .credentials(creds)
-                .build()
+            // Choose connection method based on port
+            if config.smtp_port == 465 {
+                // Port 465: SSL/TLS (implicit TLS, used by 163.com, QQ, etc.)
+                println!("   Using SSL/TLS (implicit TLS) for port 465");
+                AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
+                    .map_err(|e| e.to_string())?
+                    .credentials(creds)
+                    .port(config.smtp_port)
+                    .build()
+            } else {
+                // Port 587 or others: STARTTLS
+                println!("   Using STARTTLS for port {}", config.smtp_port);
+                AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
+                    .map_err(|e| e.to_string())?
+                    .credentials(creds)
+                    .build()
+            }
         }
     };
 

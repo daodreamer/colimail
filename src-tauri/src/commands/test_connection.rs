@@ -73,14 +73,27 @@ async fn test_smtp_connection(config: &AccountConfig) -> Result<(), String> {
         config.smtp_server, config.smtp_port
     );
 
-    // Use starttls_relay which matches the send.rs implementation
-    // This uses STARTTLS and works with most SMTP servers
-    let mailer: AsyncSmtpTransport<Tokio1Executor> =
+    // Choose connection method based on port:
+    // - Port 465: SSL/TLS (implicit TLS, used by 163.com, QQ, etc.)
+    // - Port 587: STARTTLS (explicit TLS, used by Gmail, Outlook, etc.)
+    // - Port 25: Plain or STARTTLS (legacy, rarely used)
+    let mailer: AsyncSmtpTransport<Tokio1Executor> = if config.smtp_port == 465 {
+        // Port 465 requires SSL/TLS direct connection (implicit TLS)
+        println!("   Using SSL/TLS (implicit TLS) for port 465");
+        AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
+            .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
+            .credentials(creds)
+            .port(config.smtp_port)
+            .build()
+    } else {
+        // Port 587 or others use STARTTLS
+        println!("   Using STARTTLS for port {}", config.smtp_port);
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
             .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
             .credentials(creds)
             .port(config.smtp_port)
-            .build();
+            .build()
+    };
 
     // Test connection
     mailer

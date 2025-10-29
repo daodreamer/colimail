@@ -296,6 +296,16 @@ impl IdleManager {
                         account_id, folder_name, e
                     );
 
+                    // Check if error is due to IDLE not being supported
+                    if e.contains("does not support IDLE") {
+                        println!("⚠️ IDLE not supported by server, stopping IDLE monitoring for this account/folder");
+                        println!(
+                            "💡 Tip: Use manual sync (Sync Mail button) to check for new emails"
+                        );
+                        // Stop the IDLE loop for this account/folder
+                        break;
+                    }
+
                     // Emit connection lost event
                     let _ = app_handle.emit(
                         "idle-event",
@@ -335,6 +345,22 @@ impl IdleManager {
             let mut imap_session = imap_helpers::connect_and_login(&config_clone)?;
 
             println!("✅ IDLE IMAP authentication successful");
+
+            // Check if server supports IDLE capability
+            let capabilities = imap_session
+                .capabilities()
+                .map_err(|e| format!("Failed to get capabilities: {}", e))?;
+
+            // Check if IDLE is in the capabilities list
+            let has_idle = capabilities.has_str("IDLE");
+
+            if !has_idle {
+                println!("⚠️ Server does not support IDLE capability (RFC 2177)");
+                println!("💡 Use manual sync (Sync Mail button) to check for new emails");
+                return Err("Server does not support IDLE extension (RFC 2177)".to_string());
+            }
+
+            println!("✅ Server supports IDLE capability");
 
             // SELECT folder
             let mailbox = imap_session

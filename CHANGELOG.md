@@ -47,7 +47,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **35x Speedup**: Single email flag sync takes ~0.05s vs 1.7s for full mailbox (tested on 217 emails)
   - **Detailed Logging**: Performance metrics logged for monitoring (IMAP time, DB time, changed count)
 
+### Added
+- **IMAP ID Command Support**: Implemented IMAP client identification for Chinese email providers
+  - **Supported Providers**: 163.com (NetEase), 126.com, qq.com, sina.com, yeah.net, sohu.com
+  - **Problem Solved**: "Unsafe Login. Please contact kefu@188.com" error when accessing 163.com folders
+  - **RFC 2971 Compliance**: Sends IMAP ID command to identify client to mail server
+  - **Client Information**: Identifies as "Colimail" with version number and vendor details
+  - **Implementation**: Automatically sends ID command after authentication for Chinese mail providers
+  - **Fallback Handling**: Continues authentication even if ID command fails (some servers don't support it)
+  - **Technical Details**: Uses `Session::run_command_and_read_response()` public API method
+  - **Provider Detection**: Smart domain matching to detect Chinese email providers automatically
+  - **Security**: No sensitive information sent in ID command (only client name/version)
+  - **Impact**: 163.com, 126.com, and other NetEase mailboxes now fully functional
+- **IDLE Capability Detection**: Added automatic detection of IDLE support before attempting real-time monitoring
+  - **Problem Solved**: "Bad Response: command not support" errors on servers without IDLE (e.g., 163.com)
+  - **RFC 2177 Compliance**: Checks server CAPABILITIES before using IDLE extension
+  - **Smart Detection**: Uses `capabilities.has_str("IDLE")` to verify server support
+  - **Graceful Degradation**: Stops IDLE monitoring when server doesn't support it
+  - **User Guidance**: Displays helpful message to use manual sync (Sync Mail button) instead
+  - **No Infinite Loops**: Prevents endless reconnection attempts when IDLE is unsupported
+  - **Impact**: 163.com and other servers without IDLE no longer spam error logs
+
 ### Fixed
+- **SMTP Port 465 SSL/TLS Support**: Fixed SMTP connection failures for Chinese email providers using port 465
+  - **Problem**: 163.com (NetEase) and other Chinese providers failed with "response error: incomplete response"
+  - **Root Cause**: Code used STARTTLS for all SMTP ports, but port 465 requires direct SSL/TLS connection
+  - **Port 465**: Direct SSL/TLS connection (implicit TLS) - used by 163.com, 126.com, QQ Mail, etc.
+  - **Port 587**: STARTTLS connection (explicit TLS) - used by Gmail, Outlook, etc.
+  - **Solution**: Auto-detect port and use appropriate connection method
+    - Port 465: `AsyncSmtpTransport::relay()` with direct SSL/TLS
+    - Port 587: `AsyncSmtpTransport::starttls_relay()` with STARTTLS upgrade
+  - **Files Modified**: `test_connection.rs` and `send.rs` (all 3 functions: `send_email`, `reply_email`, `forward_email`)
+  - **Impact**: Both OAuth2 and basic authentication now work correctly with port 465
+  - **Testing**: Successfully tested with 163.com account (SMTP connection and email sending)
 - **UTF-7 Folder Name Encoding**: Fixed issue where folders with non-ASCII names (German, French, Russian, Chinese, etc.) could not be accessed
   - **Problem**: Folders with special characters like German umlauts (ä, ö, ü) were being skipped with "unsupported folder name" error
   - **Root Cause**: IMAP uses Modified UTF-7 encoding for folder names (e.g., `Entw&APw-rfe` for "Entwürfe"), but code was using decoded UTF-8 names for SELECT operations
