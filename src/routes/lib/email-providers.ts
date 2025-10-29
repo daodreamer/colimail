@@ -85,7 +85,7 @@ export const EMAIL_PROVIDER_PRESETS: EmailProviderPreset[] = [
     description: "AOL Mail (requires app password)"
   },
   {
-    name: "QQ Mail (腾讯邮箱)",
+    name: "QQ Mail",
     value: "qq",
     imap_server: "imap.qq.com",
     imap_port: 993,
@@ -94,31 +94,13 @@ export const EMAIL_PROVIDER_PRESETS: EmailProviderPreset[] = [
     description: "QQ Mail (requires authorization code)"
   },
   {
-    name: "163 Mail (网易邮箱)",
+    name: "163 Mail",
     value: "163",
     imap_server: "imap.163.com",
     imap_port: 993,
     smtp_server: "smtp.163.com",
     smtp_port: 465,
     description: "163 Mail (requires authorization code)"
-  },
-  {
-    name: "126 Mail (网易126邮箱)",
-    value: "126",
-    imap_server: "imap.126.com",
-    imap_port: 993,
-    smtp_server: "smtp.126.com",
-    smtp_port: 465,
-    description: "126 Mail (requires authorization code)"
-  },
-  {
-    name: "Sina Mail (新浪邮箱)",
-    value: "sina",
-    imap_server: "imap.sina.com",
-    imap_port: 993,
-    smtp_server: "smtp.sina.com",
-    smtp_port: 465,
-    description: "Sina Mail"
   },
   {
     name: "Custom (Manual Setup)",
