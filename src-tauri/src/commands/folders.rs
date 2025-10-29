@@ -52,7 +52,7 @@ pub async fn fetch_folders(config: AccountConfig) -> Result<Vec<Folder>, String>
         for mailbox in mailbox_list.iter() {
             let raw_name = mailbox.name().to_string();
 
-            // Decode from UTF-7 IMAP encoding
+            // Decode from UTF-7 IMAP encoding for display purposes
             let decoded_name = decode_folder_name(&raw_name);
 
             // Generate user-friendly display name
@@ -64,7 +64,7 @@ pub async fn fetch_folders(config: AccountConfig) -> Result<Vec<Folder>, String>
             let folder = Folder {
                 id: None,
                 account_id,
-                name: decoded_name.clone(), // Store decoded name for IMAP operations
+                name: raw_name.clone(), // Store RAW (encoded) name for IMAP operations
                 display_name: display_name.clone(),
                 delimiter,
                 flags: flags.clone(),
@@ -86,8 +86,9 @@ pub async fn fetch_folders(config: AccountConfig) -> Result<Vec<Folder>, String>
             // Only test and add folders that should be shown to users
             if folder.should_show_to_user() {
                 // Test if folder is actually accessible by trying to SELECT it
-                let folder_name_for_log = folder.name.clone();
-                match imap_session.select(&folder.name) {
+                // IMPORTANT: Use raw_name (UTF-7 encoded) for IMAP operations
+                let folder_name_for_log = display_name.clone();
+                match imap_session.select(&raw_name) {
                     Ok(_) => {
                         println!("     ✓ Folder is accessible");
                         tested_accessible.push(folder_name_for_log);

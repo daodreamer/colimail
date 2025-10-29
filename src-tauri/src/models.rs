@@ -79,8 +79,8 @@ pub struct AttachmentInfo {
 pub struct Folder {
     pub id: Option<i32>,
     pub account_id: i32,
-    pub name: String,         // Original IMAP folder name (for IMAP operations)
-    pub display_name: String, // User-friendly display name
+    pub name: String, // Original IMAP folder name in UTF-7 encoding (for IMAP operations)
+    pub display_name: String, // User-friendly display name (UTF-7 decoded)
     pub delimiter: Option<String>,
     pub flags: Option<String>,
 }

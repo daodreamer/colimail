@@ -48,6 +48,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Detailed Logging**: Performance metrics logged for monitoring (IMAP time, DB time, changed count)
 
 ### Fixed
+- **UTF-7 Folder Name Encoding**: Fixed issue where folders with non-ASCII names (German, French, Russian, Chinese, etc.) could not be accessed
+  - **Problem**: Folders with special characters like German umlauts (ä, ö, ü) were being skipped with "unsupported folder name" error
+  - **Root Cause**: IMAP uses Modified UTF-7 encoding for folder names (e.g., `Entw&APw-rfe` for "Entwürfe"), but code was using decoded UTF-8 names for SELECT operations
+  - **Example**: GMX German folders `Entwürfe` (Drafts) and `Gelöscht` (Deleted) were inaccessible
+  - **Solution**: Store raw UTF-7 encoded names in database `name` field for IMAP operations, while `display_name` contains decoded UTF-8 for UI display
+  - **Impact**: Now supports folders in any language with special characters (German ä/ö/ü, French é/è/à, Spanish ñ, Russian Cyrillic, Chinese/Japanese characters)
+  - **Technical**: Changed `folder.name` to store `raw_name` (UTF-7 encoded) instead of `decoded_name`, ensuring IMAP SELECT operations use correct encoding
 - **Background BODYSTRUCTURE Fetch Retry Logic**: Fixed issue where failed emails were not retried during background attachment detection
   - **Problem**: When batch BODYSTRUCTURE fetch failed (e.g., connection error), the task would reconnect but skip failed emails entirely, leaving them with NULL `has_attachments` status
   - **Root Cause**: Error handling would `continue` to next batch without tracking failed UIDs, causing infinite "X emails pending" notifications on every folder click
