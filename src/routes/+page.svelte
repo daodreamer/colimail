@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { save, ask, message } from "@tauri-apps/plugin-dialog";
+  import { save, ask } from "@tauri-apps/plugin-dialog";
   import { toast } from "svelte-sonner";
   import { Toaster } from "$lib/components/ui/sonner";
   import * as Sidebar from "$lib/components/ui/sidebar";
@@ -10,21 +10,29 @@
   // Components
   import AccountFolderSidebar from "./components/AccountFolderSidebar.svelte";
   import EmailListSidebar from "./components/EmailListSidebar.svelte";
+  import DraftsList from "./components/DraftsList.svelte";
   import EmailBody from "./components/EmailBody.svelte";
   import ComposeDialog from "./components/ComposeDialog.svelte";
+  import SaveDraftDialog from "./components/SaveDraftDialog.svelte";
+  import ConfirmDialog from "./components/ConfirmDialog.svelte";
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import AddAccountDialog from "./components/AddAccountDialog.svelte";
   import ManageAccountDialog from "./components/ManageAccountDialog.svelte";
 
   // Types and utilities
-  import type { AccountConfig, EmailHeader, IdleEvent, Folder } from "./lib/types";
+  import type { AccountConfig, EmailHeader, IdleEvent, Folder, DraftType } from "./lib/types";
   import { state as appState } from "./lib/state.svelte";
   import { isTrashFolder } from "./lib/utils";
+  import { draftManager } from "./lib/draft-manager";
 
   // Settings dialog state
   let showSettingsDialog = $state(false);
   let showAddAccountDialog = $state(false);
   let showManageAccountDialog = $state(false);
+
+  // Confirm delete draft dialog state
+  let showConfirmDeleteDraft = $state(false);
+  let draftToDelete: number | null = null;
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -328,6 +336,7 @@
     const isSameFolder = appState.selectedFolderName === folderName;
 
     appState.selectedFolderName = folderName;
+    appState.showDraftsFolder = false; // Hide drafts view when switching to email folder
 
     if (isSameFolder) {
       // User clicked the current folder - they want to check for updates
@@ -567,9 +576,211 @@
     await updateAttachmentSizeLimit();
   }
 
+  // Auto-save draft when compose state changes
+  $effect(() => {
+    // Watch for changes in compose fields
+    const hasContent = appState.composeTo || appState.composeSubject || appState.composeBody;
+
+    if (appState.showComposeDialog && hasContent && appState.selectedAccountId) {
+      draftManager.scheduleAutoSave(async () => {
+        await autoSaveDraft();
+      });
+    }
+
+    // Cleanup on unmount
+    return () => {
+      draftManager.cancelAutoSave();
+    };
+  });
+
+  async function autoSaveDraft() {
+    if (!appState.selectedAccountId) return;
+    if (!appState.composeTo && !appState.composeSubject && !appState.composeBody) return;
+
+    try {
+      const attachments = await draftManager.filesToDraftAttachments(appState.composeAttachments);
+      const draftType: DraftType = appState.isReplyMode ? "reply" : appState.isForwardMode ? "forward" : "compose";
+
+      const draftId = await draftManager.saveDraft(
+        appState.selectedAccountId,
+        appState.composeTo,
+        appState.composeCc,
+        appState.composeSubject,
+        appState.composeBody,
+        attachments,
+        draftType,
+        appState.currentDraftId ?? undefined
+      );
+
+      // Update current draft ID if it's a new draft
+      if (!appState.currentDraftId) {
+        appState.currentDraftId = draftId;
+      }
+    } catch (error) {
+      console.error("Auto-save draft failed:", error);
+    }
+  }
+
+  async function handleSaveDraft() {
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
+      return;
+    }
+
+    try {
+      const attachments = await draftManager.filesToDraftAttachments(appState.composeAttachments);
+      const draftType: DraftType = appState.isReplyMode ? "reply" : appState.isForwardMode ? "forward" : "compose";
+
+      const draftId = await draftManager.saveDraft(
+        appState.selectedAccountId,
+        appState.composeTo,
+        appState.composeCc,
+        appState.composeSubject,
+        appState.composeBody,
+        attachments,
+        draftType,
+        appState.currentDraftId ?? undefined
+      );
+      appState.currentDraftId = draftId;
+
+      // Close compose dialog
+      appState.showComposeDialog = false;
+      appState.showSaveDraftDialog = false;
+      appState.resetComposeState();
+
+      // Reload drafts list if we're in drafts view
+      if (appState.showDraftsFolder) {
+        await loadDrafts();
+      }
+
+      toast.success("Draft saved successfully");
+    } catch (error) {
+      appState.error = `Failed to save draft: ${error}`;
+    }
+  }
+
   function handleCloseCompose() {
+    // Check if there's any content worth saving
+    const hasContent = appState.composeTo || appState.composeSubject || appState.composeBody;
+
+    if (hasContent && appState.selectedAccountId) {
+      // Show save draft confirmation dialog (keep compose dialog open)
+      appState.showSaveDraftDialog = true;
+    } else {
+      // No content, just close
+      appState.showComposeDialog = false;
+      appState.resetComposeState();
+    }
+  }
+
+  function handleDiscardDraft() {
+    // Delete draft if it exists
+    if (appState.currentDraftId) {
+      draftManager.deleteDraft(appState.currentDraftId).catch((error) => {
+        console.error("Failed to delete draft:", error);
+      });
+    }
+
+    appState.showSaveDraftDialog = false;
     appState.showComposeDialog = false;
     appState.resetComposeState();
+  }
+
+  function handleCancelSaveDraft() {
+    // Just close the save draft dialog, keep compose dialog open
+    appState.showSaveDraftDialog = false;
+    // Don't close the compose dialog - user wants to continue editing
+  }
+
+  function handleSaveDraftAndClose() {
+    handleSaveDraft();
+  }
+
+  // Load drafts for current account
+  async function loadDrafts() {
+    if (!appState.selectedAccountId) return;
+
+    appState.isLoadingDrafts = true;
+    try {
+      const drafts = await draftManager.listDrafts(appState.selectedAccountId);
+      appState.drafts = drafts;
+    } catch (error) {
+      console.error("Failed to load drafts:", error);
+      appState.error = `Failed to load drafts: ${error}`;
+    } finally {
+      appState.isLoadingDrafts = false;
+    }
+  }
+
+  // Open draft for editing
+  async function handleDraftClick(draftId: number) {
+    try {
+      const draft = await draftManager.loadDraft(draftId);
+
+      // Set compose state from draft
+      appState.composeTo = draft.toAddr;
+      appState.composeCc = draft.ccAddr;
+      appState.composeSubject = draft.subject;
+      appState.composeBody = draft.body;
+      appState.currentDraftId = draftId;
+
+      // Convert draft attachments back to File objects
+      appState.composeAttachments = draftManager.draftAttachmentsToFiles(draft.attachments);
+
+      // Set mode based on draft type
+      appState.isReplyMode = draft.draftType === "reply";
+      appState.isForwardMode = draft.draftType === "forward";
+
+      // Open compose dialog
+      appState.showComposeDialog = true;
+
+      // Switch back to email view
+      appState.showDraftsFolder = false;
+
+      await updateAttachmentSizeLimit();
+    } catch (error) {
+      appState.error = `Failed to load draft: ${error}`;
+    }
+  }
+
+  // Delete draft - show confirmation dialog
+  function handleDraftDelete(draftId: number) {
+    draftToDelete = draftId;
+    showConfirmDeleteDraft = true;
+  }
+
+  // Confirm and delete draft
+  async function confirmDeleteDraft() {
+    if (draftToDelete === null) return;
+
+    try {
+      await draftManager.deleteDraft(draftToDelete);
+      toast.success("Draft deleted");
+
+      // Reload drafts
+      await loadDrafts();
+    } catch (error) {
+      appState.error = `Failed to delete draft: ${error}`;
+    } finally {
+      showConfirmDeleteDraft = false;
+      draftToDelete = null;
+    }
+  }
+
+  // Cancel delete draft
+  function cancelDeleteDraft() {
+    showConfirmDeleteDraft = false;
+    draftToDelete = null;
+  }
+
+  // Toggle drafts view
+  async function handleShowDrafts() {
+    appState.showDraftsFolder = true;
+    await loadDrafts();
+  }
+
+  function handleHideDrafts() {
+    appState.showDraftsFolder = false;
   }
 
   function handleAttachmentSelect(event: Event) {
@@ -697,8 +908,21 @@
           attachments: attachmentsData,
         });
       }
-      handleCloseCompose();
-      await message("Email sent successfully!", { title: "Success", kind: "info" });
+
+      // Delete draft after successful send
+      if (appState.currentDraftId) {
+        try {
+          await draftManager.deleteDraft(appState.currentDraftId);
+        } catch (error) {
+          console.error("Failed to delete draft after sending:", error);
+        }
+      }
+
+      // Close compose dialog without showing save draft dialog
+      appState.showComposeDialog = false;
+      appState.resetComposeState();
+
+      toast.success("Email sent successfully!");
     } catch (e) {
       appState.error = `Failed to send email: ${e}`;
     } finally {
@@ -1107,6 +1331,7 @@
       selectedFolderName={appState.selectedFolderName}
       isLoadingFolders={appState.isLoadingFolders}
       isSyncing={appState.isSyncing}
+      showDraftsFolder={appState.showDraftsFolder}
       onAccountSelect={handleAccountClick}
       onFolderClick={handleFolderClick}
       onAddAccount={() => showAddAccountDialog = true}
@@ -1114,23 +1339,34 @@
       onSettings={() => showSettingsDialog = true}
       onSyncMail={handleManualRefresh}
       onComposeClick={handleComposeClick}
+      onShowDrafts={handleShowDrafts}
     />
 
-    <EmailListSidebar
-      emails={appState.emails}
-      selectedEmailUid={appState.selectedEmailUid}
-      isLoading={appState.isLoadingEmails}
-      error={appState.error}
-      selectedAccountId={appState.selectedAccountId}
-      selectedFolderName={appState.selectedFolderName}
-      folders={appState.folders}
-      currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
-      currentPage={appState.currentPage}
-      pageSize={appState.pageSize}
-      onEmailClick={handleEmailClick}
-      onPageChange={handlePageChange}
-      onStarToggle={handleStarToggle}
-    />
+    {#if appState.showDraftsFolder}
+      <DraftsList
+        drafts={appState.drafts}
+        selectedDraftId={appState.currentDraftId}
+        isLoading={appState.isLoadingDrafts}
+        onDraftClick={handleDraftClick}
+        onDraftDelete={handleDraftDelete}
+      />
+    {:else}
+      <EmailListSidebar
+        emails={appState.emails}
+        selectedEmailUid={appState.selectedEmailUid}
+        isLoading={appState.isLoadingEmails}
+        error={appState.error}
+        selectedAccountId={appState.selectedAccountId}
+        selectedFolderName={appState.selectedFolderName}
+        folders={appState.folders}
+        currentUserEmail={appState.accounts.find((acc) => acc.id === appState.selectedAccountId)?.email || ""}
+        currentPage={appState.currentPage}
+        pageSize={appState.pageSize}
+        onEmailClick={handleEmailClick}
+        onPageChange={handlePageChange}
+        onStarToggle={handleStarToggle}
+      />
+    {/if}
   </Sidebar.Root>
 
   <Sidebar.Inset class="flex flex-col">
@@ -1165,11 +1401,19 @@
     attachmentSizeLimit={appState.attachmentSizeLimit}
     totalAttachmentSize={appState.totalAttachmentSize}
     isSending={appState.isSending}
+    isDraft={appState.currentDraftId !== null}
     error={appState.error}
     onSend={handleSendEmail}
     onCancel={handleCloseCompose}
     onAttachmentAdd={handleAttachmentSelect}
     onAttachmentRemove={removeAttachment}
+  />
+
+  <SaveDraftDialog
+    show={appState.showSaveDraftDialog}
+    onSave={handleSaveDraftAndClose}
+    onDiscard={handleDiscardDraft}
+    onCancel={handleCancelSaveDraft}
   />
 
   <SettingsDialog bind:open={showSettingsDialog} onOpenChange={(open) => showSettingsDialog = open} />
@@ -1189,6 +1433,17 @@
       showManageAccountDialog = false;
       showAddAccountDialog = true;
     }}
+  />
+
+  <ConfirmDialog
+    bind:open={showConfirmDeleteDraft}
+    title="Delete Draft"
+    description="Are you sure you want to delete this draft? This action cannot be undone."
+    confirmText="Delete"
+    cancelText="Cancel"
+    variant="destructive"
+    onConfirm={confirmDeleteDraft}
+    onCancel={cancelDeleteDraft}
   />
 
   <Toaster />

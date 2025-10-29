@@ -11,6 +11,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.4.2] - 2025-10-29
+
+### Added
+- **Local Draft Storage**: Implemented SQLite-based local draft storage system
+  - **Problem Solved**: Gmail IMAP APPEND creates drafts invisible in web interface/other clients
+  - **Root Cause**: Gmail API uses draft containers separate from IMAP message system
+  - **Solution**: Store drafts locally in SQLite database instead of syncing to IMAP server
+  - **Database Schema**: Added `drafts` table with columns: `id`, `account_id`, `to_addr`, `cc_addr`, `subject`, `body`, `attachments`, `draft_type`, `original_email_id`, `created_at`, `updated_at`
+  - **Draft Types**: Supports three types - "compose" (new email), "reply" (reply to email), "forward" (forward email)
+  - **Auto-save**: Drafts automatically saved every 3 seconds while composing
+  - **Attachment Support**: Full attachment handling with file metadata preservation
+  - **Commands**:
+    - `save_draft`: Create or update draft in local database
+    - `load_draft`: Retrieve draft with all metadata and attachments
+    - `list_drafts`: List all drafts for an account
+    - `delete_draft`: Remove draft from database
+  - **Deletion on Send**: Drafts automatically deleted after successful email send
+
+### Improved
+- **Drafts UI Consistency**: Redesigned DraftsList component to match EmailListSidebar style
+  - **Unified Layout**: Uses same Sidebar component structure as email folders
+  - **Consistent Header**: Title + search box + pagination (identical to email list)
+  - **Matching List Items**: Same two-row layout, hover effects, and selection highlighting
+  - **Search Functionality**: Real-time search across subject, recipient, and CC fields
+  - **Pagination Support**: 50 drafts per page with same pagination component
+  - **Loading States**: Skeleton placeholders matching email list loading UI
+  - **Draft Type Badges**: Color-coded badges - Reply (secondary), Forward (outline), Draft (default)
+  - **Delete Button**: Trash icon appearing on hover, consistent with star icon pattern
+  - **Time Formatting**: Uses same `formatLocalDateTime` utility as email list
+  - **Visual Consistency**: Identical spacing, fonts, colors, and animations
+
+- **Dialog UI Standardization**: Replaced system dialogs with shadcn-svelte components
+  - **Confirm Delete Draft**: Custom `ConfirmDialog` component using AlertDialog
+    - Professional modal with overlay and proper styling
+    - Destructive variant with red "Delete" button for clarity
+    - Clear warning message: "This action cannot be undone"
+    - Replaces native `ask()` dialog for better UX
+  - **Email Sent Success**: Changed from blocking `message()` dialog to toast notification
+    - Non-intrusive success message using `toast.success()`
+    - Doesn't interrupt user workflow
+    - Consistent with other app notifications
+  - **ConfirmDialog Component**: Reusable confirmation dialog
+    - Props: `title`, `description`, `confirmText`, `cancelText`, `variant`
+    - Supports `destructive` and `default` button styles
+    - Two-way binding with `$bindable()` for `open` state
+    - Clean API without `asChild` or `builders` complexity
+
+### Fixed
+- **IDLE Connection Limit**: Fixed "Too many simultaneous connections" error with Gmail
+  - **Problem**: IDLE manager created connections for every folder (INBOX, Sent, Drafts, Important, Spam, Trash, etc.)
+  - **Root Cause**: Each account with 9 folders created 9 IDLE connections, exceeding Gmail's 15 connection limit
+  - **Solution**: Limited IDLE monitoring to INBOX folder only
+  - **Implementation**: Modified `StartAllForAccount` command to filter for INBOX/收件箱 folders
+  - **Impact**: Reduced connection count from 9+ per account to 1 per account
+  - **Code Change**: Changed from `tasks.insert(key, task)` for all folders to conditional insertion only for INBOX
+  - **Clippy Fix**: Changed `vec!["INBOX", "收件箱"]` to array `["INBOX", "收件箱"]` to avoid useless Vec allocation
+
+### Technical Details
+- **Draft Manager** (`src/routes/lib/draft-manager.ts`):
+  - `saveDraft()`: Saves draft with account ID, recipients, subject, body, attachments, draft type
+  - `loadDraft()`: Returns draft data with parsed attachments JSON
+  - `listDrafts()`: Returns array of draft metadata for account
+  - `deleteDraft()`: Removes draft by ID
+  - `filesToDraftAttachments()`: Converts File objects to database-compatible format
+  - `draftAttachmentsToFiles()`: Converts database attachments back to File objects
+  - Auto-save debouncing with 3-second delay
+
+- **Backend Commands** (`src-tauri/src/commands/drafts.rs`):
+  - SQLite-based implementation using `sqlx` async database driver
+  - Manual row mapping for `list_drafts` to handle `DraftType` enum deserialization
+  - `DraftType` serialization using serde JSON with lowercase format
+  - Foreign key constraint on `account_id` with CASCADE delete
+  - Timestamps stored as Unix epoch integers
+
+- **UI Components**:
+  - `DraftsList.svelte`: Complete redesign matching EmailListSidebar
+  - `ConfirmDialog.svelte`: Reusable confirmation dialog component
+  - `AccountFolderSidebar.svelte`: Added Drafts button with FilePenIcon
+  - Drafts folder toggle controlled by `appState.showDraftsFolder` state
+
+- **Database Migration**:
+  - Table creation in `db::init()` with IF NOT EXISTS guard
+  - Supports both new installations and existing databases
+  - No data loss for users upgrading from IMAP draft version
+
 ## [0.4.1] - 2025-10-29
 
 ### Added

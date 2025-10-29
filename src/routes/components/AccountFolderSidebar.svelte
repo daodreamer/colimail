@@ -3,6 +3,7 @@
   import CircleUserRound from "lucide-svelte/icons/circle-user-round";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
+  import FilePenIcon from "lucide-svelte/icons/file-pen";
   import SendIcon from "lucide-svelte/icons/send";
   import ArchiveXIcon from "lucide-svelte/icons/archive-x";
   import Trash2Icon from "lucide-svelte/icons/trash-2";
@@ -21,6 +22,7 @@
     selectedFolderName = "INBOX",
     isLoadingFolders = false,
     isSyncing = false,
+    showDraftsFolder = false,
     onAccountSelect,
     onFolderClick,
     onAddAccount,
@@ -28,6 +30,7 @@
     onSettings,
     onSyncMail,
     onComposeClick,
+    onShowDrafts,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -35,6 +38,7 @@
     selectedFolderName?: string;
     isLoadingFolders?: boolean;
     isSyncing?: boolean;
+    showDraftsFolder?: boolean;
     onAccountSelect: (accountId: number) => void;
     onFolderClick: (folderName: string) => void;
     onAddAccount: () => void;
@@ -42,6 +46,7 @@
     onSettings: () => void;
     onSyncMail: () => void;
     onComposeClick: () => void;
+    onShowDrafts: () => void;
   } = $props();
 
   // Get selected account
@@ -155,7 +160,26 @@
                 <span>Add Account</span>
               </Sidebar.MenuButton>
             </Sidebar.MenuItem>
-          {:else if isLoadingFolders}
+          {:else}
+            <!-- Drafts (Local Storage) -->
+            <Sidebar.MenuItem>
+              <Sidebar.MenuButton
+                tooltipContentProps={{
+                  hidden: false,
+                }}
+                onclick={onShowDrafts}
+                isActive={showDraftsFolder}
+                class="px-2.5 md:px-2"
+              >
+                {#snippet tooltipContent()}
+                  Drafts
+                {/snippet}
+                <FilePenIcon class="size-4" />
+                <span>Drafts</span>
+              </Sidebar.MenuButton>
+            </Sidebar.MenuItem>
+          {/if}
+          {#if isLoadingFolders}
             {#each Array(6) as _, i (i)}
               <Sidebar.MenuItem>
                 <Sidebar.MenuSkeleton />

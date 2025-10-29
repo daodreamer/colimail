@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod drafts;
 pub mod emails;
 pub mod folders;
 pub mod notifications;
@@ -8,6 +9,7 @@ pub mod test_connection;
 pub mod utils; // Public so idle_manager can access ensure_valid_token
 
 pub use accounts::{delete_account, load_account_configs, save_account_config};
+pub use drafts::{delete_draft, list_drafts, load_draft, save_draft};
 pub use emails::{
     delete_email, download_attachment, fetch_email_body, fetch_email_body_cached, fetch_emails,
     get_last_sync_time, get_sync_interval, load_attachments_info, load_emails_from_cache,

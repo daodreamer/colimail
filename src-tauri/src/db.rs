@@ -197,6 +197,34 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create drafts table for storing email drafts locally
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS drafts (
+            id INTEGER PRIMARY KEY,
+            account_id INTEGER NOT NULL,
+            to_addr TEXT NOT NULL,
+            cc_addr TEXT,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            attachments TEXT,
+            draft_type TEXT NOT NULL DEFAULT 'compose',
+            original_email_id INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create index for faster draft queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_drafts_account_updated
+        ON drafts(account_id, updated_at DESC)",
+    )
+    .execute(&pool)
+    .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");

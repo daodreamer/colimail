@@ -20,6 +20,7 @@
     attachmentSizeLimit = 10 * 1024 * 1024,
     totalAttachmentSize = 0,
     isSending = false,
+    isDraft = false,
     error = null as string | null,
     onSend,
     onCancel,
@@ -36,6 +37,7 @@
     attachmentSizeLimit?: number;
     totalAttachmentSize?: number;
     isSending?: boolean;
+    isDraft?: boolean;
     error?: string | null;
     onSend: () => void;
     onCancel: () => void;
@@ -44,19 +46,31 @@
   } = $props();
 
   function getModalTitle(): string {
-    switch (mode) {
-      case "reply":
-        return "Reply to Email";
-      case "forward":
-        return "Forward Email";
-      default:
-        return "Compose Email";
-    }
+    const baseTitle = (() => {
+      switch (mode) {
+        case "reply":
+          return "Reply to Email";
+        case "forward":
+          return "Forward Email";
+        default:
+          return "Compose Email";
+      }
+    })();
+
+    return isDraft ? `${baseTitle} (Draft)` : baseTitle;
   }
 </script>
 
 <Dialog open={show} onOpenChange={(open) => { if (!open) onCancel(); }}>
-  <DialogContent class="max-w-2xl max-h-[90vh] flex flex-col">
+  <DialogContent
+    class="max-w-2xl max-h-[90vh] flex flex-col"
+    onInteractOutside={(e: Event) => {
+      // Prevent dialog from closing when clicking outside
+      e.preventDefault();
+      // Trigger the cancel handler (which shows save draft dialog)
+      onCancel();
+    }}
+  >
     <DialogHeader>
       <DialogTitle>{getModalTitle()}</DialogTitle>
     </DialogHeader>

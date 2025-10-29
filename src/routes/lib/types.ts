@@ -63,3 +63,22 @@ export interface IdleEvent {
     uid?: number;
   };
 }
+
+export type DraftType = "compose" | "reply" | "forward";
+
+export interface DraftAttachment {
+  filename: string;
+  content_type: string;
+  data: number[]; // Vec<u8> as number array for JSON
+}
+
+export interface DraftListItem {
+  id: number;
+  account_id: number;
+  to_addr: string;
+  cc_addr: string;
+  subject: string;
+  draft_type: DraftType;
+  created_at: number;
+  updated_at: number;
+}

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum AuthType {
     Basic,
@@ -137,4 +137,24 @@ impl Folder {
 
         true
     }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "lowercase")]
+pub enum DraftType {
+    Compose,
+    Reply,
+    Forward,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DraftListItem {
+    pub id: i64,
+    pub account_id: i32,
+    pub to_addr: String,
+    pub cc_addr: String,
+    pub subject: String,
+    pub draft_type: DraftType,
+    pub created_at: i64,
+    pub updated_at: i64,
 }

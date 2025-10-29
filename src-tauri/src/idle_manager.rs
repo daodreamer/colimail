@@ -184,16 +184,27 @@ impl IdleManager {
                     };
 
                     println!(
-                        "🚀 Starting IDLE for all folders of account {} ({})",
+                        "🚀 Starting IDLE for INBOX of account {} ({})",
                         account_id, config.email
                     );
 
-                    // Load folders from database
+                    // Only start IDLE for INBOX to avoid hitting connection limits
+                    // Most email providers (Gmail, Outlook, etc.) limit concurrent IMAP connections to 10-15
+                    // IDLE monitoring is primarily needed for INBOX to get new email notifications
+                    let inbox_folders = ["INBOX", "收件箱"];
+
+                    // Load folders to find the actual INBOX folder name
                     match crate::commands::load_folders(account_id).await {
                         Ok(folders) => {
-                            println!("  📁 Found {} folders to monitor", folders.len());
+                            // Find INBOX folder (case-insensitive match)
+                            let inbox_folder = folders.iter().find(|f| {
+                                let folder_lower = f.name.to_lowercase();
+                                inbox_folders
+                                    .iter()
+                                    .any(|inbox| folder_lower.contains(&inbox.to_lowercase()))
+                            });
 
-                            for folder in &folders {
+                            if let Some(folder) = inbox_folder {
                                 let key = (account_id, folder.name.clone());
 
                                 // Stop existing connection if any
@@ -230,9 +241,13 @@ impl IdleManager {
                                 });
 
                                 tasks.insert(key, task);
+                                println!("✅ Started IDLE monitoring for INBOX");
+                            } else {
+                                eprintln!(
+                                    "❌ Could not find INBOX folder for account {}",
+                                    account_id
+                                );
                             }
-
-                            println!("✅ Started IDLE monitoring for {} folders", folders.len());
                         }
                         Err(e) => {
                             eprintln!(

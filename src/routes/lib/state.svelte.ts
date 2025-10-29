@@ -1,7 +1,7 @@
 // Global state management using Svelte 5 runes
 // This file contains all application state
 
-import type { AccountConfig, EmailHeader, Folder, AttachmentInfo } from "./types";
+import type { AccountConfig, EmailHeader, Folder, AttachmentInfo, DraftListItem } from "./types";
 
 // Create a reactive state object
 class AppState {
@@ -48,6 +48,14 @@ class AppState {
   isSending = $state<boolean>(false);
   composeAttachments = $state<File[]>([]);
   attachmentSizeLimit = $state<number>(10 * 1024 * 1024); // Default 10MB
+  currentDraftId = $state<number | null>(null); // Track the current draft being edited
+  showSaveDraftDialog = $state<boolean>(false); // Show save draft confirmation dialog
+  autoSaveTimerId = $state<number | null>(null); // Auto-save timer ID
+
+  // Draft state
+  drafts = $state<DraftListItem[]>([]);
+  isLoadingDrafts = $state<boolean>(false);
+  showDraftsFolder = $state<boolean>(false);
 
   // Derived state
   totalAttachmentSize = $derived<number>(
@@ -71,7 +79,13 @@ class AppState {
     this.isReplyMode = false;
     this.isForwardMode = false;
     this.isSending = false;
+    this.currentDraftId = null;
     this.error = null;
+    // Clear auto-save timer
+    if (this.autoSaveTimerId !== null) {
+      clearTimeout(this.autoSaveTimerId);
+      this.autoSaveTimerId = null;
+    }
   }
 
   resetEmailState() {
