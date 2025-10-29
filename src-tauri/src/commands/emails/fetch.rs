@@ -202,6 +202,12 @@ pub async fn fetch_emails(
                 .iter()
                 .any(|flag| matches!(flag, imap::types::Flag::Seen));
 
+            // Check if email has been flagged/starred by examining FLAGS
+            let flagged = msg
+                .flags()
+                .iter()
+                .any(|flag| matches!(flag, imap::types::Flag::Flagged));
+
             headers.push(EmailHeader {
                 uid: msg.uid.unwrap_or(0),
                 subject,
@@ -212,6 +218,7 @@ pub async fn fetch_emails(
                 timestamp,
                 has_attachments,
                 seen,
+                flagged,
             });
         }
 

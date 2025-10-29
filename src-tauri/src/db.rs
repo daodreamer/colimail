@@ -112,6 +112,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await;
 
+    // Migration: Add flagged column to emails table for starred/flagged status (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN flagged INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+
     // Create index for faster queries
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS idx_emails_account_folder

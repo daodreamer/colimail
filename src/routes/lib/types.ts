@@ -27,6 +27,7 @@ export interface EmailHeader {
   timestamp: number; // Unix timestamp in seconds
   has_attachments?: boolean;
   seen?: boolean; // Read/unread status
+  flagged?: boolean; // Starred/flagged status
 }
 
 export interface AttachmentInfo {

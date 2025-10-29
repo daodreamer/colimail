@@ -22,6 +22,7 @@
     pageSize = 50,
     onEmailClick,
     onPageChange,
+    onStarToggle,
   }: {
     emails?: EmailHeader[];
     selectedEmailUid?: number | null;
@@ -35,6 +36,7 @@
     pageSize?: number;
     onEmailClick: (uid: number) => void;
     onPageChange: (page: number) => void;
+    onStarToggle: (uid: number, flagged: boolean) => void;
   } = $props();
 
   // Check if the current user is a CC recipient (not in To field)
@@ -145,6 +147,25 @@
                   {#if email.has_attachments}
                     <span class="shrink-0 text-md opacity-100" title="This email has attachments">📎</span>
                   {/if}
+                  <span
+                    onclick={(e) => {
+                      e.stopPropagation();
+                      onStarToggle(email.uid, !email.flagged);
+                    }}
+                    role="button"
+                    tabindex="0"
+                    onkeydown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onStarToggle(email.uid, !email.flagged);
+                      }
+                    }}
+                    class="shrink-0 text-md opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                    title={email.flagged ? "Remove star" : "Add star"}
+                  >
+                    {email.flagged ? "⭐" : "☆"}
+                  </span>
                   <span class="truncate text-xs">{email.from}</span>
                 </span>
                 <span class="ml-auto shrink-0 text-xs">{formatLocalDateTime(email.timestamp)}</span>

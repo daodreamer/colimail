@@ -53,6 +53,8 @@ pub struct EmailHeader {
     pub has_attachments: bool, // Indicates if email has attachments
     #[serde(default)]
     pub seen: bool, // Read/unread status
+    #[serde(default)]
+    pub flagged: bool, // Starred/flagged status
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

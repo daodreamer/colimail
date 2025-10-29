@@ -19,8 +19,8 @@ pub async fn save_emails_to_cache(
         // Use INSERT with ON CONFLICT to preserve cached body
         let result = sqlx::query(
             "INSERT INTO emails
-            (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, has_attachments, seen, synced_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (account_id, folder_name, uid, subject, from_addr, to_addr, cc_addr, date, timestamp, has_attachments, seen, flagged, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(account_id, folder_name, uid) DO UPDATE SET
                 subject = excluded.subject,
                 from_addr = excluded.from_addr,
@@ -30,6 +30,7 @@ pub async fn save_emails_to_cache(
                 timestamp = excluded.timestamp,
                 has_attachments = excluded.has_attachments,
                 seen = excluded.seen,
+                flagged = excluded.flagged,
                 synced_at = excluded.synced_at",
         )
         .bind(account_id)
@@ -43,6 +44,7 @@ pub async fn save_emails_to_cache(
         .bind(email.timestamp)
         .bind(None::<i64>)  // has_attachments: NULL (未检查), 后台任务会填充
         .bind(email.seen as i64)
+        .bind(email.flagged as i64)
         .bind(current_time)
         .execute(pool.as_ref())
         .await;
@@ -79,8 +81,8 @@ pub async fn load_emails_from_cache(
 
     let pool = db::pool();
 
-    let rows = sqlx::query_as::<_, (i64, String, String, String, Option<String>, String, i64, i64, i64)>(
-        "SELECT uid, subject, from_addr, to_addr, cc_addr, date, timestamp, COALESCE(has_attachments, 0), COALESCE(seen, 0)
+    let rows = sqlx::query_as::<_, (i64, String, String, String, Option<String>, String, i64, i64, i64, i64)>(
+        "SELECT uid, subject, from_addr, to_addr, cc_addr, date, timestamp, COALESCE(has_attachments, 0), COALESCE(seen, 0), COALESCE(flagged, 0)
         FROM emails
         WHERE account_id = ? AND folder_name = ?
         ORDER BY timestamp DESC",
@@ -94,16 +96,19 @@ pub async fn load_emails_from_cache(
     let emails: Vec<EmailHeader> = rows
         .into_iter()
         .map(
-            |(uid, subject, from, to, cc, date, timestamp, has_attachments, seen)| EmailHeader {
-                uid: uid as u32,
-                subject,
-                from,
-                to,
-                cc: cc.unwrap_or_default(),
-                date,
-                timestamp,
-                has_attachments: has_attachments != 0,
-                seen: seen != 0,
+            |(uid, subject, from, to, cc, date, timestamp, has_attachments, seen, flagged)| {
+                EmailHeader {
+                    uid: uid as u32,
+                    subject,
+                    from,
+                    to,
+                    cc: cc.unwrap_or_default(),
+                    date,
+                    timestamp,
+                    has_attachments: has_attachments != 0,
+                    seen: seen != 0,
+                    flagged: flagged != 0,
+                }
             },
         )
         .collect();

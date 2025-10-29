@@ -724,29 +724,86 @@
       return;
     }
 
+    // Store previous state for rollback
+    const previousSeenState = selectedEmail.seen;
+    const newSeenState = !selectedEmail.seen;
+
+    // Optimistic update: immediately update UI
+    selectedEmail.seen = newSeenState;
+    appState.emails = [...appState.emails];
+
     try {
-      if (selectedEmail.seen) {
-        // Mark as unread
-        await invoke("mark_email_as_unread", {
-          config: selectedConfig,
-          uid: appState.selectedEmailUid,
-          folder: appState.selectedFolderName,
-        });
-        selectedEmail.seen = false;
-      } else {
-        // Mark as read
+      // Send request to server
+      if (newSeenState) {
         await invoke("mark_email_as_read", {
           config: selectedConfig,
           uid: appState.selectedEmailUid,
           folder: appState.selectedFolderName,
         });
-        selectedEmail.seen = true;
+      } else {
+        await invoke("mark_email_as_unread", {
+          config: selectedConfig,
+          uid: appState.selectedEmailUid,
+          folder: appState.selectedFolderName,
+        });
       }
-
-      // Update local state to trigger re-render
-      appState.emails = [...appState.emails];
+      // Success - UI already updated optimistically
     } catch (e) {
-      appState.error = `Failed to toggle read status: ${e}`;
+      // Rollback on error
+      console.error("❌ Failed to toggle read status, rolling back:", e);
+      selectedEmail.seen = previousSeenState;
+      appState.emails = [...appState.emails];
+      appState.error = `Failed to mark as ${newSeenState ? 'read' : 'unread'}: ${e}`;
+    }
+  }
+
+  async function handleStarToggle(uid: number, flagged: boolean) {
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
+      return;
+    }
+
+    const selectedEmail = appState.emails.find((email) => email.uid === uid);
+    if (!selectedEmail) {
+      appState.error = "Could not find email.";
+      return;
+    }
+
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+    if (!selectedConfig) {
+      appState.error = "Could not find account configuration.";
+      return;
+    }
+
+    // Store previous state for rollback
+    const previousFlaggedState = selectedEmail.flagged;
+
+    // Optimistic update: immediately update UI
+    selectedEmail.flagged = flagged;
+    appState.emails = [...appState.emails];
+
+    try {
+      // Send request to server
+      if (flagged) {
+        await invoke("mark_email_as_flagged", {
+          config: selectedConfig,
+          uid,
+          folder: appState.selectedFolderName,
+        });
+      } else {
+        await invoke("mark_email_as_unflagged", {
+          config: selectedConfig,
+          uid,
+          folder: appState.selectedFolderName,
+        });
+      }
+      // Success - UI already updated optimistically
+    } catch (e) {
+      // Rollback on error
+      console.error("❌ Failed to toggle star status, rolling back:", e);
+      selectedEmail.flagged = previousFlaggedState;
+      appState.emails = [...appState.emails];
+      appState.error = `Failed to ${flagged ? 'star' : 'unstar'} email: ${e}`;
     }
   }
 
@@ -910,7 +967,47 @@
           }
         }
       }
-    } else if (eventType === "Expunge" || eventType === "FlagsChanged") {
+    } else if (eventType === "FlagsChanged") {
+      // Sync flags for specific UID only (efficient!)
+      if (
+        idleEvent.account_id === appState.selectedAccountId &&
+        idleEvent.folder_name === appState.selectedFolderName
+      ) {
+        const targetAccountId = appState.selectedAccountId;
+        const targetFolderName = appState.selectedFolderName;
+        const selectedConfig = appState.accounts.find((acc) => acc.id === targetAccountId);
+        const uid = (idleEvent.event_type as any).uid; // Extract UID from event
+
+        if (selectedConfig && uid) {
+          try {
+            console.log(`🏴 Syncing flags for UID ${uid} after FlagsChanged event...`);
+            await invoke("sync_specific_email_flags", {
+              accountId: targetAccountId,
+              folderName: targetFolderName,
+              uid: uid,
+              config: selectedConfig,
+            });
+
+            // Reload emails from cache to reflect updated flags
+            const updatedEmails = await invoke<EmailHeader[]>("load_emails_from_cache", {
+              accountId: targetAccountId,
+              folder: targetFolderName,
+            });
+
+            // Check if still viewing same account/folder
+            if (appState.selectedAccountId === targetAccountId && appState.selectedFolderName === targetFolderName) {
+              appState.emails = updatedEmails;
+              console.log(`✅ Flags synced successfully for UID ${uid}`);
+            } else {
+              console.log("Account/folder changed during flag sync, discarding result");
+            }
+          } catch (e) {
+            console.error("❌ Failed to sync flags:", e);
+          }
+        }
+      }
+    } else if (eventType === "Expunge") {
+      // Full sync for email deletions
       if (
         idleEvent.account_id === appState.selectedAccountId &&
         idleEvent.folder_name === appState.selectedFolderName
@@ -933,7 +1030,7 @@
               console.log("Account/folder changed during IDLE sync, discarding result");
             }
           } catch (e) {
-            console.error("❌ Failed to refresh after change:", e);
+            console.error("❌ Failed to refresh after deletion:", e);
           }
         }
       }
@@ -1032,6 +1129,7 @@
       pageSize={appState.pageSize}
       onEmailClick={handleEmailClick}
       onPageChange={handlePageChange}
+      onStarToggle={handleStarToggle}
     />
   </Sidebar.Root>
 

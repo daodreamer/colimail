@@ -17,6 +17,10 @@ pub use attachments::{download_attachment, load_attachments_info, save_attachmen
 pub use cache::load_emails_from_cache;
 pub use delete::{delete_email, move_email_to_trash};
 pub use fetch::{fetch_email_body, fetch_email_body_cached, fetch_emails};
-pub use flags::{mark_email_as_read, mark_email_as_unread};
-pub use sync::{get_last_sync_time, should_sync, sync_emails};
+pub use flags::{
+    mark_email_as_flagged, mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread,
+};
+pub use sync::{
+    get_last_sync_time, should_sync, sync_email_flags, sync_emails, sync_specific_email_flags,
+};
 pub use sync_interval::{get_sync_interval, set_sync_interval};
