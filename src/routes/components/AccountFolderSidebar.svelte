@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Plus, RefreshCw, PenSquare, MailPlus } from "lucide-svelte";
+  import { Mail, Plus, RefreshCw, PenSquare, MailPlus, FolderPlus, X, HardDrive } from "lucide-svelte";
   import CircleUserRound from "lucide-svelte/icons/circle-user-round";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
@@ -10,9 +10,16 @@
   import FolderIcon from "lucide-svelte/icons/folder";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+  import * as Dialog from "$lib/components/ui/dialog";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import { Badge } from "$lib/components/ui/badge";
+  import { Button } from "$lib/components/ui/button";
+  import { Input } from "$lib/components/ui/input";
+  import { Label } from "$lib/components/ui/label";
   import type { AccountConfig, Folder } from "../lib/types";
   import NavUser from "$lib/components/nav-user.svelte";
+  import { invoke } from "@tauri-apps/api/core";
+  import { toast } from "svelte-sonner";
 
   // Props
   let {
@@ -31,6 +38,8 @@
     onSyncMail,
     onComposeClick,
     onShowDrafts,
+    onFolderCreated,
+    onFolderDeleted,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -47,6 +56,8 @@
     onSyncMail: () => void;
     onComposeClick: () => void;
     onShowDrafts: () => void;
+    onFolderCreated?: () => void;
+    onFolderDeleted?: () => void;
   } = $props();
 
   // Get selected account
@@ -65,7 +76,7 @@
   function getFolderIcon(folder: Folder) {
     const name = folder.name.toLowerCase();
     const displayName = folder.display_name.toLowerCase();
-    
+
     // Check common folder patterns
     if (name === 'inbox' || displayName === 'inbox') {
       return InboxIcon;
@@ -82,9 +93,117 @@
     if (name.includes('trash') || name.includes('deleted') || displayName.includes('trash') || displayName.includes('deleted')) {
       return Trash2Icon;
     }
-    
+
     // Default folder icon
     return FolderIcon;
+  }
+
+  // States for folder management
+  let showCreateDialog = $state(false);
+  let newFolderName = $state("");
+  let isCreatingFolder = $state(false);
+  let folderToDelete = $state<Folder | null>(null);
+  let isDeletingFolder = $state(false);
+  let supportsRemoteFolders = $state(true); // Will be checked on first folder creation
+
+  // Create folder
+  async function handleCreateFolder() {
+    if (!newFolderName.trim() || !selectedAccount) {
+      toast.error("Please enter a folder name");
+      return;
+    }
+
+    isCreatingFolder = true;
+    try {
+      // Check if server supports remote folder creation (only check once)
+      let shouldCreateRemote = false;
+      if (supportsRemoteFolders) {
+        try {
+          const supports = await invoke<boolean>("check_folder_capabilities", {
+            config: selectedAccount,
+          });
+          supportsRemoteFolders = supports;
+          shouldCreateRemote = supports;
+        } catch (error) {
+          console.warn("Failed to check folder capabilities, creating local folder:", error);
+          supportsRemoteFolders = false;
+        }
+      }
+
+      if (shouldCreateRemote) {
+        // Create remote IMAP folder
+        await invoke<Folder>("create_remote_folder", {
+          config: selectedAccount,
+          folderName: newFolderName.trim(),
+        });
+        toast.success(`Created remote folder "${newFolderName}"`);
+      } else {
+        // Create local-only folder
+        await invoke<Folder>("create_local_folder", {
+          accountId: selectedAccountId!,
+          folderName: newFolderName.trim(),
+        });
+        toast.success(`Created local folder "${newFolderName}"`);
+      }
+
+      newFolderName = "";
+      showCreateDialog = false;
+
+      // Notify parent to refresh folder list
+      if (onFolderCreated) {
+        onFolderCreated();
+      }
+    } catch (error) {
+      console.error("Failed to create folder:", error);
+      toast.error(`Failed to create folder: ${error}`);
+    } finally {
+      isCreatingFolder = false;
+    }
+  }
+
+  // Delete folder
+  async function handleDeleteFolder(folder: Folder) {
+    if (!selectedAccount) return;
+
+    isDeletingFolder = true;
+    try {
+      if (folder.is_local) {
+        // Delete local folder
+        await invoke("delete_local_folder", {
+          accountId: selectedAccountId!,
+          folderName: folder.name,
+        });
+        toast.success(`Deleted local folder "${folder.display_name}"`);
+      } else {
+        // Delete remote IMAP folder
+        await invoke("delete_remote_folder", {
+          config: selectedAccount,
+          folderName: folder.name,
+        });
+        toast.success(`Deleted remote folder "${folder.display_name}"`);
+      }
+
+      folderToDelete = null;
+
+      // Notify parent to refresh folder list
+      if (onFolderDeleted) {
+        onFolderDeleted();
+      }
+    } catch (error) {
+      console.error("Failed to delete folder:", error);
+      toast.error(`Failed to delete folder: ${error}`);
+    } finally {
+      isDeletingFolder = false;
+    }
+  }
+
+  // Check if folder can be deleted (prevent deleting system folders)
+  function canDeleteFolder(folder: Folder): boolean {
+    const systemFolders = ['inbox', 'sent', 'drafts', 'trash', 'junk', 'spam'];
+    const name = folder.name.toLowerCase();
+    const displayName = folder.display_name.toLowerCase();
+
+    return !systemFolders.some(sf => name.includes(sf) || displayName.includes(sf));
   }
 </script>
 
@@ -189,22 +308,60 @@
             {#each folders as folder (folder.name)}
               {@const IconComponent = getFolderIcon(folder)}
               <Sidebar.MenuItem>
+                <div class="relative group flex items-center">
+                  <Sidebar.MenuButton
+                    tooltipContentProps={{
+                      hidden: false,
+                    }}
+                    onclick={() => onFolderClick(folder.name)}
+                    isActive={folder.name === selectedFolderName}
+                    class="px-2.5 md:px-2 flex-1"
+                  >
+                    {#snippet tooltipContent()}
+                      {folder.display_name}{folder.is_local ? " (Local)" : ""}
+                    {/snippet}
+                    <IconComponent class="size-4" />
+                    <span class="flex items-center gap-1.5">
+                      {folder.display_name}
+                      {#if folder.is_local}
+                        <HardDrive class="size-3 text-muted-foreground" />
+                      {/if}
+                    </span>
+                  </Sidebar.MenuButton>
+                  {#if canDeleteFolder(folder)}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="absolute right-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                      onclick={(e) => {
+                        e.stopPropagation();
+                        folderToDelete = folder;
+                      }}
+                    >
+                      <X class="size-3" />
+                    </Button>
+                  {/if}
+                </div>
+              </Sidebar.MenuItem>
+            {/each}
+            <!-- Add New Folder Button -->
+            {#if selectedAccountId}
+              <Sidebar.MenuItem>
                 <Sidebar.MenuButton
                   tooltipContentProps={{
                     hidden: false,
                   }}
-                  onclick={() => onFolderClick(folder.name)}
-                  isActive={folder.name === selectedFolderName}
-                  class="px-2.5 md:px-2"
+                  onclick={() => { showCreateDialog = true; }}
+                  class="px-2.5 md:px-2 text-muted-foreground hover:text-foreground"
                 >
                   {#snippet tooltipContent()}
-                    {folder.display_name}
+                    New Folder
                   {/snippet}
-                  <IconComponent class="size-4" />
-                  <span>{folder.display_name}</span>
+                  <FolderPlus class="size-4" />
+                  <span>New Folder</span>
                 </Sidebar.MenuButton>
               </Sidebar.MenuItem>
-            {/each}
+            {/if}
           {:else if selectedAccountId}
             <Sidebar.MenuItem>
               <div class="px-2 py-1.5 text-sm text-muted-foreground">
@@ -253,3 +410,68 @@
     <NavUser user={userData} onSettings={onSettings} />
   </Sidebar.Footer>
 </Sidebar.Root>
+
+<!-- Create Folder Dialog -->
+<Dialog.Root bind:open={showCreateDialog}>
+  <Dialog.Content>
+    <Dialog.Header>
+      <Dialog.Title>Create New Folder</Dialog.Title>
+      <Dialog.Description>
+        Create a new folder to organize your emails. {supportsRemoteFolders ? "This will be synced with your email server." : "This folder will be local only."}
+      </Dialog.Description>
+    </Dialog.Header>
+    <div class="grid gap-4 py-4">
+      <div class="grid gap-2">
+        <Label for="folder-name">Folder Name</Label>
+        <Input
+          id="folder-name"
+          bind:value={newFolderName}
+          placeholder="Enter folder name"
+          onkeydown={(e) => {
+            if (e.key === 'Enter' && !isCreatingFolder) {
+              handleCreateFolder();
+            }
+          }}
+        />
+      </div>
+    </div>
+    <Dialog.Footer>
+      <Button variant="outline" onclick={() => { showCreateDialog = false; }}>
+        Cancel
+      </Button>
+      <Button onclick={handleCreateFolder} disabled={isCreatingFolder || !newFolderName.trim()}>
+        {isCreatingFolder ? "Creating..." : "Create"}
+      </Button>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Delete Folder Confirmation Dialog -->
+<AlertDialog.Root open={folderToDelete !== null}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Delete Folder?</AlertDialog.Title>
+      <AlertDialog.Description>
+        Are you sure you want to delete "{folderToDelete?.display_name}"?
+        {#if folderToDelete?.is_local}
+          This local folder and all its emails will be permanently deleted.
+        {:else}
+          This will delete the folder from your email server.
+        {/if}
+        This action cannot be undone.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel onclick={() => { folderToDelete = null; }}>
+        Cancel
+      </AlertDialog.Cancel>
+      <AlertDialog.Action
+        onclick={() => { if (folderToDelete) handleDeleteFolder(folderToDelete); }}
+        disabled={isDeletingFolder}
+        class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      >
+        {isDeletingFolder ? "Deleting..." : "Delete"}
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

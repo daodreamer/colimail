@@ -347,6 +347,44 @@
     }
   }
 
+  async function handleFolderCreated() {
+    // Refresh folder list after creating a new folder
+    if (appState.selectedAccountId) {
+      try {
+        appState.isLoadingFolders = true;
+        appState.folders = await invoke<Folder[]>("load_folders", {
+          accountId: appState.selectedAccountId,
+        });
+      } catch (error) {
+        console.error("Failed to reload folders:", error);
+      } finally {
+        appState.isLoadingFolders = false;
+      }
+    }
+  }
+
+  async function handleFolderDeleted() {
+    // Refresh folder list after deleting a folder
+    if (appState.selectedAccountId) {
+      try {
+        appState.isLoadingFolders = true;
+        appState.folders = await invoke<Folder[]>("load_folders", {
+          accountId: appState.selectedAccountId,
+        });
+
+        // If deleted folder was selected, switch to INBOX
+        if (!appState.folders.find(f => f.name === appState.selectedFolderName)) {
+          appState.selectedFolderName = "INBOX";
+          await loadEmailsForFolder("INBOX");
+        }
+      } catch (error) {
+        console.error("Failed to reload folders:", error);
+      } finally {
+        appState.isLoadingFolders = false;
+      }
+    }
+  }
+
   async function handleEmailClick(uid: number) {
     appState.selectedEmailUid = uid;
     appState.isLoadingBody = true;
@@ -1340,6 +1378,8 @@
       onSyncMail={handleManualRefresh}
       onComposeClick={handleComposeClick}
       onShowDrafts={handleShowDrafts}
+      onFolderCreated={handleFolderCreated}
+      onFolderDeleted={handleFolderDeleted}
     />
 
     {#if appState.showDraftsFolder}

@@ -83,6 +83,8 @@ pub struct Folder {
     pub display_name: String, // User-friendly display name (UTF-7 decoded)
     pub delimiter: Option<String>,
     pub flags: Option<String>,
+    #[serde(default)]
+    pub is_local: bool, // True for local-only folders, False for remote IMAP folders
 }
 
 impl Folder {

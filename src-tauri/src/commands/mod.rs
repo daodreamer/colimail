@@ -17,7 +17,10 @@ pub use emails::{
     move_email_to_trash, save_attachment_to_file, set_sync_interval, should_sync, sync_email_flags,
     sync_emails, sync_specific_email_flags,
 };
-pub use folders::{fetch_folders, load_folders, sync_folders};
+pub use folders::{
+    check_folder_capabilities, create_local_folder, create_remote_folder, delete_local_folder,
+    delete_remote_folder, fetch_folders, load_folders, sync_folders,
+};
 pub use notifications::{
     get_notification_enabled, get_sound_enabled, set_notification_enabled, set_sound_enabled,
 };

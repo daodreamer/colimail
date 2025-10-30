@@ -52,6 +52,7 @@ export interface Folder {
   display_name: string; // User-friendly display name
   delimiter: string | null;
   flags: string | null;
+  is_local?: boolean; // True for local-only folders, False for remote IMAP folders
 }
 
 export interface IdleEvent {

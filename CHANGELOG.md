@@ -13,6 +13,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.3] - 2025-10-30
 
+### Added
+- **Folder Management**: Implemented complete folder creation and deletion functionality
+  - **Create Folders**: Users can create new email folders for better organization
+    - Smart server detection: Automatically checks if IMAP server supports remote folder creation
+    - Remote folders: Synced with email server (Gmail, Outlook, etc.) when supported
+    - Local folders: Client-only folders when server doesn't support folder creation
+    - Visual indicator: Local folders display HardDrive icon to distinguish from remote folders
+    - Dialog UI: Clean modal with folder name input and Enter key support
+  - **Delete Folders**: Remove unwanted folders with confirmation
+    - System folder protection: Prevents deletion of Inbox, Sent, Drafts, Trash, Junk/Spam
+    - Hover UI: Delete button (X icon) appears on hover over folder items
+    - Confirmation dialog: Clear warning with different messages for local vs remote folders
+    - Smart navigation: Automatically switches to Inbox if deleted folder was selected
+    - Bidirectional sync: Remote folder deletion syncs with email server
+  - **New Folder Button**: Prominent "New Folder" button at bottom of folder list
+  - **Backend Commands**:
+    - `check_folder_capabilities`: Detects IMAP server support for folder operations
+    - `create_remote_folder`: Creates folder on IMAP server and syncs to database
+    - `delete_remote_folder`: Deletes folder from IMAP server and database
+    - `create_local_folder`: Creates local-only folder in database
+    - `delete_local_folder`: Deletes local folder from database
+  - **Database Schema**: Added `is_local` column to folders table (INTEGER, default 0)
+  - **Type Safety**: Extended `Folder` interface with `is_local?: boolean` field
+  - **Auto-refresh**: Folder list automatically updates after creation/deletion
+  - **Toast Notifications**: Success/error feedback for all folder operations
+
 ### Improved
 - **Delete Account Notification**: Migrated from inline Alert component to toast notification for better UX
   - Replaced prominent green Alert card with non-intrusive `toast.success()` notification
@@ -22,6 +48,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cleaner UI without auto-dismissing alert banners taking up space
   - Removed unused state variables (`showSuccessAlert`, `deletedEmail`)
   - Removed unused icon import (`CheckCircle2Icon`)
+
+### Technical Details
+- **Folder Management Implementation** (`src-tauri/src/commands/folders.rs`):
+  - UTF-7 encoding support for non-ASCII folder names (via `encode_folder_name` helper)
+  - Capability detection using IMAP `capabilities()` command
+  - IMAP CREATE/DELETE operations wrapped in `tokio::spawn_blocking` for async safety
+  - Smart error handling with folder name cloning to avoid borrow checker issues
+  - Automatic database migration for `is_local` column on existing installations
+- **UI Components** (`src/routes/components/AccountFolderSidebar.svelte`):
+  - Dialog component for folder creation with real-time validation
+  - AlertDialog component for deletion confirmation with destructive styling
+  - Hover-based delete button visibility (opacity-0 → opacity-100 transition)
+  - Smart icon selection: HardDrive icon for local folders, standard icons for remote
+  - `canDeleteFolder()` helper prevents deletion of system folders
+  - Callbacks: `onFolderCreated` and `onFolderDeleted` for parent state refresh
+- **Main Page Integration** (`src/routes/+page.svelte`):
+  - `handleFolderCreated()`: Reloads folder list after creation
+  - `handleFolderDeleted()`: Reloads folders and switches to Inbox if needed
+  - Seamless integration with existing account/folder switching logic
+- **Code Quality**:
+  - All Rust code formatted with `cargo fmt`
+  - Compiled without errors via `cargo check`
+  - Zero Clippy warnings with `cargo clippy -- -D warnings`
+  - TypeScript/Svelte code validated with `svelte-check` (0 errors, 0 warnings)
 
 ## [0.4.2] - 2025-10-29
 

@@ -46,6 +46,7 @@ pub async fn init() -> Result<(), sqlx::Error> {
             display_name TEXT NOT NULL,
             delimiter TEXT,
             flags TEXT,
+            is_local INTEGER DEFAULT 0,
             UNIQUE(account_id, name),
             FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
         )",
@@ -66,6 +67,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
     )
     .execute(&pool)
     .await?;
+
+    // Migration: Add is_local column to existing folders table if it doesn't exist
+    let _ = sqlx::query("ALTER TABLE folders ADD COLUMN is_local INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
 
     // Create emails cache table with all columns included
     sqlx::query(
