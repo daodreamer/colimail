@@ -11,6 +11,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.4.3] - 2025-10-30
+
+### Improved
+- **Delete Account Notification**: Migrated from inline Alert component to toast notification for better UX
+  - Replaced prominent green Alert card with non-intrusive `toast.success()` notification
+  - Uses same format as official shadcn-svelte toast example with title and description
+  - Toast message: "Account deleted successfully" with full account details in description
+  - Consistent notification style across all account management operations
+  - Cleaner UI without auto-dismissing alert banners taking up space
+  - Removed unused state variables (`showSuccessAlert`, `deletedEmail`)
+  - Removed unused icon import (`CheckCircle2Icon`)
+
 ## [0.4.2] - 2025-10-29
 
 ### Added

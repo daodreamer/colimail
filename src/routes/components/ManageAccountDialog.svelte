@@ -14,7 +14,6 @@
   import { Separator } from "$lib/components/ui/separator";
   import MailIcon from "lucide-svelte/icons/mail";
   import AlertCircleIcon from "lucide-svelte/icons/alert-circle";
-  import CheckCircle2Icon from "lucide-svelte/icons/check-circle-2";
 
   // Props
   let {
@@ -37,8 +36,6 @@
   let isDeleting = $state(false);
   let isSaving = $state(false);
   let showDeleteDialog = $state(false);
-  let showSuccessAlert = $state(false);
-  let deletedEmail = $state<string>("");
 
   // Auto-select first account when dialog opens
   $effect(() => {
@@ -102,16 +99,15 @@
 
     showDeleteDialog = false;
     isDeleting = true;
-    deletedEmail = selectedAccount.email;
-    
+    const deletedEmail = selectedAccount.email;
+
     try {
       await invoke("delete_account", { email: selectedAccount.email });
-      
-      // Show success alert
-      showSuccessAlert = true;
-      setTimeout(() => {
-        showSuccessAlert = false;
-      }, 5000);
+
+      // Show success toast
+      toast.success("Account deleted successfully", {
+        description: `The account ${deletedEmail} and all associated data have been permanently removed.`
+      });
 
       onAccountDeleted(selectedAccount.email);
 
@@ -220,16 +216,6 @@
           </header>
 
           <div class="flex flex-1 flex-col gap-4 overflow-y-auto p-4 pt-0">
-            {#if showSuccessAlert}
-              <Alert.Root class="max-w-3xl">
-                <CheckCircle2Icon />
-                <Alert.Title>Success! Account has been deleted</Alert.Title>
-                <Alert.Description>
-                  The account <strong>{deletedEmail}</strong> and all associated data have been permanently removed.
-                </Alert.Description>
-              </Alert.Root>
-            {/if}
-
             {#if selectedAccount}
               <div class="bg-muted/50 rounded-xl p-6 space-y-4 max-w-3xl">
                 {#if !isEditing}
