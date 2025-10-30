@@ -114,6 +114,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - **Better testing**: Modules can be tested independently
     - **No functionality changes**: All existing sync features work identically
   - **Code Quality**: All changes validated with `cargo fmt`, `cargo check`, and `cargo clippy -- -D warnings`
+- **IDLE Manager Code Organization**: Refactored IDLE connection manager for better maintainability
+  - **Problem**: `idle_manager.rs` had grown to 770 lines, making it difficult to understand and maintain
+  - **Solution**: Split into 5 focused sub-modules within `idle_manager/` directory, reducing complexity and improving code organization
+  - **Module Structure**:
+    - `idle_manager/mod.rs` (12 lines): Module entry point, exports public interfaces
+    - `idle_manager/types.rs` (60 lines): Data type definitions and global state
+    - `idle_manager/manager.rs` (240 lines): Core IDLE manager and command processing loop
+    - `idle_manager/session.rs` (228 lines): IDLE session handling and connection retry logic
+    - `idle_manager/notification.rs` (267 lines): Notification system and window management
+  - **Benefits**:
+    - **Clear separation of concerns**: Types, manager, session, and notification logic in separate modules
+    - **Easier maintenance**: Each module has single responsibility (~60-270 lines)
+    - **Improved readability**: Clear separation between connection management, session handling, and notifications
+    - **Better encapsulation**: Internal types not exposed publicly
+    - **No functionality changes**: All existing IDLE features work identically
+  - **Code Quality**: All changes validated with `cargo fmt`, `cargo check`, and `cargo clippy -- -D warnings`
 
 ### Technical Details
 - **Code Refactoring Architecture**:
