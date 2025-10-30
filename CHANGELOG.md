@@ -40,6 +40,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Toast Notifications**: Success/error feedback for all folder operations
 
 ### Improved
+- **Code Architecture Refactoring**: Major refactoring of `+page.svelte` for better maintainability and modularity
+  - **Problem**: `+page.svelte` had grown to 1,668 lines, making it difficult to maintain and understand
+  - **Solution**: Extracted handler functions into 5 focused modules, reducing main file to 576 lines (65% reduction)
+  - **Handler Modules** (1,633 total lines organized by domain):
+    - `handlers/email-operations.ts` (515 lines): Email viewing, reading/unread status, starring, deletion, attachments
+    - `handlers/account-folder.ts` (336 lines): Account selection, folder navigation, email loading, sync logic
+    - `handlers/sync-idle.ts` (293 lines): Auto-sync timers, IDLE push notifications, manual refresh
+    - `handlers/compose-send.ts` (260 lines): Email composition, reply, forward, attachment handling, sending
+    - `handlers/draft-management.ts` (229 lines): Draft creation, auto-save, loading, deletion
+  - **Benefits**:
+    - **Easier maintenance**: Each module has single responsibility, easier to locate and fix bugs
+    - **Better readability**: Main page file now only contains wrapper functions and UI layout
+    - **Improved testability**: Handler modules can be unit tested independently
+    - **Clear separation of concerns**: Business logic separated from UI presentation layer
+    - **No functionality changes**: All existing features work identically, only code organization improved
 - **Context Menu System**: Implemented comprehensive right-click context menu functionality with global state management
   - **Global Context Menu State Management**: Ensures only one context menu can be open at a time across the entire application
     - Implemented centralized state in `+page.svelte`: `openContextMenuType` (folder/email/null) and `openContextMenuId`
@@ -82,6 +97,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed unused icon import (`CheckCircle2Icon`)
 
 ### Technical Details
+- **Code Refactoring Architecture**:
+  - **Module Exports**: All handler modules export individual functions, not classes or objects
+  - **State Management**: All modules import and use `appState` from `lib/state.svelte` for reactive updates
+  - **Wrapper Pattern**: Main `+page.svelte` creates lightweight wrapper functions that call handler modules with correct parameters
+  - **Type Safety**: All handler functions are fully typed with TypeScript, parameters explicitly typed
+  - **Error Handling**: Each module maintains consistent error handling patterns with appState.error updates
+  - **Import Strategy**: Used namespace imports (`import * as EmailOps`) for clarity and organization
+  - **No Circular Dependencies**: Clear one-way dependency flow: +page.svelte → handlers → state/utilities
+  - **Backward Compatibility**: All function signatures remain the same, existing component props unchanged
+  - **Migration Path**: Original file backed up as `+page.svelte.backup` for reference
 - **Context Menu Implementation**:
   - **Global State Management** (`src/routes/+page.svelte`):
     - Added state variables: `openContextMenuType: 'folder' | 'email' | null` and `openContextMenuId: string | number | null`
