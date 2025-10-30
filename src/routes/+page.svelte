@@ -34,6 +34,10 @@
   let showConfirmDeleteDraft = $state(false);
   let draftToDelete: number | null = null;
 
+  // Global context menu state - ensures only one context menu is open at a time
+  let openContextMenuType = $state<'folder' | 'email' | null>(null);
+  let openContextMenuId = $state<string | number | null>(null);
+
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -1144,6 +1148,164 @@
     }
   }
 
+  // Handler for marking email as read from context menu
+  async function handleMarkEmailAsRead(uid: number) {
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
+      return;
+    }
+
+    const selectedEmail = appState.emails.find((email) => email.uid === uid);
+    if (!selectedEmail) {
+      appState.error = "Could not find email.";
+      return;
+    }
+
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+    if (!selectedConfig) {
+      appState.error = "Could not find account configuration.";
+      return;
+    }
+
+    // Store previous state for rollback
+    const previousSeenState = selectedEmail.seen;
+
+    // Optimistic update: immediately update UI
+    selectedEmail.seen = true;
+    appState.emails = [...appState.emails];
+
+    try {
+      // Send request to server
+      await invoke("mark_email_as_read", {
+        config: selectedConfig,
+        uid,
+        folder: appState.selectedFolderName,
+      });
+      // Success - UI already updated optimistically
+    } catch (e) {
+      // Rollback on error
+      console.error("❌ Failed to mark as read, rolling back:", e);
+      selectedEmail.seen = previousSeenState;
+      appState.emails = [...appState.emails];
+      appState.error = `Failed to mark as read: ${e}`;
+    }
+  }
+
+  // Handler for marking email as unread from context menu
+  async function handleMarkEmailAsUnread(uid: number) {
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
+      return;
+    }
+
+    const selectedEmail = appState.emails.find((email) => email.uid === uid);
+    if (!selectedEmail) {
+      appState.error = "Could not find email.";
+      return;
+    }
+
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+    if (!selectedConfig) {
+      appState.error = "Could not find account configuration.";
+      return;
+    }
+
+    // Store previous state for rollback
+    const previousSeenState = selectedEmail.seen;
+
+    // Optimistic update: immediately update UI
+    selectedEmail.seen = false;
+    appState.emails = [...appState.emails];
+
+    try {
+      // Send request to server
+      await invoke("mark_email_as_unread", {
+        config: selectedConfig,
+        uid,
+        folder: appState.selectedFolderName,
+      });
+      // Success - UI already updated optimistically
+    } catch (e) {
+      // Rollback on error
+      console.error("❌ Failed to mark as unread, rolling back:", e);
+      selectedEmail.seen = previousSeenState;
+      appState.emails = [...appState.emails];
+      appState.error = `Failed to mark as unread: ${e}`;
+    }
+  }
+
+  // Handler for deleting email from context menu
+  async function handleDeleteEmailFromContextMenu(uid: number) {
+    if (!appState.selectedAccountId) {
+      appState.error = "Please select an account first.";
+      return;
+    }
+
+    const selectedEmail = appState.emails.find((email) => email.uid === uid);
+    if (!selectedEmail) {
+      appState.error = "Could not find email.";
+      return;
+    }
+
+    const selectedConfig = appState.accounts.find((acc) => acc.id === appState.selectedAccountId);
+    if (!selectedConfig) {
+      appState.error = "Could not find account configuration.";
+      return;
+    }
+
+    const isInTrash = isTrashFolder(appState.selectedFolderName);
+
+    // Only ask for confirmation when permanently deleting from trash folder
+    if (isInTrash) {
+      const confirmMessage = `Are you sure you want to PERMANENTLY delete this email?\n\nThis action cannot be undone.\n\nSubject: ${selectedEmail.subject}`;
+
+      const userConfirmed = await ask(confirmMessage, {
+        title: "Permanently Delete Email?",
+        kind: "warning",
+      });
+
+      if (!userConfirmed) {
+        return;
+      }
+    }
+
+    // Proceed with backend operations
+    appState.error = null;
+
+    try {
+      // Immediately remove from UI (optimistic update) for instant feedback
+      appState.emails = appState.emails.filter((email) => email.uid !== uid);
+
+      // If this was the selected email, reset the selection
+      if (appState.selectedEmailUid === uid) {
+        appState.resetEmailState();
+      }
+
+      if (isInTrash) {
+        // Permanently delete from server
+        await invoke("delete_email", {
+          config: selectedConfig,
+          uid,
+          folder: appState.selectedFolderName,
+        });
+      } else {
+        // Move to trash on server (no confirmation needed)
+        await invoke("move_email_to_trash", {
+          config: selectedConfig,
+          uid,
+          folder: appState.selectedFolderName,
+        });
+      }
+
+      // Note: The IDLE event handler will sync in the background if needed,
+      // but we've already updated the UI for immediate feedback
+    } catch (e) {
+      appState.error = `Failed to delete email: ${e}`;
+      // On error, reload to ensure UI is in sync with server
+      await loadEmailsForFolder(appState.selectedFolderName);
+    }
+  }
+
   // Play notification sound
   function playNotificationSound() {
     try {
@@ -1380,6 +1542,12 @@
       onShowDrafts={handleShowDrafts}
       onFolderCreated={handleFolderCreated}
       onFolderDeleted={handleFolderDeleted}
+      openContextMenuType={openContextMenuType}
+      openContextMenuId={openContextMenuId}
+      onContextMenuChange={(type, id) => {
+        openContextMenuType = type;
+        openContextMenuId = id;
+      }}
     />
 
     {#if appState.showDraftsFolder}
@@ -1405,6 +1573,15 @@
         onEmailClick={handleEmailClick}
         onPageChange={handlePageChange}
         onStarToggle={handleStarToggle}
+        onMarkAsRead={handleMarkEmailAsRead}
+        onMarkAsUnread={handleMarkEmailAsUnread}
+        onDeleteEmail={handleDeleteEmailFromContextMenu}
+        openContextMenuType={openContextMenuType}
+        openContextMenuId={openContextMenuId}
+        onContextMenuChange={(type, id) => {
+          openContextMenuType = type;
+          openContextMenuId = id;
+        }}
       />
     {/if}
   </Sidebar.Root>

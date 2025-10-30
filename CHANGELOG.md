@@ -40,6 +40,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Toast Notifications**: Success/error feedback for all folder operations
 
 ### Improved
+- **Context Menu System**: Implemented comprehensive right-click context menu functionality with global state management
+  - **Global Context Menu State Management**: Ensures only one context menu can be open at a time across the entire application
+    - Implemented centralized state in `+page.svelte`: `openContextMenuType` (folder/email/null) and `openContextMenuId`
+    - All context menus (folders and emails) share this global state via `onContextMenuChange` callback
+    - Opening any context menu automatically closes all others, preventing multiple overlapping menus
+    - Clean architecture: parent component manages global state, child components use derived state to check if their menu is open
+  - **Global Browser Context Menu Disabled**: Blocked browser's default right-click menu for professional appearance
+    - Added global `contextmenu` event listener in `+layout.svelte` with `preventDefault()`
+    - Ensures only custom shadcn-svelte ContextMenu appears throughout the application
+  - **Email List Context Menu**: Added right-click menu for email items with contextually relevant actions
+    - Right-click any email to access quick actions without selecting it first
+    - Menu options dynamically adapt based on email state:
+      - "Open Email" (Mail icon) - Opens the full email content
+      - "Mark as Read" (Eye icon) - Shows only for unread emails
+      - "Mark as Unread" (EyeOff icon) - Shows only for read emails
+      - "Add/Remove Star" (Star icon) - Toggle flagged status
+      - "Delete Email" (Trash2 icon, destructive styling) - Move to trash or permanently delete
+    - Smart menu management: Only one context menu can be open at a time
+    - Controlled component pattern: `openContextMenuUid` tracks currently open menu by email UID
+    - Auto-closes previous menu when opening a new one
+    - Menu closes automatically after action selection
+    - All actions use optimistic UI updates for instant feedback
+  - **Folder Context Menu**: Right-click menu for folder operations
+    - Prevents accidental deletion when clicking folders
+    - Right-click any folder to reveal context menu with "Delete Folder" option
+    - Uses shadcn-svelte ContextMenu component with destructive styling
+    - Trash icon clearly indicates delete action
+    - System folders remain protected (no context menu for Inbox, Sent, etc.)
+    - Better user experience: intentional right-click vs accidental hover click
+    - Smart menu management: Only one context menu can be open at a time
+    - Auto-closes previous menu when opening a new one
+    - Menu closes automatically when clicking delete action
 - **Delete Account Notification**: Migrated from inline Alert component to toast notification for better UX
   - Replaced prominent green Alert card with non-intrusive `toast.success()` notification
   - Uses same format as official shadcn-svelte toast example with title and description
@@ -50,16 +82,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed unused icon import (`CheckCircle2Icon`)
 
 ### Technical Details
+- **Context Menu Implementation**:
+  - **Global State Management** (`src/routes/+page.svelte`):
+    - Added state variables: `openContextMenuType: 'folder' | 'email' | null` and `openContextMenuId: string | number | null`
+    - Created callback function: `onContextMenuChange(type, id)` passed to all components with context menus
+    - Both `AccountFolderSidebar` and `EmailListSidebar` receive these props for coordinated state management
+    - State updates are centralized, ensuring only one menu can be open globally
+  - **Global Context Menu Disable** (`src/routes/+layout.svelte`):
+    - `onMount` lifecycle hook registers global `contextmenu` event listener
+    - Event handler calls `preventDefault()` to block browser's default menu
+    - Cleanup function removes listener on component unmount
+    - Allows shadcn-svelte ContextMenu to function while blocking browser menu
+  - **Folder Context Menu** (`src/routes/components/AccountFolderSidebar.svelte`):
+    - Receives `openContextMenuType`, `openContextMenuId`, and `onContextMenuChange` props
+    - Derived function `isFolderContextMenuOpen(folderName)` checks if specific folder's menu is open
+    - ContextMenu.Root `open` prop bound to derived state: `open={isFolderContextMenuOpen(folder.name)}`
+    - `onOpenChange` callback updates global state via `onContextMenuChange(isOpen ? 'folder' : null, isOpen ? folder.name : null)`
+    - All menu item clicks call `onContextMenuChange(null, null)` to close menu
+  - **Email List Context Menu** (`src/routes/components/EmailListSidebar.svelte`):
+    - Added imports: `ContextMenu` components, lucide-svelte icons (Mail, Trash2, Star, Eye, EyeOff)
+    - New optional callback props: `onMarkAsRead`, `onMarkAsUnread`, `onDeleteEmail`, plus global state props
+    - Receives `openContextMenuType`, `openContextMenuId`, and `onContextMenuChange` props for global coordination
+    - Derived function `isEmailContextMenuOpen(uid)` checks if specific email's menu is open
+    - ContextMenu.Root `open` prop bound to derived state: `open={isEmailContextMenuOpen(email.uid)}`
+    - `onOpenChange` callback updates global state via `onContextMenuChange(isOpen ? 'email' : null, isOpen ? email.uid : null)`
+    - Each email wrapped in `ContextMenu.Root` with controlled `open` state
+    - Conditional menu items based on email state (seen/unseen)
+    - Menu closes automatically via `onContextMenuChange(null, null)` after each action
+    - Separator elements group related actions visually
+    - Destructive styling for Delete action matches design system
+  - **Parent Component Handlers** (`src/routes/+page.svelte`):
+    - `handleMarkEmailAsRead(uid)`: Marks specific email as read with optimistic UI update
+    - `handleMarkEmailAsUnread(uid)`: Marks specific email as unread with optimistic UI update
+    - `handleDeleteEmailFromContextMenu(uid)`: Deletes email with confirmation for trash folder
+    - All handlers use optimistic updates with rollback on error
+    - Handlers passed to EmailListSidebar component props
+    - Reuses existing IMAP commands: `mark_email_as_read`, `mark_email_as_unread`, `move_email_to_trash`
 - **Folder Management Implementation** (`src-tauri/src/commands/folders.rs`):
   - UTF-7 encoding support for non-ASCII folder names (via `encode_folder_name` helper)
   - Capability detection using IMAP `capabilities()` command
   - IMAP CREATE/DELETE operations wrapped in `tokio::spawn_blocking` for async safety
   - Smart error handling with folder name cloning to avoid borrow checker issues
   - Automatic database migration for `is_local` column on existing installations
-- **UI Components** (`src/routes/components/AccountFolderSidebar.svelte`):
+- **Folder UI Components** (`src/routes/components/AccountFolderSidebar.svelte`):
   - Dialog component for folder creation with real-time validation
   - AlertDialog component for deletion confirmation with destructive styling
-  - Hover-based delete button visibility (opacity-0 → opacity-100 transition)
+  - ContextMenu component for right-click folder actions (replaces hover delete button)
+  - Right-click context menu shows "Delete Folder" with Trash2Icon and destructive styling
+  - Controlled ContextMenu state: `openContextMenuFolder` tracks currently open menu by folder name
+  - `open` and `onOpenChange` props ensure only one menu is open at a time
   - Smart icon selection: HardDrive icon for local folders, standard icons for remote
   - `canDeleteFolder()` helper prevents deletion of system folders
   - Callbacks: `onFolderCreated` and `onFolderDeleted` for parent state refresh

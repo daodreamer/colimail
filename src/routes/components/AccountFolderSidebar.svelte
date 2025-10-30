@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Mail, Plus, RefreshCw, PenSquare, MailPlus, FolderPlus, X, HardDrive } from "lucide-svelte";
+  import { Mail, Plus, RefreshCw, PenSquare, MailPlus, FolderPlus, HardDrive } from "lucide-svelte";
   import CircleUserRound from "lucide-svelte/icons/circle-user-round";
   import InboxIcon from "lucide-svelte/icons/inbox";
   import FileIcon from "lucide-svelte/icons/file";
@@ -12,6 +12,7 @@
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import * as ContextMenu from "$lib/components/ui/context-menu";
   import { Badge } from "$lib/components/ui/badge";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
@@ -40,6 +41,9 @@
     onShowDrafts,
     onFolderCreated,
     onFolderDeleted,
+    openContextMenuType = null,
+    openContextMenuId = null,
+    onContextMenuChange,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -58,6 +62,9 @@
     onShowDrafts: () => void;
     onFolderCreated?: () => void;
     onFolderDeleted?: () => void;
+    openContextMenuType?: 'folder' | 'email' | null;
+    openContextMenuId?: string | number | null;
+    onContextMenuChange?: (type: 'folder' | 'email' | null, id: string | number | null) => void;
   } = $props();
 
   // Get selected account
@@ -105,6 +112,11 @@
   let folderToDelete = $state<Folder | null>(null);
   let isDeletingFolder = $state(false);
   let supportsRemoteFolders = $state(true); // Will be checked on first folder creation
+
+  // Derived state: check if this folder's context menu is open
+  const isFolderContextMenuOpen = $derived((folderName: string) => {
+    return openContextMenuType === 'folder' && openContextMenuId === folderName;
+  });
 
   // Create folder
   async function handleCreateFolder() {
@@ -308,40 +320,52 @@
             {#each folders as folder (folder.name)}
               {@const IconComponent = getFolderIcon(folder)}
               <Sidebar.MenuItem>
-                <div class="relative group flex items-center">
-                  <Sidebar.MenuButton
-                    tooltipContentProps={{
-                      hidden: false,
-                    }}
-                    onclick={() => onFolderClick(folder.name)}
-                    isActive={folder.name === selectedFolderName}
-                    class="px-2.5 md:px-2 flex-1"
-                  >
-                    {#snippet tooltipContent()}
-                      {folder.display_name}{folder.is_local ? " (Local)" : ""}
-                    {/snippet}
-                    <IconComponent class="size-4" />
-                    <span class="flex items-center gap-1.5">
-                      {folder.display_name}
-                      {#if folder.is_local}
-                        <HardDrive class="size-3 text-muted-foreground" />
-                      {/if}
-                    </span>
-                  </Sidebar.MenuButton>
-                  {#if canDeleteFolder(folder)}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="absolute right-1 size-6 opacity-0 group-hover:opacity-100 transition-opacity"
-                      onclick={(e) => {
-                        e.stopPropagation();
-                        folderToDelete = folder;
+                <ContextMenu.Root
+                  open={isFolderContextMenuOpen(folder.name)}
+                  onOpenChange={(isOpen) => {
+                    if (onContextMenuChange) {
+                      onContextMenuChange(isOpen ? 'folder' : null, isOpen ? folder.name : null);
+                    }
+                  }}
+                >
+                  <ContextMenu.Trigger class="w-full">
+                    <Sidebar.MenuButton
+                      tooltipContentProps={{
+                        hidden: false,
                       }}
+                      onclick={() => onFolderClick(folder.name)}
+                      isActive={folder.name === selectedFolderName}
+                      class="px-2.5 md:px-2"
                     >
-                      <X class="size-3" />
-                    </Button>
+                      {#snippet tooltipContent()}
+                        {folder.display_name}{folder.is_local ? " (Local)" : ""}
+                      {/snippet}
+                      <IconComponent class="size-4" />
+                      <span class="flex items-center gap-1.5">
+                        {folder.display_name}
+                        {#if folder.is_local}
+                          <HardDrive class="size-3 text-muted-foreground" />
+                        {/if}
+                      </span>
+                    </Sidebar.MenuButton>
+                  </ContextMenu.Trigger>
+                  {#if canDeleteFolder(folder)}
+                    <ContextMenu.Content class="w-48">
+                      <ContextMenu.Item
+                        onclick={() => {
+                          folderToDelete = folder;
+                          if (onContextMenuChange) {
+                            onContextMenuChange(null, null); // Close menu after clicking
+                          }
+                        }}
+                        class="text-destructive focus:text-destructive"
+                      >
+                        <Trash2Icon class="mr-2 size-4" />
+                        Delete Folder
+                      </ContextMenu.Item>
+                    </ContextMenu.Content>
                   {/if}
-                </div>
+                </ContextMenu.Root>
               </Sidebar.MenuItem>
             {/each}
             <!-- Add New Folder Button -->
