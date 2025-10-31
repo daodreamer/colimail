@@ -155,6 +155,27 @@ async fn main() {
         .setup(|app| {
             oauth2_config::init_credentials(app.handle());
 
+            // Request notification permission (important for Windows)
+            use tauri_plugin_notification::NotificationExt;
+            let notification = app.handle().notification();
+
+            // Check and request permission
+            match notification.permission_state() {
+                Ok(state) => {
+                    println!("🔔 Notification permission state: {:?}", state);
+                    if state.to_string() != "granted" {
+                        println!("📝 Requesting notification permission...");
+                        match notification.request_permission() {
+                            Ok(_) => println!("✅ Notification permission requested"),
+                            Err(e) => {
+                                eprintln!("❌ Failed to request notification permission: {}", e)
+                            }
+                        }
+                    }
+                }
+                Err(e) => eprintln!("❌ Failed to check notification permission: {}", e),
+            }
+
             // Initialize IDLE manager
             let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
             app.manage(idle_manager.clone());

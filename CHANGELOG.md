@@ -11,6 +11,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calendar integration
 - Multi-language support
 
+## [0.4.4] - 2025-10-31
+
+### Changed
+- **Notification System Refactored**: Migrated from custom notification windows to native system notifications
+  - Replaced custom Tauri window-based notifications with native OS notifications (Windows Action Center)
+  - Notifications now appear in system desktop notification area instead of application window
+  - Improved user experience with system-native notification styling
+  - Better integration with Windows notification settings and focus assist
+  - Notification text changed to English for better consistency
+
+### Fixed
+- **IDLE Connection Stability**: Fixed IDLE manager reconnection issues
+  - IDLE sessions now continue running after detecting new emails instead of disconnecting
+  - Removed 30-second reconnection delay that caused missed notifications
+  - Improved event listener cleanup in frontend for better resource management
+  - Added notification permission checks and request handling on app startup
+
 ## [0.4.3] - 2025-10-30
 
 ### Added

@@ -2,24 +2,6 @@
 // This module defines the core data structures used throughout the IDLE manager
 
 use crate::models::AccountConfig;
-use once_cell::sync::Lazy;
-use std::sync::{Arc, Mutex};
-
-/// Notification data to be queued
-#[derive(Debug, Clone)]
-pub struct NotificationData {
-    pub title: String,
-    pub from: String,
-    pub subject: String,
-}
-
-/// Global notification queue
-pub static NOTIFICATION_QUEUE: Lazy<Arc<Mutex<Vec<NotificationData>>>> =
-    Lazy::new(|| Arc::new(Mutex::new(Vec::new())));
-
-/// Flag to track if notification worker is running
-pub static NOTIFICATION_WORKER_RUNNING: Lazy<Arc<Mutex<bool>>> =
-    Lazy::new(|| Arc::new(Mutex::new(false)));
 
 /// Command to control the IDLE manager
 #[derive(Debug)]

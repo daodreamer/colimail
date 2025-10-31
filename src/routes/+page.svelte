@@ -2,8 +2,6 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-  import { toast } from "svelte-sonner";
-  import { Toaster } from "$lib/components/ui/sonner";
   import * as Sidebar from "$lib/components/ui/sidebar";
 
   // Components
@@ -48,6 +46,10 @@
 
   // Lifecycle: Initialize app
   onMount(() => {
+    let unlisten: (() => void) | undefined;
+    let unlistenSound: (() => void) | undefined;
+    let timeUpdateTimer: ReturnType<typeof setInterval> | undefined;
+
     (async () => {
       try {
         appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
@@ -74,40 +76,29 @@
         }
 
         // Listen for IDLE push notifications
-        const unlisten = await listen("idle-event", handleIdleEvent);
-
-        // Listen for custom notification event
-        const unlistenNotification = await listen<{
-          title: string;
-          body: string;
-          from: string;
-          subject: string;
-        }>("show-custom-notification", (event) => {
-          console.log("📬 Received custom notification event:", event.payload);
-          toast.success(event.payload.title, {
-            description: `From: ${event.payload.from}\nSubject: ${event.payload.subject}`,
-          });
-        });
+        unlisten = await listen("idle-event", handleIdleEvent);
 
         // Listen for notification sound event
-        const unlistenSound = await listen("play-notification-sound", () => {
+        unlistenSound = await listen("play-notification-sound", () => {
           SyncIdle.playNotificationSound();
         });
 
         // Update current time every minute
-        const timeUpdateTimer = setInterval(() => {
+        timeUpdateTimer = setInterval(() => {
           appState.currentTime = Math.floor(Date.now() / 1000);
         }, 60000);
-
-        return () => {
-          unlisten();
-          if (autoSyncTimer) clearInterval(autoSyncTimer);
-          clearInterval(timeUpdateTimer);
-        };
       } catch (e) {
         appState.error = `Failed to load accounts: ${e}`;
       }
     })();
+
+    // Cleanup function
+    return () => {
+      if (unlisten) unlisten();
+      if (unlistenSound) unlistenSound();
+      if (autoSyncTimer) clearInterval(autoSyncTimer);
+      if (timeUpdateTimer) clearInterval(timeUpdateTimer);
+    };
   });
 
   // Reload sync interval when returning from settings
@@ -571,6 +562,4 @@
     onConfirm={confirmDeleteDraft}
     onCancel={cancelDeleteDraft}
   />
-
-  <Toaster />
 </Sidebar.Provider>

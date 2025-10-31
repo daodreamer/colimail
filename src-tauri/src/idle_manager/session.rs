@@ -162,8 +162,8 @@ async fn idle_session(
 
                     prev_exists = count;
 
-                    // Return false to stop IDLE after detecting change
-                    false
+                    // Continue waiting for more changes instead of stopping IDLE
+                    true
                 }
                 UnsolicitedResponse::Recent(count) => {
                     println!("📬 IDLE: RECENT = {}", count);
