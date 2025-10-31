@@ -48,4 +48,7 @@ keyring = { version = "3.6", features = ["windows-native"] }
 aes-gcm = "0.10"
 base64 = "0.22"
 imap-proto = "0.16.4"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-appender = "0.2"
 

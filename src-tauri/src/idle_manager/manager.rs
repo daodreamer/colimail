@@ -65,9 +65,10 @@ impl IdleManager {
                     // Mark as active
                     active_connections.lock().unwrap().insert(key.clone(), ());
 
-                    println!(
-                        "🔄 Starting IDLE connection for account {} folder {}",
-                        account_id, folder_name
+                    tracing::info!(
+                        account_id = account_id,
+                        folder = %folder_name,
+                        "Starting IDLE connection"
                     );
 
                     // Spawn new IDLE task
@@ -100,9 +101,10 @@ impl IdleManager {
                     let key = (account_id, folder_name.clone());
 
                     if let Some(task) = tasks.remove(&key) {
-                        println!(
-                            "⏹️ Stopping IDLE connection for account {} folder {}",
-                            account_id, folder_name
+                        tracing::info!(
+                            account_id = account_id,
+                            folder = %folder_name,
+                            "Stopping IDLE connection"
                         );
                         task.abort();
                         active_connections.lock().unwrap().remove(&key);
@@ -110,7 +112,7 @@ impl IdleManager {
                 }
 
                 IdleCommand::StopAll => {
-                    println!("⏹️ Stopping all IDLE connections");
+                    tracing::info!("Stopping all IDLE connections");
 
                     for (_, task) in tasks.drain() {
                         task.abort();
@@ -123,14 +125,15 @@ impl IdleManager {
                     let account_id = match config.id {
                         Some(id) => id,
                         None => {
-                            eprintln!("❌ Cannot start IDLE: account ID missing");
+                            tracing::error!("Cannot start IDLE: account ID missing");
                             continue;
                         }
                     };
 
-                    println!(
-                        "🚀 Starting IDLE for INBOX of account {} ({})",
-                        account_id, config.email
+                    tracing::info!(
+                        account_id = account_id,
+                        email = %config.email,
+                        "Starting IDLE for INBOX"
                     );
 
                     // Only start IDLE for INBOX to avoid hitting connection limits
@@ -160,7 +163,10 @@ impl IdleManager {
                                 // Mark as active
                                 active_connections.lock().unwrap().insert(key.clone(), ());
 
-                                println!("  🔄 Starting IDLE for folder: {}", folder.display_name);
+                                tracing::info!(
+                                    folder = %folder.display_name,
+                                    "Starting IDLE for folder"
+                                );
 
                                 // Clone necessary data
                                 let app_handle_clone = app_handle.clone();
@@ -186,27 +192,28 @@ impl IdleManager {
                                 });
 
                                 tasks.insert(key, task);
-                                println!("✅ Started IDLE monitoring for INBOX");
+                                tracing::info!("Started IDLE monitoring for INBOX");
                             } else {
-                                eprintln!(
-                                    "❌ Could not find INBOX folder for account {}",
-                                    account_id
+                                tracing::error!(
+                                    account_id = account_id,
+                                    "Could not find INBOX folder"
                                 );
                             }
                         }
                         Err(e) => {
-                            eprintln!(
-                                "❌ Failed to load folders for account {}: {}",
-                                account_id, e
+                            tracing::error!(
+                                account_id = account_id,
+                                error = %e,
+                                "Failed to load folders"
                             );
                         }
                     }
                 }
 
                 IdleCommand::StopAllForAccount { account_id } => {
-                    println!(
-                        "⏹️ Stopping all IDLE connections for account {}",
-                        account_id
+                    tracing::info!(
+                        account_id = account_id,
+                        "Stopping all IDLE connections for account"
                     );
 
                     // Find and stop all tasks for this account
@@ -220,11 +227,17 @@ impl IdleManager {
                         if let Some(task) = tasks.remove(&key) {
                             task.abort();
                             active_connections.lock().unwrap().remove(&key);
-                            println!("  ⏹️ Stopped IDLE for folder: {}", key.1);
+                            tracing::info!(
+                                folder = %key.1,
+                                "Stopped IDLE for folder"
+                            );
                         }
                     }
 
-                    println!("✅ Stopped all IDLE connections for account {}", account_id);
+                    tracing::info!(
+                        account_id = account_id,
+                        "Stopped all IDLE connections for account"
+                    );
                 }
             }
         }

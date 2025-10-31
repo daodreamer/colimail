@@ -36,10 +36,10 @@ pub async fn incremental_sync(
     .map_err(|e| format!("Failed to query cache max UID: {}", e))?
     .0;
 
-    println!(
-        "🔍 Cache state: highest_uid in sync_status = {:?}, MAX(uid) in emails table = {:?}",
-        sync_state.as_ref().and_then(|s| s.highest_uid),
-        cache_max_uid
+    tracing::debug!(
+        highest_uid_sync = ?sync_state.as_ref().and_then(|s| s.highest_uid),
+        max_uid_cache = ?cache_max_uid,
+        "Cache state"
     );
 
     // Connect to IMAP and check current state
@@ -48,7 +48,7 @@ pub async fn incremental_sync(
             // Use new imap_helpers to connect and login
             let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
-            println!("✅ IMAP authentication successful");
+            tracing::info!("IMAP authentication successful");
 
             // SELECT the folder and get UIDVALIDITY
             let mailbox = imap_session
@@ -58,16 +58,17 @@ pub async fn incremental_sync(
             let server_uidvalidity = mailbox.uid_validity.unwrap_or(0);
             let server_exists = mailbox.exists;
 
-            println!(
-                "📊 Server state: UIDVALIDITY={}, EXISTS={}",
-                server_uidvalidity, server_exists
+            tracing::info!(
+                uidvalidity = server_uidvalidity,
+                exists = server_exists,
+                "Server state"
             );
 
             // Determine sync strategy based on UIDVALIDITY
             let new_emails = if let Some(ref sync_state) = sync_state_for_task {
                 if sync_state.uidvalidity != Some(server_uidvalidity as i64) {
                     // Full sync needed: UIDVALIDITY changed
-                    println!("⚠️ UIDVALIDITY changed! Full resync required.");
+                    tracing::warn!("UIDVALIDITY changed! Full resync required");
 
                     fetch_all_by_sequence(
                         &mut imap_session,
@@ -79,7 +80,7 @@ pub async fn incremental_sync(
                     // Incremental sync: fetch only new messages
                     let highest_uid = sync_state.highest_uid.unwrap_or(0);
 
-                    println!("🔄 Incremental sync from UID > {}", highest_uid);
+                    tracing::info!(highest_uid = highest_uid, "Incremental sync from UID");
 
                     if highest_uid == 0 || server_exists == 0 {
                         // No previous emails or empty folder
@@ -89,7 +90,7 @@ pub async fn incremental_sync(
                         // This avoids Gmail's bug where UID FETCH with reversed range returns old messages
                         let search_criteria = format!("UID {}:*", highest_uid + 1);
 
-                        println!("🔍 Searching for new messages: {}", search_criteria);
+                        tracing::debug!(criteria = %search_criteria, "Searching for new messages");
 
                         let search_result = match imap_session.uid_search(&search_criteria) {
                             Ok(uids) => {
@@ -99,19 +100,19 @@ pub async fn incremental_sync(
                                 uid_vec
                             }
                             Err(e) => {
-                                eprintln!("⚠️ UID SEARCH failed: {}, falling back to FETCH", e);
+                                tracing::warn!(error = %e, "UID SEARCH failed, falling back to FETCH");
                                 Vec::new()
                             }
                         };
 
                         if search_result.is_empty() {
-                            println!("✅ No new messages (SEARCH returned empty)");
+                            tracing::debug!("No new messages (SEARCH returned empty)");
                             Vec::new()
                         } else {
-                            println!(
-                                "📋 SEARCH found {} UID(s): {:?}",
-                                search_result.len(),
-                                search_result
+                            tracing::info!(
+                                count = search_result.len(),
+                                uids = ?search_result,
+                                "SEARCH found UIDs"
                             );
 
                             // Filter out UIDs <= highest_uid (Gmail bug workaround)
@@ -121,7 +122,7 @@ pub async fn incremental_sync(
                                 .collect();
 
                             if new_uids.is_empty() {
-                                println!("✅ No genuinely new messages after filtering");
+                                tracing::debug!("No genuinely new messages after filtering");
                                 Vec::new()
                             } else {
                                 fetch_new_by_uid_list(&mut imap_session, new_uids, highest_uid)?
@@ -131,7 +132,7 @@ pub async fn incremental_sync(
                 }
             } else {
                 // Full sync needed: no previous state
-                println!("🆕 First sync for this folder.");
+                tracing::info!("First sync for this folder");
 
                 fetch_all_by_sequence(
                     &mut imap_session,
@@ -147,7 +148,7 @@ pub async fn incremental_sync(
         .await
         .map_err(|e| e.to_string())??;
 
-    println!("✅ Fetched {} new email(s) from server", new_emails.len());
+    tracing::info!(count = new_emails.len(), "Fetched new emails from server");
 
     // Save new emails to cache
     if !new_emails.is_empty() {
@@ -155,14 +156,14 @@ pub async fn incremental_sync(
     }
 
     // Get all UIDs currently on server to detect deletions
-    println!("🔍 Checking for deleted emails...");
+    tracing::debug!("Checking for deleted emails...");
     let server_uids = get_all_server_uids(config_for_uid_check, folder_name).await?;
 
     // Delete emails from cache that no longer exist on server
     let deleted_count =
         delete_missing_emails_from_cache(account_id, folder_name, &server_uids).await?;
     if deleted_count > 0 {
-        println!("🗑️ Removed {} deleted email(s) from cache", deleted_count);
+        tracing::info!(count = deleted_count, "Removed deleted emails from cache");
     }
 
     // Update sync state with new UIDVALIDITY and highest UID
@@ -184,13 +185,13 @@ pub async fn incremental_sync(
     // Do NOT use server_max_uid to avoid the race condition
     let new_highest_uid = new_emails_max_uid.max(previous_highest_uid).unwrap_or(0);
 
-    println!(
-        "📌 Updating highest UID: {} (new_emails_max={:?}, server_max={:?}, prev={:?}, server_total={})",
-        new_highest_uid,
-        new_emails_max_uid,
-        server_max_uid,
-        previous_highest_uid,
-        server_uids.len()
+    tracing::debug!(
+        new_highest_uid = new_highest_uid,
+        new_emails_max = ?new_emails_max_uid,
+        server_max = ?server_max_uid,
+        prev = ?previous_highest_uid,
+        server_total = server_uids.len(),
+        "Updating highest UID"
     );
 
     update_sync_state(
@@ -266,7 +267,7 @@ pub async fn delete_missing_emails_from_cache(
         return Ok(0);
     }
 
-    println!("🗑️ Deleting UIDs from cache: {:?}", uids_to_delete);
+    tracing::info!(uids = ?uids_to_delete, "Deleting UIDs from cache");
 
     // Delete emails with these UIDs
     let mut deleted_count = 0u64;

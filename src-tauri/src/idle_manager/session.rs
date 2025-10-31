@@ -17,28 +17,34 @@ pub async fn idle_connection_loop(
     config: AccountConfig,
 ) {
     loop {
-        println!(
-            "🔌 Establishing IDLE connection for account {} folder {}",
-            account_id, folder_name
+        tracing::info!(
+            account_id = account_id,
+            folder = %folder_name,
+            "Establishing IDLE connection"
         );
 
         match idle_session(&app_handle, account_id, &folder_name, &config).await {
             Ok(_) => {
-                println!(
-                    "✅ IDLE session ended normally for account {} folder {}",
-                    account_id, folder_name
+                tracing::info!(
+                    account_id = account_id,
+                    folder = %folder_name,
+                    "IDLE session ended normally"
                 );
             }
             Err(e) => {
-                eprintln!(
-                    "❌ IDLE session error for account {} folder {}: {}",
-                    account_id, folder_name, e
+                tracing::error!(
+                    account_id = account_id,
+                    folder = %folder_name,
+                    error = %e,
+                    "IDLE session error"
                 );
 
                 // Check if error is due to IDLE not being supported
                 if e.contains("does not support IDLE") {
-                    println!("⚠️ IDLE not supported by server, stopping IDLE monitoring for this account/folder");
-                    println!("💡 Tip: Use manual sync (Sync Mail button) to check for new emails");
+                    tracing::warn!("IDLE not supported by server, stopping IDLE monitoring for this account/folder");
+                    tracing::info!(
+                        "Tip: Use manual sync (Sync Mail button) to check for new emails"
+                    );
                     // Stop the IDLE loop for this account/folder
                     break;
                 }
@@ -56,7 +62,7 @@ pub async fn idle_connection_loop(
         }
 
         // Wait before reconnecting (exponential backoff would be better)
-        println!("⏳ Waiting 30 seconds before reconnecting...");
+        tracing::info!("Waiting 30 seconds before reconnecting...");
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
@@ -81,7 +87,7 @@ async fn idle_session(
         // Use helper function for connection with imap 3.0.0 API
         let mut imap_session = imap_helpers::connect_and_login(&config_clone)?;
 
-        println!("✅ IDLE IMAP authentication successful");
+        tracing::info!("IDLE IMAP authentication successful");
 
         // Check if server supports IDLE capability
         let capabilities = imap_session
@@ -92,22 +98,26 @@ async fn idle_session(
         let has_idle = capabilities.has_str("IDLE");
 
         if !has_idle {
-            println!("⚠️ Server does not support IDLE capability (RFC 2177)");
-            println!("💡 Use manual sync (Sync Mail button) to check for new emails");
+            tracing::warn!("Server does not support IDLE capability (RFC 2177)");
+            tracing::info!("Use manual sync (Sync Mail button) to check for new emails");
             return Err("Server does not support IDLE extension (RFC 2177)".to_string());
         }
 
-        println!("✅ Server supports IDLE capability");
+        tracing::info!("Server supports IDLE capability");
 
         // SELECT folder
         let mailbox = imap_session
             .select(&folder_name_owned)
             .map_err(|e| format!("Cannot select folder: {}", e))?;
 
-        println!("📥 IDLE mode activated for {}", folder_name_owned);
-        println!(
-            "📊 Initial mailbox state - EXISTS: {}, RECENT: {}",
-            mailbox.exists, mailbox.recent
+        tracing::info!(
+            folder = %folder_name_owned,
+            "IDLE mode activated"
+        );
+        tracing::info!(
+            exists = mailbox.exists,
+            recent = mailbox.recent,
+            "Initial mailbox state"
         );
 
         // Track initial state
@@ -123,18 +133,18 @@ async fn idle_session(
         // Set timeout to 29 minutes (default, per RFC 2177)
         idle_handle.timeout(Duration::from_secs(29 * 60));
 
-        println!("⏳ IDLE waiting for changes...");
+        tracing::debug!("IDLE waiting for changes...");
 
         // Wait for mailbox changes using the new wait_while API
         let wait_result = idle_handle.wait_while(|response: UnsolicitedResponse| {
             match response {
                 UnsolicitedResponse::Exists(count) => {
-                    println!("📨 IDLE: EXISTS = {}", count);
+                    tracing::debug!(count = count, "IDLE: EXISTS");
 
                     // Detect new messages
                     if count > prev_exists {
                         let new_count = count - prev_exists;
-                        println!("✨ Detected {} new message(s)", new_count);
+                        tracing::info!(count = new_count, "Detected new message(s)");
 
                         // Emit event to frontend
                         let _ = app_handle_clone.emit(
@@ -166,12 +176,12 @@ async fn idle_session(
                     true
                 }
                 UnsolicitedResponse::Recent(count) => {
-                    println!("📬 IDLE: RECENT = {}", count);
+                    tracing::debug!(count = count, "IDLE: RECENT");
                     // Continue waiting
                     true
                 }
                 UnsolicitedResponse::Expunge(seq) => {
-                    println!("🗑️ IDLE: EXPUNGE seq={}", seq);
+                    tracing::info!(seq = seq, "IDLE: EXPUNGE");
 
                     // Emit expunge event
                     let _ = app_handle_clone.emit(
@@ -187,7 +197,7 @@ async fn idle_session(
                     true
                 }
                 UnsolicitedResponse::Fetch { id, .. } => {
-                    println!("🏴 IDLE: FETCH id={}", id);
+                    tracing::debug!(id = id, "IDLE: FETCH");
 
                     // Emit flags changed event
                     let _ = app_handle_clone.emit(
@@ -203,7 +213,7 @@ async fn idle_session(
                     true
                 }
                 _ => {
-                    println!("📡 IDLE: Other response: {:?}", response);
+                    tracing::debug!(response = ?response, "IDLE: Other response");
                     // Continue waiting for other responses
                     true
                 }
@@ -212,11 +222,11 @@ async fn idle_session(
 
         match wait_result {
             Ok(_outcome) => {
-                println!("✅ IDLE session completed successfully");
+                tracing::info!("IDLE session completed successfully");
                 Ok(())
             }
             Err(e) => {
-                eprintln!("❌ IDLE wait error: {}", e);
+                tracing::error!(error = %e, "IDLE wait error");
                 Err(format!("IDLE error: {}", e))
             }
         }

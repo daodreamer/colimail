@@ -11,7 +11,7 @@ pub struct TestConnectionResult {
 
 #[command]
 pub async fn test_connection(config: AccountConfig) -> Result<TestConnectionResult, String> {
-    println!("🔌 Testing connection for: {}", config.email);
+    tracing::info!(email = %config.email, "Testing connection");
 
     // Test IMAP connection in blocking task
     let imap_result = tokio::task::spawn_blocking({
@@ -37,7 +37,7 @@ fn test_imap_connection(config: &AccountConfig) -> Result<(), String> {
     let port = config.imap_port;
     let email = config.email.as_str();
 
-    println!("🔌 Connecting to IMAP server: {}:{}", domain, port);
+    tracing::info!(server = %domain, port = port, "Connecting to IMAP server");
 
     let client = imap::ClientBuilder::new(domain, port)
         .connect()
@@ -53,7 +53,7 @@ fn test_imap_connection(config: &AccountConfig) -> Result<(), String> {
         .login(email, password)
         .map_err(|e| format!("IMAP authentication failed: {}", e.0))?;
 
-    println!("✅ IMAP connection successful");
+    tracing::info!("IMAP connection successful");
     Ok(())
 }
 
@@ -68,9 +68,10 @@ async fn test_smtp_connection(config: &AccountConfig) -> Result<(), String> {
 
     let creds = Credentials::new(config.email.clone(), password.clone());
 
-    println!(
-        "🔌 Connecting to SMTP server: {}:{}",
-        config.smtp_server, config.smtp_port
+    tracing::info!(
+        server = %config.smtp_server,
+        port = config.smtp_port,
+        "Connecting to SMTP server"
     );
 
     // Choose connection method based on port:
@@ -79,7 +80,7 @@ async fn test_smtp_connection(config: &AccountConfig) -> Result<(), String> {
     // - Port 25: Plain or STARTTLS (legacy, rarely used)
     let mailer: AsyncSmtpTransport<Tokio1Executor> = if config.smtp_port == 465 {
         // Port 465 requires SSL/TLS direct connection (implicit TLS)
-        println!("   Using SSL/TLS (implicit TLS) for port 465");
+        tracing::debug!("Using SSL/TLS (implicit TLS) for port 465");
         AsyncSmtpTransport::<Tokio1Executor>::relay(&config.smtp_server)
             .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
             .credentials(creds)
@@ -87,7 +88,7 @@ async fn test_smtp_connection(config: &AccountConfig) -> Result<(), String> {
             .build()
     } else {
         // Port 587 or others use STARTTLS
-        println!("   Using STARTTLS for port {}", config.smtp_port);
+        tracing::debug!(port = config.smtp_port, "Using STARTTLS");
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(&config.smtp_server)
             .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
             .credentials(creds)
@@ -101,6 +102,6 @@ async fn test_smtp_connection(config: &AccountConfig) -> Result<(), String> {
         .await
         .map_err(|e| format!("SMTP connection test failed: {}", e))?;
 
-    println!("✅ SMTP connection successful");
+    tracing::info!("SMTP connection successful");
     Ok(())
 }

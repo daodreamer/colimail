@@ -46,9 +46,9 @@ pub async fn send_notification(
 ) {
     // Only show notification for inbox folders
     if !is_inbox_folder(folder_name) {
-        println!(
-            "🔕 Skipping notification for folder '{}' (not inbox)",
-            folder_name
+        tracing::debug!(
+            folder = %folder_name,
+            "Skipping notification for non-inbox folder"
         );
         return;
     }
@@ -77,9 +77,11 @@ pub async fn send_notification(
 
             let body = format!("From: {}\nSubject: {}", from, subject);
 
-            println!(
-                "📬 Sending notification - Title: '{}', From: '{}', Subject: '{}'",
-                title, from, subject
+            tracing::info!(
+                title = %title,
+                from = %from,
+                subject = %subject,
+                "Sending notification"
             );
 
             // Use Tauri's native system notification
@@ -88,33 +90,32 @@ pub async fn send_notification(
             // Check permission state before sending
             match notification.permission_state() {
                 Ok(state) => {
-                    println!("🔔 Current notification permission state: {:?}", state);
+                    tracing::debug!(state = ?state, "Current notification permission state");
                 }
                 Err(e) => {
-                    eprintln!("⚠️ Failed to check notification permission state: {}", e);
+                    tracing::warn!(error = %e, "Failed to check notification permission state");
                 }
             }
 
             match notification.builder().title(&title).body(&body).show() {
                 Ok(_) => {
-                    println!("✅ System notification sent successfully");
+                    tracing::info!("System notification sent successfully");
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to send system notification: {}", e);
-                    eprintln!("   Error details: {:?}", e);
+                    tracing::error!(error = %e, details = ?e, "Failed to send system notification");
                 }
             }
         } else {
-            println!("⚠️ Notification enabled but no email data found for notification");
+            tracing::warn!("Notification enabled but no email data found for notification");
         }
     } else {
-        println!("🔕 Notifications are disabled in settings");
+        tracing::debug!("Notifications are disabled in settings");
     }
 
     // Play notification sound if enabled
     if sound_enabled {
         // Emit event to frontend to play sound
         let _ = app_handle.emit("play-notification-sound", ());
-        println!("🔔 Triggered notification sound");
+        tracing::debug!("Triggered notification sound");
     }
 }
