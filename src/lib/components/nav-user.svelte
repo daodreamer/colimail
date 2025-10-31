@@ -8,6 +8,7 @@
 	import UserPlusIcon from "@lucide/svelte/icons/user-plus";
 	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import SettingsIcon from "@lucide/svelte/icons/settings";
+	import BirdIcon from "@lucide/svelte/icons/bird";
 
 	import * as Avatar from "$lib/components/ui/avatar/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
@@ -49,8 +50,16 @@
 						class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground md:h-8 md:p-0"
 					>
 						<Avatar.Root class="size-8 rounded-lg">
-							<Avatar.Image src={user.avatar} alt={user.name} />
-							<Avatar.Fallback class="rounded-lg">CN</Avatar.Fallback>
+							{#if isAuthenticated && user.avatar}
+								<Avatar.Image src={user.avatar} alt={user.name} />
+								<Avatar.Fallback class="rounded-lg">
+									{user.name.substring(0, 2).toUpperCase()}
+								</Avatar.Fallback>
+							{:else}
+								<Avatar.Fallback class="rounded-lg">
+									<BirdIcon class="size-4" />
+								</Avatar.Fallback>
+							{/if}
 						</Avatar.Root>
 						<div class="grid flex-1 text-left text-sm leading-tight">
 							<span class="truncate font-medium">{user.name}</span>
@@ -71,10 +80,16 @@
 					<DropdownMenu.Label class="p-0 font-normal">
 						<div class="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
 							<Avatar.Root class="size-8 rounded-lg">
-								<Avatar.Image src={user.avatar} alt={user.name} />
-								<Avatar.Fallback class="rounded-lg">
-									{user.name.substring(0, 2).toUpperCase()}
-								</Avatar.Fallback>
+								{#if user.avatar}
+									<Avatar.Image src={user.avatar} alt={user.name} />
+									<Avatar.Fallback class="rounded-lg">
+										{user.name.substring(0, 2).toUpperCase()}
+									</Avatar.Fallback>
+								{:else}
+									<Avatar.Fallback class="rounded-lg">
+										<BirdIcon class="size-4" />
+									</Avatar.Fallback>
+								{/if}
 							</Avatar.Root>
 							<div class="grid flex-1 text-left text-sm leading-tight">
 								<span class="truncate font-medium">{user.name}</span>

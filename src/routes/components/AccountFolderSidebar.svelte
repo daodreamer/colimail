@@ -81,7 +81,7 @@
   const userData = $derived({
     name: authStore.user?.displayName || authStore.user?.email?.split('@')[0] || "Guest",
     email: authStore.user?.email || "Not logged in",
-    avatar: authStore.user?.avatarUrl || "/avatars/user.jpg",
+    avatar: authStore.user?.avatarUrl || "", // Empty string when no custom avatar
   });
 
   // Handle logout
