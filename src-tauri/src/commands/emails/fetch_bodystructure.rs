@@ -75,6 +75,7 @@ pub async fn fetch_bodystructure_background(
         access_token: creds.access_token,
         refresh_token: creds.refresh_token,
         token_expires_at: creds.token_expires_at,
+        display_name: None,
     };
 
     // Get all UIDs that don't have attachment info yet (has_attachments IS NULL)

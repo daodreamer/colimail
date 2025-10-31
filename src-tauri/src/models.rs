@@ -25,6 +25,8 @@ pub struct AccountConfig {
     pub refresh_token: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub token_expires_at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

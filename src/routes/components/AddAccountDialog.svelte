@@ -55,6 +55,7 @@
     imap_port: 993,
     smtp_server: "",
     smtp_port: 465,
+    display_name: "",
   });
 
   let selectedPreset = $state("");
@@ -65,6 +66,11 @@
     smtp_success: boolean;
     smtp_error?: string;
   } | null>(null);
+
+  let showDisplayNameSuggestion = $state(false);
+  let suggestedDisplayName = $state("");
+  let currentlySavedEmail = $state("");
+  let isOAuth2Account = $state(false);
 
   // Computed value for button disabled state
   const isTestPassed = $derived(
@@ -175,28 +181,118 @@
           console.error("Failed to sync folders or start IDLE:", error);
           // Don't show error to user as account is saved successfully
         }
+
+        // Try to detect display name from sent emails if not already set
+        if (!accountConfig.display_name) {
+          tryDetectDisplayName(savedAccount);
+        } else {
+          // If display name was manually set, close dialog
+          completeAccountCreation();
+        }
+      } else {
+        completeAccountCreation();
       }
 
       toast.success("Account configuration saved successfully!");
-      
-      // Reset form
-      accountConfig = {
-        email: "",
-        password: "",
-        imap_server: "",
-        imap_port: 993,
-        smtp_server: "",
-        smtp_port: 465,
-      };
-
-      // Close dialog and notify parent
-      onOpenChange(false);
-      if (onAccountAdded) {
-        onAccountAdded();
-      }
     } catch (error) {
       console.error("Failed to save configuration:", error);
       toast.error("Failed to save account configuration");
+    }
+  }
+
+  async function tryDetectDisplayName(savedAccount: any, isOAuth2: boolean = false) {
+    try {
+      console.log("🔍 Detecting display name from sent emails...");
+      const detectedName = await invoke<string | null>("detect_display_name_from_sent", {
+        config: savedAccount
+      });
+
+      if (detectedName) {
+        console.log("✅ Detected display name:", detectedName);
+        suggestedDisplayName = detectedName;
+        currentlySavedEmail = savedAccount.email;
+        isOAuth2Account = isOAuth2;
+        showDisplayNameSuggestion = true;
+      } else {
+        console.log("ℹ️  No display name detected");
+        if (isOAuth2) {
+          completeOAuth2AccountCreation();
+        } else {
+          completeAccountCreation();
+        }
+      }
+    } catch (error) {
+      console.error("Failed to detect display name:", error);
+      if (isOAuth2) {
+        completeOAuth2AccountCreation();
+      } else {
+        completeAccountCreation();
+      }
+    }
+  }
+
+  async function applySuggestedDisplayName() {
+    try {
+      // Load accounts to find the one we just saved
+      const accounts = await invoke<any[]>("load_account_configs");
+      const account = accounts.find(acc => acc.email === currentlySavedEmail);
+
+      if (account) {
+        account.display_name = suggestedDisplayName;
+        await invoke("save_account_config", { config: account });
+        toast.success(`Display name set to "${suggestedDisplayName}"`);
+      }
+    } catch (error) {
+      console.error("Failed to save suggested display name:", error);
+      toast.error("Failed to save display name");
+    }
+
+    showDisplayNameSuggestion = false;
+    if (isOAuth2Account) {
+      completeOAuth2AccountCreation();
+    } else {
+      completeAccountCreation();
+    }
+  }
+
+  function skipSuggestedDisplayName() {
+    showDisplayNameSuggestion = false;
+    if (isOAuth2Account) {
+      completeOAuth2AccountCreation();
+    } else {
+      completeAccountCreation();
+    }
+  }
+
+  function completeAccountCreation() {
+    // Reset form
+    accountConfig = {
+      email: "",
+      password: "",
+      imap_server: "",
+      imap_port: 993,
+      smtp_server: "",
+      smtp_port: 465,
+      display_name: "",
+    };
+
+    // Close dialog and notify parent
+    onOpenChange(false);
+    if (onAccountAdded) {
+      onAccountAdded();
+    }
+  }
+
+  function completeOAuth2AccountCreation() {
+    // Reset OAuth2 form
+    oauthEmail = "";
+    oauthEmailInput = "";
+    emailInputError = "";
+
+    // Close dialog and notify parent
+    onOpenChange(false);
+    if (onAccountAdded) {
+      onAccountAdded();
     }
   }
 
@@ -253,18 +349,14 @@
           console.error("Failed to sync folders or start IDLE:", error);
           // Don't show error to user as account is saved successfully
         }
+
+        // Try to detect display name from sent emails
+        tryDetectDisplayName(savedAccount, true);
+      } else {
+        completeOAuth2AccountCreation();
       }
 
       toast.success(`${selectedProvider === 'google' ? 'Google' : 'Outlook'} account added successfully!`);
-      oauthEmail = "";
-      oauthEmailInput = "";
-      emailInputError = "";
-      
-      // Close dialog and notify parent
-      onOpenChange(false);
-      if (onAccountAdded) {
-        onAccountAdded();
-      }
     } catch (error) {
       console.error("OAuth2 authentication failed:", error);
       toast.error(`OAuth2 authentication failed: ${error}`);
@@ -385,21 +477,35 @@
                 {/if}
               </div>
 
+              <!-- Display Name (Full Width) -->
+              <div class="space-y-2">
+                <Label for="display-name">Display Name (Optional)</Label>
+                <Input
+                  id="display-name"
+                  type="text"
+                  bind:value={accountConfig.display_name}
+                  placeholder="Your Name (e.g., John Doe)"
+                />
+                <p class="text-xs text-muted-foreground">
+                  This name will be shown to recipients when you send emails
+                </p>
+              </div>
+
               <!-- Email/Password (Left) and IMAP/SMTP Settings (Right) in Two Columns -->
               <div class="grid grid-cols-2 gap-4">
                 <!-- Left Column: Email and Password -->
                 <div class="space-y-4">
                   <div class="space-y-2">
                     <Label for="email">Email</Label>
-                    <Input 
-                      id="email" 
-                      type="email" 
-                      bind:value={accountConfig.email} 
+                    <Input
+                      id="email"
+                      type="email"
+                      bind:value={accountConfig.email}
                       placeholder="m@example.com"
-                      required 
+                      required
                     />
                   </div>
-                  
+
                   <div class="space-y-2">
                     <Label for="password">Password</Label>
                     <Input
@@ -529,5 +635,36 @@
         </Tabs.Root>
       </CardContent>
     </Card>
+  </Dialog.Content>
+</Dialog.Root>
+
+<!-- Display Name Suggestion Dialog -->
+<Dialog.Root bind:open={showDisplayNameSuggestion}>
+  <Dialog.Content class="max-w-[450px]">
+    <Dialog.Title>Detected Display Name</Dialog.Title>
+    <Dialog.Description>
+      We found a display name from your sent emails. Would you like to use it?
+    </Dialog.Description>
+
+    <div class="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+      <p class="text-sm font-medium text-blue-900 dark:text-blue-200 mb-2">
+        Suggested Display Name:
+      </p>
+      <p class="text-lg font-semibold text-blue-900 dark:text-blue-100">
+        {suggestedDisplayName}
+      </p>
+      <p class="text-xs text-blue-800 dark:text-blue-300 mt-2">
+        This name will be shown to recipients when you send emails from this client.
+      </p>
+    </div>
+
+    <div class="flex gap-2 justify-end">
+      <Button variant="outline" onclick={skipSuggestedDisplayName}>
+        Skip
+      </Button>
+      <Button onclick={applySuggestedDisplayName}>
+        Use This Name
+      </Button>
+    </div>
   </Dialog.Content>
 </Dialog.Root>

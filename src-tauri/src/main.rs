@@ -11,15 +11,15 @@ mod security;
 use commands::{
     check_folder_capabilities, complete_oauth2_flow, create_local_folder, create_remote_folder,
     delete_account, delete_draft, delete_email, delete_local_folder, delete_remote_folder,
-    download_attachment, fetch_email_body, fetch_email_body_cached, fetch_emails, fetch_folders,
-    forward_email, get_attachment_size_limit, get_last_sync_time, get_notification_enabled,
-    get_sound_enabled, get_sync_interval, list_drafts, listen_for_oauth_callback,
-    load_account_configs, load_attachments_info, load_draft, load_emails_from_cache, load_folders,
-    mark_email_as_flagged, mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread,
-    move_email_to_trash, reply_email, save_account_config, save_attachment_to_file, save_draft,
-    send_email, set_notification_enabled, set_sound_enabled, set_sync_interval, should_sync,
-    start_oauth2_flow, sync_email_flags, sync_emails, sync_folders, sync_specific_email_flags,
-    test_connection,
+    detect_display_name_from_sent, download_attachment, fetch_email_body, fetch_email_body_cached,
+    fetch_emails, fetch_folders, forward_email, get_attachment_size_limit, get_last_sync_time,
+    get_notification_enabled, get_sound_enabled, get_sync_interval, list_drafts,
+    listen_for_oauth_callback, load_account_configs, load_attachments_info, load_draft,
+    load_emails_from_cache, load_folders, mark_email_as_flagged, mark_email_as_read,
+    mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash, reply_email,
+    save_account_config, save_attachment_to_file, save_draft, send_email, set_notification_enabled,
+    set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow, sync_email_flags,
+    sync_emails, sync_folders, sync_specific_email_flags, test_connection,
 };
 use idle_manager::{IdleCommand, IdleManager};
 use models::AccountConfig;
@@ -222,6 +222,7 @@ async fn main() {
             save_account_config,
             load_account_configs,
             delete_account,
+            detect_display_name_from_sent,
             fetch_emails,
             fetch_email_body,
             fetch_email_body_cached,

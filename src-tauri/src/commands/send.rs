@@ -42,7 +42,18 @@ pub async fn send_email(
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
-    let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
+    // Create From mailbox with display name if available
+    let from: Mailbox = if let Some(display_name) = &config.display_name {
+        if !display_name.trim().is_empty() {
+            format!("{} <{}>", display_name, config.email)
+                .parse::<Mailbox>()
+                .map_err(|e| e.to_string())?
+        } else {
+            config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+        }
+    } else {
+        config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+    };
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
     let mut email_builder = Message::builder()
@@ -191,7 +202,18 @@ pub async fn reply_email(
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
-    let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
+    // Create From mailbox with display name if available
+    let from: Mailbox = if let Some(display_name) = &config.display_name {
+        if !display_name.trim().is_empty() {
+            format!("{} <{}>", display_name, config.email)
+                .parse::<Mailbox>()
+                .map_err(|e| e.to_string())?
+        } else {
+            config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+        }
+    } else {
+        config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+    };
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
     // Add "Re: " prefix to subject if not already present
@@ -316,7 +338,18 @@ pub async fn forward_email(
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
-    let from: Mailbox = config.email.parse::<Mailbox>().map_err(|e| e.to_string())?;
+    // Create From mailbox with display name if available
+    let from: Mailbox = if let Some(display_name) = &config.display_name {
+        if !display_name.trim().is_empty() {
+            format!("{} <{}>", display_name, config.email)
+                .parse::<Mailbox>()
+                .map_err(|e| e.to_string())?
+        } else {
+            config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+        }
+    } else {
+        config.email.parse::<Mailbox>().map_err(|e| e.to_string())?
+    };
     let to_mailbox: Mailbox = params.to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
     // Add "Fwd: " prefix to subject if not already present

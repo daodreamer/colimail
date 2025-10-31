@@ -40,6 +40,7 @@ pub async fn complete_oauth2_flow(
         access_token: Some(access_token.clone()),
         refresh_token: refresh_token.clone(),
         token_expires_at: expires_at,
+        display_name: None,
     };
 
     // Save non-sensitive data to database

@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.4.4] - 2025-10-31
 
+### Added
+- **Sender Display Name Support**: Implemented display name functionality for email sending
+  - Recipients now see sender's name (e.g., "John Doe") instead of just email address
+  - Display name field added to account configuration (optional)
+  - Works for both manual and OAuth2 account setups
+  - Smart detection from sent emails folder on first account setup
+  - Automatic suggestion dialog when display name is detected from existing sent emails
+  - Manual "Detect" button in account settings to auto-fill from sent emails
+  - Supports multiple languages and special characters in display names
+  - IMAP folder detection improved with attribute checking (RFC 6154 \Sent flag)
+  - Fallback to pattern matching for servers without special-use folder support
+  - Display name properly formatted in From header: "Display Name <email@example.com>"
+  - Applied to all email sending operations: compose, reply, and forward
+
 ### Changed
 - **Notification System Refactored**: Migrated from custom notification windows to native system notifications
   - Replaced custom Tauri window-based notifications with native OS notifications (Windows Action Center)
@@ -27,6 +41,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Removed 30-second reconnection delay that caused missed notifications
   - Improved event listener cleanup in frontend for better resource management
   - Added notification permission checks and request handling on app startup
+- **CRITICAL: Account ID Preservation**: Fixed account ID being regenerated when updating display name or other account settings
+  - **Root Cause**: `INSERT OR REPLACE` SQL statement was deleting old row and creating new row with new ID
+  - **Impact**: After updating display name, sending emails failed with "Could not find selected account configuration" error
+  - **Solution**: Changed from `INSERT OR REPLACE` to conditional `UPDATE` (when ID exists) or `INSERT` (when ID is null)
+  - Account IDs now remain stable throughout account lifetime
+  - Fixes email sending errors after any account modification
+  - Ensures `selectedAccountId` consistently matches account configuration
+- **OAuth2 Account Display Name Editing**: Enabled display name editing for OAuth2 accounts
+  - Previously OAuth2 accounts were completely locked from editing
+  - Now allows editing display name while protecting server settings
+  - Shows clear UI message: "You can only edit the display name"
+  - OAuth2 authentication tokens and server settings remain protected
+  - Display name detection also works for OAuth2 accounts
+- **Account State Synchronization**: Fixed account list not updating in UI after modifications
+  - Proper async/await handling when reloading accounts after updates
+  - ManageAccountDialog now correctly updates both local and global account state
+  - Email composition uses fresh account data after any modifications
+
+### Technical Details
+- **Display Name Detection** (`src-tauri/src/commands/detect_display_name.rs`):
+  - New command: `detect_display_name_from_sent` analyzes sent emails to extract display name
+  - IMAP folder detection with two-tier strategy:
+    1. Priority: Check folder attributes for RFC 6154 `\Sent` flag
+    2. Fallback: Pattern matching on folder names in 12 languages
+  - Supports multiple languages: English, Chinese, Japanese, French, Spanish, German, Italian, Swedish
+  - Uses `mail-parser` crate to parse email From header and extract display name
+  - Checks last 5 sent emails for display name detection
+  - OAuth2 authentication support with `ensure_valid_token` integration
+- **Account Configuration** (`src-tauri/src/models.rs`):
+  - Added `display_name: Option<String>` field to `AccountConfig` struct
+  - Serialized with `#[serde(skip_serializing_if = "Option::is_none")]` for clean JSON output
+- **Database Schema** (`src-tauri/src/db.rs`):
+  - Added `display_name TEXT` column to accounts table
+  - Migration: `ALTER TABLE accounts ADD COLUMN display_name TEXT` for existing installations
+  - Auto-migration runs on app startup, safe for both new and existing databases
+- **Account Save Logic** (`src-tauri/src/commands/accounts.rs`):
+  - **Critical Fix**: Replaced `INSERT OR REPLACE` with conditional logic
+  - When `config.id` exists: Use `UPDATE` to preserve ID
+  - When `config.id` is None: Use `INSERT` to create new account with auto-generated ID
+  - Prevents ID regeneration that caused "account not found" errors
+  - Display name included in both INSERT and UPDATE operations
+- **Email Sending** (`src-tauri/src/commands/send.rs`):
+  - Updated `send_email`, `reply_email`, and `forward_email` functions
+  - From mailbox construction: `format!("{} <{}>", display_name, email)` when display_name exists
+  - Fallback to email-only format when display_name is empty or None
+  - Uses `lettre::message::Mailbox::parse()` for RFC 5322 compliant formatting
+- **Frontend Components**:
+  - `AddAccountDialog.svelte`:
+    - Added display_name input field with placeholder "Your Name (e.g., John Doe)"
+    - Auto-detection after account creation for both manual and OAuth2 flows
+    - Suggestion dialog with blue info box showing detected name
+    - "Use This Name" / "Skip" options for user choice
+  - `ManageAccountDialog.svelte`:
+    - Added display_name input field with "Detect" button
+    - OAuth2 accounts: Only display_name editable, other fields hidden/disabled
+    - Clear UI message for OAuth2 accounts explaining limitations
+    - Fixed account reload logic to preserve selectedAccount after updates
+  - State management uses Svelte 5 `$state` runes for reactivity
+- **Code Quality**:
+  - All Rust code formatted with `cargo fmt`
+  - Compiled without errors via `cargo check`
+  - Zero Clippy warnings with `cargo clippy -- -D warnings`
+  - TypeScript/Svelte code validated with `svelte-check` (0 errors, 0 warnings)
 
 ## [0.4.3] - 2025-10-30
 

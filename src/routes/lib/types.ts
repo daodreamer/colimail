@@ -15,6 +15,7 @@ export interface AccountConfig {
   access_token?: string;
   refresh_token?: string;
   token_expires_at?: number;
+  display_name?: string;
 }
 
 export interface EmailHeader {

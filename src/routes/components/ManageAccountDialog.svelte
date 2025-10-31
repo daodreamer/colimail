@@ -36,6 +36,7 @@
   let isDeleting = $state(false);
   let isSaving = $state(false);
   let showDeleteDialog = $state(false);
+  let isDetectingDisplayName = $state(false);
 
   // Auto-select first account when dialog opens
   $effect(() => {
@@ -53,12 +54,6 @@
   function startEditing() {
     if (!selectedAccount) return;
 
-    // Check if it's OAuth2 account
-    if (selectedAccount.auth_type === "oauth2") {
-      toast.error("Cannot edit OAuth2 account configuration");
-      return;
-    }
-
     isEditing = true;
     editingConfig = { ...selectedAccount };
   }
@@ -72,20 +67,26 @@
     if (!editingConfig) return;
 
     isSaving = true;
+    const savedEmail = editingConfig.email; // Save email before clearing editingConfig
+    const savedAccountId = editingConfig.id; // Save account ID
     try {
       await invoke("save_account_config", {
         config: editingConfig,
       });
 
       toast.success("Account configuration updated successfully!");
+
       isEditing = false;
       editingConfig = null;
-      onAccountUpdated();
 
-      // Reload accounts to get fresh data
-      const updatedAccounts = await invoke<AccountConfig[]>("load_account_configs");
-      accounts = updatedAccounts;
-      selectedAccount = updatedAccounts.find((acc) => acc.email === editingConfig?.email) || null;
+      // Notify parent to reload accounts - this will update appState.accounts
+      await onAccountUpdated();
+
+      // After parent updates, find the account in the updated accounts prop
+      // Use ID instead of email for more reliable matching
+      selectedAccount = accounts.find((acc) => acc.id === savedAccountId) ||
+                       accounts.find((acc) => acc.email === savedEmail) ||
+                       null;
     } catch (error) {
       console.error("Failed to update configuration:", error);
       toast.error(`Failed to update account configuration: ${error}`);
@@ -133,6 +134,29 @@
       return { label: "OAuth2", variant: "default" as const };
     }
     return { label: "Basic", variant: "secondary" as const };
+  }
+
+  async function detectAndApplyDisplayName() {
+    if (!editingConfig) return;
+
+    isDetectingDisplayName = true;
+    try {
+      const detectedName = await invoke<string | null>("detect_display_name_from_sent", {
+        config: editingConfig
+      });
+
+      if (detectedName) {
+        editingConfig.display_name = detectedName;
+        toast.success(`Display name detected: "${detectedName}"`);
+      } else {
+        toast.info("No display name found in recent sent emails");
+      }
+    } catch (error) {
+      console.error("Failed to detect display name:", error);
+      toast.error("Failed to detect display name");
+    } finally {
+      isDetectingDisplayName = false;
+    }
   }
 </script>
 
@@ -233,7 +257,6 @@
                           variant="outline"
                           size="sm"
                           onclick={startEditing}
-                          disabled={selectedAccount.auth_type === "oauth2"}
                         >
                           Edit
                         </Button>
@@ -285,6 +308,13 @@
                         <p class="text-sm">{selectedAccount.email}</p>
                       </div>
 
+                      {#if selectedAccount.display_name}
+                        <div class="space-y-1">
+                          <Label class="text-sm font-medium text-muted-foreground">Display Name</Label>
+                          <p class="text-sm">{selectedAccount.display_name}</p>
+                        </div>
+                      {/if}
+
                       <div class="space-y-1">
                         <Label class="text-sm font-medium text-muted-foreground">IMAP Server</Label>
                         <p class="text-sm font-mono">
@@ -305,8 +335,8 @@
                             OAuth2 Account
                           </p>
                           <p class="text-xs text-blue-800 dark:text-blue-300">
-                            This account uses OAuth2 authentication. Configuration cannot be edited manually.
-                            To update, please remove and re-add the account.
+                            This account uses OAuth2 authentication. You can edit the display name, but server settings cannot be modified.
+                            To change server settings, please remove and re-add the account.
                           </p>
                         </div>
                       {/if}
@@ -343,65 +373,101 @@
                       </div>
 
                       <div class="space-y-2">
-                        <Label for="edit-password">Password</Label>
-                        <Input
-                          id="edit-password"
-                          type="password"
-                          bind:value={editingConfig.password}
-                          placeholder="Enter new password to change"
-                        />
+                        <Label for="edit-display-name">Display Name (Optional)</Label>
+                        <div class="flex gap-2">
+                          <Input
+                            id="edit-display-name"
+                            type="text"
+                            bind:value={editingConfig.display_name}
+                            placeholder="Your Name (e.g., John Doe)"
+                            class="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onclick={detectAndApplyDisplayName}
+                            disabled={isDetectingDisplayName}
+                          >
+                            {isDetectingDisplayName ? "Detecting..." : "Detect"}
+                          </Button>
+                        </div>
                         <p class="text-xs text-muted-foreground">
-                          Leave blank to keep current password
+                          This name will be shown to recipients when you send emails. Click "Detect" to auto-fill from your sent emails.
                         </p>
                       </div>
 
-                      <Separator />
-
-                      <div class="grid grid-cols-2 gap-4">
+                      {#if editingConfig.auth_type !== "oauth2"}
                         <div class="space-y-2">
-                          <Label for="edit-imap-server">IMAP Server</Label>
+                          <Label for="edit-password">Password</Label>
                           <Input
-                            id="edit-imap-server"
-                            bind:value={editingConfig.imap_server}
-                            required
-                            placeholder="imap.example.com"
+                            id="edit-password"
+                            type="password"
+                            bind:value={editingConfig.password}
+                            placeholder="Enter new password to change"
                           />
+                          <p class="text-xs text-muted-foreground">
+                            Leave blank to keep current password
+                          </p>
                         </div>
 
-                        <div class="space-y-2">
-                          <Label for="edit-imap-port">IMAP Port</Label>
-                          <Input
-                            id="edit-imap-port"
-                            type="number"
-                            bind:value={editingConfig.imap_port}
-                            required
-                            placeholder="993"
-                          />
-                        </div>
-                      </div>
+                        <Separator />
 
-                      <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-2">
-                          <Label for="edit-smtp-server">SMTP Server</Label>
-                          <Input
-                            id="edit-smtp-server"
-                            bind:value={editingConfig.smtp_server}
-                            required
-                            placeholder="smtp.example.com"
-                          />
+                        <div class="grid grid-cols-2 gap-4">
+                          <div class="space-y-2">
+                            <Label for="edit-imap-server">IMAP Server</Label>
+                            <Input
+                              id="edit-imap-server"
+                              bind:value={editingConfig.imap_server}
+                              required
+                              placeholder="imap.example.com"
+                            />
+                          </div>
+
+                          <div class="space-y-2">
+                            <Label for="edit-imap-port">IMAP Port</Label>
+                            <Input
+                              id="edit-imap-port"
+                              type="number"
+                              bind:value={editingConfig.imap_port}
+                              required
+                              placeholder="993"
+                            />
+                          </div>
                         </div>
 
-                        <div class="space-y-2">
-                          <Label for="edit-smtp-port">SMTP Port</Label>
-                          <Input
-                            id="edit-smtp-port"
-                            type="number"
-                            bind:value={editingConfig.smtp_port}
-                            required
-                            placeholder="465"
-                          />
+                        <div class="grid grid-cols-2 gap-4">
+                          <div class="space-y-2">
+                            <Label for="edit-smtp-server">SMTP Server</Label>
+                            <Input
+                              id="edit-smtp-server"
+                              bind:value={editingConfig.smtp_server}
+                              required
+                              placeholder="smtp.example.com"
+                            />
+                          </div>
+
+                          <div class="space-y-2">
+                            <Label for="edit-smtp-port">SMTP Port</Label>
+                            <Input
+                              id="edit-smtp-port"
+                              type="number"
+                              bind:value={editingConfig.smtp_port}
+                              required
+                              placeholder="465"
+                            />
+                          </div>
                         </div>
-                      </div>
+                      {:else}
+                        <div class="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950/30">
+                          <p class="text-sm font-medium text-blue-900 dark:text-blue-200 mb-1">
+                            OAuth2 Account
+                          </p>
+                          <p class="text-xs text-blue-800 dark:text-blue-300">
+                            This account uses OAuth2 authentication. You can only edit the display name.
+                            Server settings cannot be modified. To change other settings, please remove and re-add the account.
+                          </p>
+                        </div>
+                      {/if}
 
                       <Separator />
 

@@ -31,11 +31,17 @@ pub async fn init() -> Result<(), sqlx::Error> {
             imap_port INTEGER NOT NULL,
             smtp_server TEXT NOT NULL,
             smtp_port INTEGER NOT NULL,
-            auth_type TEXT NOT NULL DEFAULT 'basic'
+            auth_type TEXT NOT NULL DEFAULT 'basic',
+            display_name TEXT
         )",
     )
     .execute(&pool)
     .await?;
+
+    // Migration: Add display_name column to existing accounts table if it doesn't exist
+    let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN display_name TEXT")
+        .execute(&pool)
+        .await;
 
     // Create folders table
     sqlx::query(
