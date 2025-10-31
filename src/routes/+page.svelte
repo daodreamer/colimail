@@ -48,6 +48,7 @@
   onMount(() => {
     let unlisten: (() => void) | undefined;
     let unlistenSound: (() => void) | undefined;
+    let unlistenSettings: (() => void) | undefined;
     let timeUpdateTimer: ReturnType<typeof setInterval> | undefined;
 
     (async () => {
@@ -83,6 +84,11 @@
           SyncIdle.playNotificationSound();
         });
 
+        // Listen for open settings event from system tray
+        unlistenSettings = await listen("open-settings", () => {
+          showSettingsDialog = true;
+        });
+
         // Update current time every minute
         timeUpdateTimer = setInterval(() => {
           appState.currentTime = Math.floor(Date.now() / 1000);
@@ -96,6 +102,7 @@
     return () => {
       if (unlisten) unlisten();
       if (unlistenSound) unlistenSound();
+      if (unlistenSettings) unlistenSettings();
       if (autoSyncTimer) clearInterval(autoSyncTimer);
       if (timeUpdateTimer) clearInterval(timeUpdateTimer);
     };

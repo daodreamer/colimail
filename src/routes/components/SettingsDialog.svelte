@@ -37,6 +37,7 @@
   let syncInterval = $state<number>(300);
   let notificationEnabled = $state<boolean>(true);
   let soundEnabled = $state<boolean>(true);
+  let minimizeToTray = $state<boolean>(true);
   let isSaving = $state(false);
 
   // Load settings when dialog opens
@@ -51,6 +52,7 @@
       syncInterval = await invoke<number>("get_sync_interval");
       notificationEnabled = await invoke<boolean>("get_notification_enabled");
       soundEnabled = await invoke<boolean>("get_sound_enabled");
+      minimizeToTray = await invoke<boolean>("get_minimize_to_tray");
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -62,6 +64,7 @@
       await invoke("set_sync_interval", { interval: syncInterval });
       await invoke("set_notification_enabled", { enabled: notificationEnabled });
       await invoke("set_sound_enabled", { enabled: soundEnabled });
+      await invoke("set_minimize_to_tray", { enabled: minimizeToTray });
       toast.success("Settings saved successfully!");
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -246,10 +249,38 @@
             </div>
 
           {:else if currentPage === "Advanced"}
-            <div class="bg-muted/50 rounded-xl p-6 space-y-4 max-w-3xl">
-              <p class="text-sm text-muted-foreground">
-                Advanced configuration options coming soon...
-              </p>
+            <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- System Tray Settings -->
+              <div class="space-y-3">
+                <h4 class="text-sm font-medium">System tray</h4>
+                <div class="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="minimize-to-tray"
+                    bind:checked={minimizeToTray}
+                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+                  />
+                  <Label for="minimize-to-tray" class="text-sm font-normal">
+                    Close to system tray
+                  </Label>
+                </div>
+                <p class="text-xs text-muted-foreground ml-7">
+                  Keep the application running in the system tray when you close the window. Click the tray icon to restore the window.
+                </p>
+                {#if !minimizeToTray}
+                  <div class="rounded-md bg-amber-50 p-2 dark:bg-amber-950/30 ml-7">
+                    <p class="text-xs text-amber-900 dark:text-amber-200">
+                      ⚠️ Closing the window will exit the application completely
+                    </p>
+                  </div>
+                {/if}
+              </div>
+
+              <div class="pt-4">
+                <Button onclick={saveNotificationSettings} disabled={isSaving}>
+                  {isSaving ? "Saving..." : "Save changes"}
+                </Button>
+              </div>
             </div>
           {/if}
         </div>

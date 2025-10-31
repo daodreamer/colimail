@@ -12,6 +12,8 @@
   let notificationEnabled = $state<boolean>(true);
   let soundEnabled = $state<boolean>(true);
   let isSavingNotificationSettings = $state(false);
+  let minimizeToTray = $state<boolean>(true);
+  let isSavingWindowSettings = $state(false);
 
   // Load settings on mount
   onMount(async () => {
@@ -31,6 +33,12 @@
       soundEnabled = await invoke<boolean>("get_sound_enabled");
     } catch (error) {
       console.error("Failed to load sound setting:", error);
+    }
+
+    try {
+      minimizeToTray = await invoke<boolean>("get_minimize_to_tray");
+    } catch (error) {
+      console.error("Failed to load minimize to tray setting:", error);
     }
   });
 
@@ -60,6 +68,20 @@
       toast.error("Failed to save notification settings");
     } finally {
       isSavingNotificationSettings = false;
+    }
+  }
+
+  // Save window behavior settings
+  async function saveWindowSettings() {
+    isSavingWindowSettings = true;
+    try {
+      await invoke("set_minimize_to_tray", { enabled: minimizeToTray });
+      toast.success("Window settings saved successfully!");
+    } catch (error) {
+      console.error("Failed to save window settings:", error);
+      toast.error("Failed to save window settings");
+    } finally {
+      isSavingWindowSettings = false;
     }
   }
 
@@ -180,6 +202,48 @@
           💡 <strong>Tip:</strong> When desktop notifications are enabled, a floating notification will appear in the bottom-right corner when new emails arrive, and it will automatically disappear after 3 seconds.
         </p>
       </div>
+    </CardContent>
+  </Card>
+
+  <Card>
+    <CardHeader>
+      <CardTitle>Window Behavior</CardTitle>
+      <CardDescription>
+        Configure how the application behaves when you close the window.
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="space-y-4">
+      <div class="flex items-center space-x-3">
+        <input
+          type="checkbox"
+          id="minimize-to-tray"
+          bind:checked={minimizeToTray}
+          class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+        />
+        <Label for="minimize-to-tray" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+          Minimize to system tray when closing window
+        </Label>
+      </div>
+      <p class="text-sm text-muted-foreground ml-7">
+        When enabled, clicking the close button (X) will minimize the app to the system tray instead of exiting.
+        You can restore the window by clicking the tray icon or quit from the tray menu.
+      </p>
+
+      {#if !minimizeToTray}
+        <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/30 ml-7">
+          <p class="text-sm text-amber-900 dark:text-amber-200">
+            ⚠️ <strong>Warning:</strong> When this option is disabled, closing the window will completely exit the application.
+          </p>
+        </div>
+      {/if}
+
+      <Button
+        class="w-full"
+        onclick={saveWindowSettings}
+        disabled={isSavingWindowSettings}
+      >
+        {isSavingWindowSettings ? "Saving..." : "Save Settings"}
+      </Button>
     </CardContent>
   </Card>
 </div>

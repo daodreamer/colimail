@@ -186,6 +186,11 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await?;
 
+    // Set default minimize to tray setting if not exists
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('minimize_to_tray', 'true')")
+        .execute(&pool)
+        .await?;
+
     // Create attachments table for storing email attachments
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS attachments (

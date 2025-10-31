@@ -13,18 +13,23 @@ use commands::{
     delete_account, delete_draft, delete_email, delete_local_folder, delete_remote_folder,
     detect_display_name_from_sent, download_attachment, fetch_email_body, fetch_email_body_cached,
     fetch_emails, fetch_folders, forward_email, get_attachment_size_limit, get_last_sync_time,
-    get_notification_enabled, get_sound_enabled, get_sync_interval, list_drafts,
-    listen_for_oauth_callback, load_account_configs, load_attachments_info, load_draft,
-    load_emails_from_cache, load_folders, mark_email_as_flagged, mark_email_as_read,
+    get_minimize_to_tray, get_notification_enabled, get_sound_enabled, get_sync_interval,
+    list_drafts, listen_for_oauth_callback, load_account_configs, load_attachments_info,
+    load_draft, load_emails_from_cache, load_folders, mark_email_as_flagged, mark_email_as_read,
     mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash, reply_email,
-    save_account_config, save_attachment_to_file, save_draft, send_email, set_notification_enabled,
-    set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow, sync_email_flags,
-    sync_emails, sync_folders, sync_specific_email_flags, test_connection,
+    save_account_config, save_attachment_to_file, save_draft, send_email, set_minimize_to_tray,
+    set_notification_enabled, set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow,
+    sync_email_flags, sync_emails, sync_folders, sync_specific_email_flags, test_connection,
 };
 use idle_manager::{IdleCommand, IdleManager};
 use models::AccountConfig;
 use std::sync::{Arc, Mutex};
-use tauri::{command, Manager, State};
+use tauri::{
+    command,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    Emitter, Manager, State,
+};
 
 // IDLE manager commands
 #[command]
@@ -176,6 +181,77 @@ async fn main() {
                 Err(e) => eprintln!("❌ Failed to check notification permission: {}", e),
             }
 
+            // Setup system tray
+            let settings_item = MenuItem::with_id(app, "settings", "Settings", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&settings_item, &quit_item])?;
+
+            let _tray = TrayIconBuilder::new()
+                .icon(app.default_window_icon().unwrap().clone())
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "settings" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            // Emit event to open settings dialog
+                            let _ = window.emit("open-settings", ());
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        // Left click: toggle window visibility
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                    }
+                })
+                .build(app)?;
+
+            // Handle window close event - minimize to tray or close based on user setting
+            if let Some(window) = app.get_webview_window("main") {
+                let app_handle = app.handle().clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        let app_handle_clone = app_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            // Check user preference for minimize to tray
+                            let minimize_to_tray = get_minimize_to_tray().await.unwrap_or(true);
+
+                            if minimize_to_tray {
+                                // Hide window instead of closing
+                                if let Some(window) = app_handle_clone.get_webview_window("main") {
+                                    let _ = window.hide();
+                                }
+                            } else {
+                                // Exit the application
+                                app_handle_clone.exit(0);
+                            }
+                        });
+
+                        // Prevent default close behavior
+                        api.prevent_close();
+                    }
+                });
+            }
+
             // Initialize IDLE manager
             let idle_manager = Arc::new(Mutex::new(Some(IdleManager::new(app.handle().clone()))));
             app.manage(idle_manager.clone());
@@ -238,6 +314,8 @@ async fn main() {
             set_notification_enabled,
             get_sound_enabled,
             set_sound_enabled,
+            get_minimize_to_tray,
+            set_minimize_to_tray,
             move_email_to_trash,
             delete_email,
             send_email,

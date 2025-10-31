@@ -58,3 +58,31 @@ pub async fn set_sound_enabled(enabled: bool) -> Result<(), String> {
 
     Ok(())
 }
+
+/// Get minimize to tray setting
+#[command]
+pub async fn get_minimize_to_tray() -> Result<bool, String> {
+    let pool = db::pool();
+    let result =
+        sqlx::query_as::<_, (String,)>("SELECT value FROM settings WHERE key = 'minimize_to_tray'")
+            .fetch_one(pool.as_ref())
+            .await
+            .map_err(|e| format!("Failed to get minimize to tray setting: {}", e))?;
+
+    Ok(result.0 == "true")
+}
+
+/// Set minimize to tray setting
+#[command]
+pub async fn set_minimize_to_tray(enabled: bool) -> Result<(), String> {
+    let pool = db::pool();
+    let value = if enabled { "true" } else { "false" };
+
+    sqlx::query("INSERT OR REPLACE INTO settings (key, value) VALUES ('minimize_to_tray', ?)")
+        .bind(value)
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to set minimize to tray setting: {}", e))?;
+
+    Ok(())
+}

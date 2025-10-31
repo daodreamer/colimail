@@ -14,6 +14,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.4] - 2025-10-31
 
 ### Added
+- **System Tray Integration**: Implemented complete system tray functionality for Windows
+  - Application minimizes to system tray instead of taskbar when window is closed
+  - Left-click tray icon: Toggle window visibility (show/hide)
+  - Right-click tray icon: Display context menu with Settings and Quit options
+  - Settings option navigates to application settings (opens Settings dialog)
+  - Quit option completely exits the application
+  - Configurable behavior: Users can choose between "Close to system tray" or "Exit application" in Advanced settings
+  - **Close Button Behavior**:
+    - Default: Clicking window close button (X) hides window to system tray
+    - Optional: Can be configured to exit application directly
+  - **Menu Display Fix**: Left-click no longer shows context menu (menu only appears on right-click)
+  - Settings location: Settings dialog → Advanced tab → System tray section
+  - Setting name: "Close to system tray" (simple, clear naming following industry standards)
+  - Helpful description explains behavior and how to restore window
+  - Warning message when disabled: "Closing the window will exit the application completely"
 - **Sender Display Name Support**: Implemented display name functionality for email sending
   - Recipients now see sender's name (e.g., "John Doe") instead of just email address
   - Display name field added to account configuration (optional)
@@ -60,6 +75,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Email composition uses fresh account data after any modifications
 
 ### Technical Details
+- **System Tray Implementation** (`src-tauri/src/main.rs`):
+  - **Tauri Features**: Added `tray-icon` feature to Tauri dependency in Cargo.toml
+  - **Menu Creation**: Built context menu with `MenuItem::with_id()` for Settings and Quit items
+  - **Tray Icon Builder**:
+    - Used `TrayIconBuilder::new()` with application icon
+    - `.menu(&menu)` attaches context menu for right-click
+    - `.show_menu_on_left_click(false)` prevents menu on left-click
+  - **Event Handlers**:
+    - `on_menu_event()`: Handles Settings (emits "open-settings" event) and Quit (exits app) menu clicks
+    - `on_tray_icon_event()`: Handles left-click to toggle window visibility
+  - **Window Close Handler**:
+    - Intercepts `WindowEvent::CloseRequested` event
+    - Calls `api.prevent_close()` to prevent default close behavior
+    - Checks `get_minimize_to_tray()` setting from database
+    - If enabled: Hides window with `window.hide()`
+    - If disabled: Exits application with `app.exit(0)`
+  - **Settings Event**: Frontend listens for "open-settings" event to show SettingsDialog
+- **Database Schema** (`src-tauri/src/db.rs`):
+  - Added `minimize_to_tray` setting with default value `'true'`
+  - SQL: `INSERT OR IGNORE INTO settings (key, value) VALUES ('minimize_to_tray', 'true')`
+- **Settings Commands** (`src-tauri/src/commands/notifications.rs`):
+  - `get_minimize_to_tray()`: Retrieves setting from SQLite database
+  - `set_minimize_to_tray(enabled: bool)`: Saves setting to database
+  - Uses `INSERT OR REPLACE` pattern for atomic updates
+- **Frontend Integration**:
+  - **Event Listener** (`src/routes/+page.svelte`):
+    - Added `listen("open-settings")` event listener in `onMount`
+    - Sets `showSettingsDialog = true` when event received
+    - Properly cleaned up with `unlisten()` on component unmount
+  - **Settings Dialog** (`src/routes/components/SettingsDialog.svelte`):
+    - Added `minimizeToTray` state variable (default: true)
+    - Loads setting via `invoke("get_minimize_to_tray")` on dialog open
+    - Saves setting via `invoke("set_minimize_to_tray")` with other preferences
+    - UI in Advanced tab with checkbox, description, and conditional warning
+  - **Naming Research**: Analyzed naming conventions from popular apps (Slack, Discord, Telegram, Spotify)
+  - **Final Naming**: "Close to system tray" (concise and industry-standard)
+- **Code Quality**:
+  - All Rust code validated with `cargo fmt`, `cargo check`, and `cargo clippy -- -D warnings`
+  - Frontend code validated with `svelte-check` (0 errors, 0 warnings)
+  - Zero compilation warnings or type errors
 - **Display Name Detection** (`src-tauri/src/commands/detect_display_name.rs`):
   - New command: `detect_display_name_from_sent` analyzes sent emails to extract display name
   - IMAP folder detection with two-tier strategy:

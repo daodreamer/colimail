@@ -24,7 +24,8 @@ pub use folders::{
     delete_remote_folder, fetch_folders, load_folders, sync_folders,
 };
 pub use notifications::{
-    get_notification_enabled, get_sound_enabled, set_notification_enabled, set_sound_enabled,
+    get_minimize_to_tray, get_notification_enabled, get_sound_enabled, set_minimize_to_tray,
+    set_notification_enabled, set_sound_enabled,
 };
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
