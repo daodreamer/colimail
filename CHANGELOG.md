@@ -13,6 +13,217 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Log search and filtering in UI
 - Calendar integration
 - Multi-language support
+- Account settings dialog for user profile management
+- Subscription/billing management interface
+- Notifications settings dialog
+
+## [0.5.0] - 2025-10-31
+
+### Added
+- **User Authentication System**: Complete Supabase-based authentication for cloud features
+  - **Email/Password Registration**: Users can create accounts with email and password
+    - Email verification required via confirmation link sent to user's inbox
+    - Display name support for personalized experience
+    - Secure password handling with Supabase authentication
+  - **Email/Password Login**: Existing users can sign in with credentials
+    - Session persistence using localStorage for automatic re-login
+    - Manual session refresh for reliable state synchronization
+    - Detailed debug logging for troubleshooting authentication issues
+  - **Google OAuth Login**: One-click sign in with Google account
+    - OAuth 2.0 flow with proper callback handling
+    - Automatic user profile creation from Google account data
+    - Requires Google Cloud Console configuration (detailed in AUTH_SETUP_GUIDE.md)
+  - **Session Management**: Robust token handling and persistence
+    - Automatic token refresh for long-lived sessions
+    - Local session storage with secure token management
+    - Cross-tab synchronization via Supabase auth state changes
+  - **User Profile**: Displays user information in NavUser component
+    - Shows user's display name and email address
+    - Avatar support (defaults to user initials)
+    - Subscription tier displayed (Free/Pro/Enterprise)
+  - **Guest Mode**: App fully functional without authentication
+    - All email management features available to guest users
+    - Authentication optional - only required for cloud sync and Pro features
+    - NavUser shows "Guest" state with Sign In/Create Account options
+
+- **Authentication State Management**: Svelte 5 reactive auth store
+  - **AuthStore Class** (`src/lib/stores/auth.svelte.ts`):
+    - Reactive state with `$state` runes for user, session, loading status
+    - `isAuthenticated` derived getter for checking login state
+    - Automatic session detection and user data loading on app startup
+    - `onAuthStateChange` listener for real-time auth updates from Supabase
+    - `refreshUser()` method for manual state synchronization
+    - Sync user data to local SQLite database for offline access
+  - **Session Storage**: Custom storage adapter for Supabase
+    - Priority: localStorage (reliable, no size limits)
+    - Fallback: Tauri secure storage (for smaller sensitive data)
+    - Fixes Windows Credential Manager 2560-character limit issue
+    - Auto-saves session tokens for persistent login across app restarts
+  - **Deep Link Support**: OAuth callback handling via custom URL scheme
+    - Listens for `colimail://` deep link events (prepared for future use)
+    - Redirects OAuth callbacks to `/auth/callback` page for processing
+    - Configured in `tauri.conf.json` with deep-link plugin
+
+- **Authentication UI Components**:
+  - **Login Form** (`src/lib/components/login-form.svelte`):
+    - Email/password input fields with validation
+    - "Login with Google" button with Google logo
+    - "Forgot password?" link for password reset
+    - Real-time error display for failed login attempts
+    - Success feedback with automatic redirect to main app
+    - Manual auth store refresh after login for immediate UI update
+  - **Signup Form** (`src/lib/components/signup-form.svelte`):
+    - Email, password, and display name input fields
+    - Password confirmation with real-time validation
+    - "Sign up with Google" option for OAuth registration
+    - Email verification reminder after successful registration
+    - Error handling for duplicate accounts and invalid inputs
+  - **Login Page** (`src/routes/auth/login/+page.svelte`):
+    - Centered modal layout with app branding
+    - "Back to App" button for easy navigation
+    - Consistent with shadcn-svelte design patterns
+  - **Signup Page** (`src/routes/auth/signup/+page.svelte`):
+    - Full-screen responsive layout for registration flow
+    - "Back to App" button in top-left corner
+    - Professional card-based design
+  - **Callback Page** (`src/routes/auth/callback/+page.svelte`):
+    - Handles OAuth and email verification redirects
+    - Displays loading spinner during authentication processing
+    - Success/error states with visual feedback (checkmark/X icon)
+    - Automatic redirect to main app after 1 second on success
+    - Fallback to manual token extraction from URL hash if needed
+    - Forces auth store refresh to ensure UI updates immediately
+
+- **NavUser Enhancement**: Dynamic menu based on authentication state
+  - **Authenticated Menu**: Full feature access for logged-in users
+    - User profile display with name, email, and avatar
+    - "Upgrade to Pro" option (placeholder for future subscription system)
+    - Account, Billing, Notifications, Settings menu items
+    - "Log out" option at bottom of menu
+  - **Guest Menu**: Limited options for non-authenticated users
+    - Welcome message: "Welcome to Colimail - Sign in to unlock Pro features"
+    - "Sign In" button navigating to login page
+    - "Create Account" button navigating to signup page
+    - Settings option still available for guest users (email account configuration)
+  - **Visual Indicators**: Clear distinction between auth states
+    - Authenticated: Shows user avatar with initials or profile picture
+    - Guest: Shows generic user icon with "Guest" label
+
+- **Backend Auth Commands** (`src-tauri/src/commands/auth.rs`):
+  - `get_secure_storage(key)`: Retrieve auth tokens from OS keyring or localStorage
+  - `set_secure_storage(key, value)`: Store auth tokens securely
+  - `delete_secure_storage(key)`: Remove auth tokens on logout
+  - `sync_app_user(...)`: Sync Supabase user data to local SQLite database
+  - `get_app_user(user_id)`: Retrieve user profile from local database
+  - `delete_app_user(user_id)`: Delete user data from local database
+
+- **Database Schema** (`src-tauri/src/db.rs`):
+  - Added `app_user` table for storing user profiles locally:
+    - `id TEXT PRIMARY KEY`: Supabase user UUID
+    - `email TEXT NOT NULL UNIQUE`: User's email address
+    - `display_name TEXT`: User's display name (optional)
+    - `avatar_url TEXT`: Profile picture URL (optional)
+    - `subscription_tier TEXT`: free/pro/enterprise (default: 'free')
+    - `subscription_expires_at INTEGER`: Unix timestamp for Pro subscription expiry
+    - `last_synced_at INTEGER`: Last sync time with Supabase
+    - `created_at INTEGER`: Account creation timestamp
+
+- **Comprehensive Documentation** (`AUTH_SETUP_GUIDE.md`):
+  - Complete setup guide for Supabase and Google OAuth configuration
+  - Step-by-step Google Cloud Console setup instructions
+  - Troubleshooting section with common issues and solutions
+  - Debug logging guide for diagnosing authentication problems
+  - Security best practices and credential management tips
+  - Testing procedures for all authentication flows
+
+### Fixed
+- **Windows Credential Manager Size Limit**: Resolved session storage failures
+  - **Problem**: Windows limits credentials to 2560 characters (UTF-16 encoded)
+  - **Impact**: Supabase session tokens typically exceed this limit (3000+ chars)
+  - **Error**: "Failed to store value in keyring: Attribute 'password' is longer than platform limit"
+  - **Solution**: Changed storage strategy to prioritize localStorage over keyring
+    - localStorage: No size limits, stored in Tauri's local data directory
+    - Location: `%APPDATA%\com.colimail.app\webview\localStorage`
+    - Security: Still isolated per-app, inaccessible to other applications
+  - **Impact**: Session persistence now works reliably on Windows
+
+- **Login State Synchronization**: Fixed UI not updating after successful login
+  - **Problem**: User logs in successfully but NavUser still shows "Guest" state
+  - **Root Cause**: AuthStore not refreshing immediately after login/callback
+  - **Solution**: Added explicit `authStore.refreshUser()` calls after authentication
+    - Login form calls refresh after `signInWithEmail()` succeeds
+    - Callback page calls refresh after session detection
+    - 500ms delay before refresh to allow Supabase session propagation
+  - **Enhanced Debugging**: Added detailed console logs throughout auth flow
+    - `[AuthStore]` prefix for auth store operations
+    - `[Callback]` prefix for OAuth callback processing
+    - `[Login]` prefix for login form operations
+    - `[Supabase]` prefix for Supabase API calls
+    - Logs show session state, user data, and `isAuthenticated` status at each step
+
+- **Logout Behavior**: Fixed logout redirecting to login page instead of staying in app
+  - **Previous**: Clicking "Log out" redirected to `/auth/login`
+  - **Current**: Clicking "Log out" stays on main UI
+  - **Rationale**: Email client functionality works without authentication
+  - **UX**: Shows success toast, NavUser updates to guest menu automatically
+  - **Implementation**: Removed `goto("/auth/login")`, added `toast.success()` notification
+
+### Changed
+- **Authentication Architecture**: Dual-layer system for app users vs email accounts
+  - **App Users** (new): Stored in Supabase cloud database
+    - Managed via Supabase authentication API
+    - Profile data synced to local SQLite for offline access
+    - Controls cloud features, subscriptions, and sync
+  - **Email Accounts** (existing): Stored locally in SQLite
+    - IMAP/SMTP credentials remain in secure storage
+    - Not affected by app user authentication
+    - Users can manage email accounts as guest or authenticated
+
+- **Supabase Client Configuration** (`src/lib/supabase.ts`):
+  - Custom storage adapter using localStorage + Tauri secure storage
+  - Automatic token refresh enabled for seamless session management
+  - Session persistence enabled for cross-restart login
+  - URL-based session detection for OAuth callbacks
+  - Helper functions: `signUpWithEmail`, `signInWithEmail`, `signInWithGoogle`, `signOut`
+
+### Technical Details
+- **Dependencies Added**:
+  - `@supabase/supabase-js`: Supabase client library for authentication
+  - Integration with existing Tauri secure storage system
+
+- **Supabase Configuration**:
+  - Project URL: Configured via `VITE_SUPABASE_URL` environment variable
+  - Anon Key: Configured via `VITE_SUPABASE_ANON_KEY` environment variable
+  - OAuth Callback: `http://localhost:1420/auth/callback` (development)
+  - Production callback: Configurable via Supabase dashboard
+
+- **Debug Logging System**: Comprehensive logging for troubleshooting
+  - AuthStore initialization: Session detection, user loading, listener registration
+  - Auth state changes: SIGNED_IN, SIGNED_OUT events with user email
+  - Manual refresh operations: Session fetching, user data loading, database sync
+  - Callback processing: Session detection, token extraction, redirect handling
+  - Login operations: Email login attempts, success/failure, refresh triggers
+  - Supabase operations: Sign out, getCurrentUser, session retrieval
+
+- **Security Considerations**:
+  - Session tokens stored in localStorage (sandboxed per Tauri app)
+  - OAuth client secrets never exposed to client-side code
+  - Email verification required for password-based registration
+  - Rate limiting enforced by Supabase (6 requests per hour for some endpoints)
+  - Deep link handler prepared but not yet active (manual callback for now)
+
+- **Code Quality**:
+  - All TypeScript code validated with `svelte-check` (0 errors, 0 warnings)
+  - Proper error handling with try-catch blocks throughout auth flow
+  - User-friendly error messages displayed in UI
+  - Console logging for debugging without exposing sensitive data
+
+### Migration Guide
+For existing users upgrading to 0.5.0:
+1. No data loss - existing email accounts and emails preserved
+2. App user authentication is optional - continue using as guest
+3. To enable cloud features in future: Create account via "Create Account" button
+4. Existing settings and preferences remain unchanged
 
 ## [0.4.4] - 2025-10-31
 

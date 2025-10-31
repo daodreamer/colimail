@@ -1,6 +1,6 @@
 {
   "name": "colimail",
-  "version": "0.4.4",
+  "version": "0.5.0",
   "description": "Colimail - A Lightweight Email Client",
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@supabase/supabase-js": "^2.78.0",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.4.0",
     "@tauri-apps/plugin-fs": "^2.4.2",

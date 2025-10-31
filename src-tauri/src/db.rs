@@ -242,6 +242,27 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create app_user table for storing authenticated user information
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS app_user (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            display_name TEXT,
+            avatar_url TEXT,
+            subscription_tier TEXT NOT NULL DEFAULT 'free',
+            subscription_expires_at INTEGER,
+            last_synced_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Migration: Add app_user_id to accounts table if it doesn't exist
+    let _ = sqlx::query("ALTER TABLE accounts ADD COLUMN app_user_id TEXT REFERENCES app_user(id)")
+        .execute(&pool)
+        .await;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");

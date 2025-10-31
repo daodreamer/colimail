@@ -67,17 +67,61 @@
     onContextMenuChange?: (type: 'folder' | 'email' | null, id: string | number | null) => void;
   } = $props();
 
+  // Import auth store
+  import { authStore } from "$lib/stores/auth.svelte";
+  import { signOut } from "$lib/supabase";
+  import { goto } from "$app/navigation";
+
   // Get selected account
   const selectedAccount = $derived(
     accounts.find((acc) => acc.id === selectedAccountId)
   );
 
-  // User data for NavUser component
+  // User data for NavUser component - use auth user if authenticated, otherwise show guest
   const userData = $derived({
-    name: "User Account",
-    email: selectedAccount?.email || "No account",
-    avatar: "/avatars/user.jpg",
+    name: authStore.user?.displayName || authStore.user?.email?.split('@')[0] || "Guest",
+    email: authStore.user?.email || "Not logged in",
+    avatar: authStore.user?.avatarUrl || "/avatars/user.jpg",
   });
+
+  // Handle logout
+  async function handleLogout() {
+    try {
+      console.log('[Logout] Signing out user...');
+      await signOut();
+      console.log('[Logout] User signed out successfully');
+      // Stay on main UI - user can use app features without being logged in
+      // No redirect needed, NavUser will update to show guest menu
+      toast.success("Logged out successfully");
+    } catch (error) {
+      console.error("[Logout] Failed to logout:", error);
+      toast.error("Failed to logout");
+    }
+  }
+
+  // Handle upgrade
+  function handleUpgrade() {
+    // TODO: Open upgrade dialog
+    console.log("Upgrade to Pro clicked");
+  }
+
+  // Handle account settings
+  function handleAccount() {
+    // TODO: Open account settings dialog
+    console.log("Account settings clicked");
+  }
+
+  // Handle billing
+  function handleBilling() {
+    // TODO: Open billing dialog
+    console.log("Billing clicked");
+  }
+
+  // Handle notifications settings
+  function handleNotifications() {
+    // TODO: Open notifications settings dialog
+    console.log("Notifications clicked");
+  }
 
   // Get icon for folder based on its name or display name
   function getFolderIcon(folder: Folder) {
@@ -431,7 +475,16 @@
         </Sidebar.MenuButton>
       </Sidebar.MenuItem>
     </Sidebar.Menu>
-    <NavUser user={userData} onSettings={onSettings} />
+    <NavUser
+      user={userData}
+      isAuthenticated={authStore.isAuthenticated}
+      onSettings={onSettings}
+      onUpgrade={handleUpgrade}
+      onAccount={handleAccount}
+      onBilling={handleBilling}
+      onNotifications={handleNotifications}
+      onLogout={handleLogout}
+    />
   </Sidebar.Footer>
 </Sidebar.Root>
 

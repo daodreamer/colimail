@@ -1,4 +1,5 @@
 pub mod accounts;
+pub mod auth;
 pub mod detect_display_name;
 pub mod drafts;
 pub mod emails;
@@ -11,6 +12,10 @@ pub mod test_connection;
 pub mod utils; // Public so idle_manager can access ensure_valid_token
 
 pub use accounts::{delete_account, load_account_configs, save_account_config};
+pub use auth::{
+    delete_app_user, delete_secure_storage, get_app_user, get_secure_storage, set_secure_storage,
+    sync_app_user,
+};
 pub use detect_display_name::detect_display_name_from_sent;
 pub use drafts::{delete_draft, list_drafts, load_draft, save_draft};
 pub use emails::{

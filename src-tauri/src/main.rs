@@ -11,16 +11,18 @@ mod security;
 
 use commands::{
     check_folder_capabilities, complete_oauth2_flow, create_local_folder, create_remote_folder,
-    delete_account, delete_draft, delete_email, delete_local_folder, delete_remote_folder,
-    detect_display_name_from_sent, download_attachment, fetch_email_body, fetch_email_body_cached,
-    fetch_emails, fetch_folders, forward_email, get_attachment_size_limit, get_current_log_file,
+    delete_account, delete_app_user, delete_draft, delete_email, delete_local_folder,
+    delete_remote_folder, delete_secure_storage, detect_display_name_from_sent,
+    download_attachment, fetch_email_body, fetch_email_body_cached, fetch_emails, fetch_folders,
+    forward_email, get_app_user, get_attachment_size_limit, get_current_log_file,
     get_last_sync_time, get_log_directory, get_minimize_to_tray, get_notification_enabled,
-    get_sound_enabled, get_sync_interval, list_drafts, list_log_files, listen_for_oauth_callback,
-    load_account_configs, load_attachments_info, load_draft, load_emails_from_cache, load_folders,
-    mark_email_as_flagged, mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread,
-    move_email_to_trash, read_log_file, read_recent_logs, reply_email, save_account_config,
-    save_attachment_to_file, save_draft, send_email, set_minimize_to_tray,
-    set_notification_enabled, set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow,
+    get_secure_storage, get_sound_enabled, get_sync_interval, list_drafts, list_log_files,
+    listen_for_oauth_callback, load_account_configs, load_attachments_info, load_draft,
+    load_emails_from_cache, load_folders, mark_email_as_flagged, mark_email_as_read,
+    mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash, read_log_file,
+    read_recent_logs, reply_email, save_account_config, save_attachment_to_file, save_draft,
+    send_email, set_minimize_to_tray, set_notification_enabled, set_secure_storage,
+    set_sound_enabled, set_sync_interval, should_sync, start_oauth2_flow, sync_app_user,
     sync_email_flags, sync_emails, sync_folders, sync_specific_email_flags, test_connection,
 };
 use idle_manager::{IdleCommand, IdleManager};
@@ -168,8 +170,13 @@ async fn main() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             oauth2_config::init_credentials(app.handle());
+
+            // TODO: Setup deep link handler for OAuth callbacks
+            // The deep-link plugin API needs to be configured properly
+            // For now, users can manually copy the callback URL
 
             // Request notification permission (important for Windows)
             use tauri_plugin_notification::NotificationExt;
@@ -368,7 +375,14 @@ async fn main() {
             get_current_log_file,
             read_recent_logs,
             list_log_files,
-            read_log_file
+            read_log_file,
+            // Auth commands
+            get_secure_storage,
+            set_secure_storage,
+            delete_secure_storage,
+            sync_app_user,
+            get_app_user,
+            delete_app_user
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
