@@ -153,10 +153,8 @@ export async function signUpWithEmail(email: string, password: string, name: str
         subscription_tier: 'free',
       },
       // Redirect to verification page after email confirmation
-      // Use production URL for deployed apps, localhost for development
-      emailRedirectTo: typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? `${window.location.origin}/auth/verify`
-        : 'https://www.colimail.net/auth/verify',
+      // Always use production URL for both development and deployed apps
+      emailRedirectTo: 'https://www.colimail.net/auth/verify',
     },
   });
 
@@ -183,10 +181,8 @@ export async function signInWithGoogle() {
     provider: 'google',
     options: {
       // Redirect back to our app's callback page after OAuth completes
-      // Use production URL for deployed apps, localhost for development
-      redirectTo: typeof window !== 'undefined' && window.location.hostname === 'localhost'
-        ? `${window.location.origin}/auth/callback`
-        : 'https://www.colimail.net/auth/callback',
+      // Always use production URL for both development and deployed apps
+      redirectTo: 'https://www.colimail.net/auth/callback',
       // Explicitly request email scope for Google Suite accounts
       scopes: 'https://www.googleapis.com/auth/userinfo.email',
       queryParams: {
