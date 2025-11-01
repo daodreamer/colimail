@@ -189,6 +189,8 @@ export async function signInWithGoogle() {
         access_type: 'offline',
         prompt: 'consent',
       },
+      // Skip automatic browser redirect (we'll handle it manually)
+      skipBrowserRedirect: true,
     },
   });
 

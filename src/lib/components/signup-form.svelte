@@ -83,14 +83,62 @@
       loading = true;
       const { url } = await signInWithGoogle();
       if (url) {
-        // Redirect to Google OAuth in the same window
-        // Supabase will handle the callback and redirect back to our app
-        window.location.href = url;
+        // Check if running in Tauri environment
+        const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+        console.log('[Signup] Is Tauri environment:', isTauri);
+
+        if (isTauri) {
+          // Open OAuth in a new window (desktop app)
+          console.log('[Signup] Importing WebviewWindow...');
+          const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+          console.log('[Signup] WebviewWindow imported');
+
+          console.log('[Signup] Creating OAuth window with URL:', url);
+          const oauthWindow = new WebviewWindow('oauth-google-signup', {
+            url,
+            title: 'Sign up with Google',
+            width: 500,
+            height: 700,
+            resizable: false,
+            center: true,
+            alwaysOnTop: true,
+          });
+
+          console.log('[Signup] OAuth window created:', oauthWindow);
+
+          // Monitor when user closes the window (cancel OAuth)
+          oauthWindow.once('tauri://destroyed', () => {
+            console.log('[Signup] OAuth window closed');
+
+            // Check if authentication was successful
+            setTimeout(async () => {
+              if (authStore.isAuthenticated) {
+                console.log('[Signup] OAuth successful, redirecting to main app');
+                goto("/");
+              } else {
+                console.log('[Signup] OAuth cancelled or failed');
+                loading = false;
+              }
+            }, 500);
+          });
+
+          oauthWindow.once('tauri://error', (e) => {
+            console.log('[Signup] OAuth window error:', e);
+            loading = false;
+          });
+
+          // Important: Do not navigate the main window
+          // The OAuth window will handle the authentication
+          console.log('[Signup] OAuth window created, main window stays on signup page');
+        } else {
+          // Fallback for web/browser environment
+          console.log('[Signup] Not in Tauri, redirecting main window to OAuth URL');
+          window.location.href = url;
+        }
       }
     } catch (err: any) {
       error = getAuthErrorMessage(err);
       console.error("Google signup error:", err);
-    } finally {
       loading = false;
     }
   }

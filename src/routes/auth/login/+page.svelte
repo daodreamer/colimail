@@ -7,9 +7,9 @@
 
 <div class="bg-muted flex min-h-svh flex-col items-center justify-center gap-6 p-6 md:p-10">
   <!-- Back button in top-left corner -->
-  <div class="absolute top-4 left-4">
-    <Button variant="ghost" size="sm" href="/">
-      <ArrowLeftIcon class="size-4 mr-2" />
+  <div class="absolute top-4 left-4 z-50">
+    <Button variant="outline" size="default" href="/" class="gap-2">
+      <ArrowLeftIcon class="size-4" />
       Back to App
     </Button>
   </div>

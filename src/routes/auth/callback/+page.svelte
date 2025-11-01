@@ -7,6 +7,7 @@
   let status = $state<"processing" | "success" | "error" | "browser_warning">("processing");
   let message = $state("Processing authentication...");
   let isTauriEnv = $state(false);
+  let currentWindow: any = null;
 
   onMount(async () => {
     // Check if running in Tauri environment
@@ -29,8 +30,32 @@
       return;
     }
 
+    // Check if this is an OAuth popup window by checking the window label
+    let isOAuthWindow = false;
+    try {
+      const { getCurrentWebviewWindow } = await import('@tauri-apps/api/webviewWindow');
+      currentWindow = getCurrentWebviewWindow();
+
+      // Get the label - it's a property, not a method
+      const label = currentWindow.label;
+      console.log('[Callback] Current window label:', label);
+      console.log('[Callback] Window object:', currentWindow);
+
+      // OAuth windows have labels like 'oauth-google-login' or 'oauth-google-signup'
+      if (label && typeof label === 'string') {
+        isOAuthWindow = label.startsWith('oauth-');
+      } else {
+        console.log('[Callback] Label is not a string:', typeof label, label);
+        isOAuthWindow = false;
+      }
+    } catch (e) {
+      console.error('[Callback] Error getting window label:', e);
+      isOAuthWindow = false;
+    }
+
     try {
       console.log('[Callback] OAuth callback page mounted in Tauri environment');
+      console.log('[Callback] Is OAuth window:', isOAuthWindow);
 
       // Check for OAuth errors in URL first
       const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -61,7 +86,7 @@
 
       console.log('[Callback] Session found, authentication successful');
       status = "success";
-      message = "Authentication successful! Redirecting...";
+      message = "Authentication successful!";
 
       // Wait for authStore to sync (the onAuthStateChange listener should have triggered)
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -71,11 +96,39 @@
       await authStore.refreshUser();
       console.log('[Callback] Auth store refreshed, isAuthenticated:', authStore.isAuthenticated);
 
-      // Redirect to main app
-      setTimeout(() => {
-        console.log('[Callback] Redirecting to main app');
-        goto("/", { replaceState: true }); // Use replaceState to prevent back button issues
-      }, 1000);
+      // If this is an OAuth popup window, close it
+      if (isOAuthWindow && currentWindow) {
+        console.log('[Callback] This is an OAuth window, will close after showing success message');
+        message = "Authentication successful! Closing window...";
+
+        // Wait a moment to show success message
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        // Close the OAuth window
+        try {
+          console.log('[Callback] Attempting to close window...');
+          console.log('[Callback] currentWindow.close exists:', typeof currentWindow.close);
+
+          await currentWindow.close();
+          console.log('[Callback] Window.close() executed successfully');
+        } catch (closeError) {
+          console.error('[Callback] Error closing window:', closeError);
+          // If close fails, try destroy as fallback
+          try {
+            console.log('[Callback] Trying destroy() as fallback...');
+            await currentWindow.destroy();
+            console.log('[Callback] Window.destroy() executed');
+          } catch (destroyError) {
+            console.error('[Callback] Error destroying window:', destroyError);
+          }
+        }
+      } else {
+        // Redirect to main app (for main window flow)
+        setTimeout(() => {
+          console.log('[Callback] Redirecting to main app');
+          goto("/", { replaceState: true });
+        }, 1000);
+      }
     } catch (err: any) {
       status = "error";
       message = getAuthErrorMessage(err);

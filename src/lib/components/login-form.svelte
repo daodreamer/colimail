@@ -59,16 +59,69 @@
 
     try {
       loading = true;
+      console.log('[Login] Starting Google login...');
       const { url } = await signInWithGoogle();
+      console.log('[Login] Got OAuth URL:', url);
+
       if (url) {
-        // Redirect to Google OAuth in the same window
-        // Supabase will handle the callback and redirect back to our app
-        window.location.href = url;
+        // Check if running in Tauri environment
+        const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+        console.log('[Login] Is Tauri environment:', isTauri);
+
+        if (isTauri) {
+          // Open OAuth in a new window (desktop app)
+          console.log('[Login] Importing WebviewWindow...');
+          const webviewWindowModule = await import('@tauri-apps/api/webviewWindow');
+          console.log('[Login] Module imported:', webviewWindowModule);
+          const { WebviewWindow } = webviewWindowModule;
+          console.log('[Login] WebviewWindow class:', WebviewWindow);
+
+          console.log('[Login] Creating new window with URL:', url);
+          const oauthWindow = new WebviewWindow('oauth-google-login', {
+            url,
+            title: 'Sign in with Google',
+            width: 500,
+            height: 700,
+            resizable: false,
+            center: true,
+            alwaysOnTop: true,
+          });
+
+          console.log('[Login] OAuth window object:', oauthWindow);
+
+          // Monitor when user closes the window (cancel OAuth)
+          oauthWindow.once('tauri://destroyed', () => {
+            console.log('[Login] OAuth window closed');
+
+            // Check if authentication was successful
+            setTimeout(async () => {
+              if (authStore.isAuthenticated) {
+                console.log('[Login] OAuth successful, redirecting to main app');
+                goto("/");
+              } else {
+                console.log('[Login] OAuth cancelled or failed');
+                loading = false;
+              }
+            }, 500);
+          });
+
+          oauthWindow.once('tauri://error', (e) => {
+            console.log('[Login] OAuth window error:', e);
+            loading = false;
+          });
+
+          // Important: Do not navigate the main window
+          // The OAuth window will handle the authentication
+          console.log('[Login] OAuth window created, main window stays on login page');
+        } else {
+          // Fallback for web/browser environment
+          console.log('[Login] Not in Tauri, redirecting main window to OAuth URL');
+          window.location.href = url;
+        }
       }
     } catch (err: any) {
       error = getAuthErrorMessage(err);
       console.error("Google login error:", err);
-    } finally {
       loading = false;
     }
   }
