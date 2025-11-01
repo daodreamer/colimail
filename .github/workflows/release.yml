@@ -51,6 +51,15 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Create .env file from secrets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          echo "VITE_SUPABASE_URL=$VITE_SUPABASE_URL" > .env
+          echo "VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY" >> .env
+        shell: bash
+
       - name: Create OAuth2 credentials from secret
         env:
           OAUTH_CREDENTIALS_JSON: ${{ secrets.OAUTH_CREDENTIALS_JSON }}
