@@ -17,6 +17,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Subscription/billing management interface
 - Notifications settings dialog
 
+## [0.6.0] - 2025-11-01
+
+### Fixed
+- **Google OAuth Flow**: Resolved critical OAuth authentication issues for desktop app
+  - Fixed system browser OAuth callback handling with deep link protocol
+  - Resolved authentication deadlock when calling `getSession()` in `onAuthStateChange` callback
+  - Prevented duplicate OAuth event processing with proper state management
+  - Disabled automatic URL detection in Tauri environment to avoid conflicts
+  - Configured proper `skipBrowserRedirect` setting for desktop OAuth flow
+  - Improved callback page to show success message after triggering deep link
+  - Enhanced single-instance handling for OAuth deep links
+  - Added comprehensive logging throughout OAuth flow for debugging
+
+### Changed
+- OAuth callback now uses HTTP URL (`https://www.colimail.net/auth/callback`) with deep link trigger
+- Updated `getCurrentUser()` to accept optional session parameter, avoiding redundant API calls
+- Improved `authStore.refreshUser()` to accept optional session for better performance
+- Enhanced deep link event listeners with duplicate processing prevention
+
 ## [0.5.0] - 2025-10-31
 
 ### Added

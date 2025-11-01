@@ -15,22 +15,29 @@ class AuthStore {
 
   private setupDeepLinkHandler() {
     // Listen for deep link events (OAuth callbacks)
+    // Note: This is for the legacy implicit flow (with hash tokens)
+    // PKCE flow (with ?code=xxx) is handled by login-form.svelte's oauth-code-received event
     if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
       import('@tauri-apps/api/event').then(({ listen }) => {
         listen('deep-link', async (event: any) => {
           const url = event.payload as string;
-          console.log('Received deep link:', url);
+          console.log('[AuthStore] Received deep-link event:', url);
 
           // Parse the URL to extract OAuth tokens
           try {
             const urlObj = new URL(url);
-            // Handle auth callback (e.g., colimail://auth/callback#access_token=...)
-            if (urlObj.pathname === '/auth/callback' || urlObj.pathname === '//auth/callback') {
+            // Only handle auth callback with hash tokens (implicit flow)
+            // PKCE flow uses query params (?code=) and is handled separately
+            if ((urlObj.pathname === '/auth/callback' || urlObj.pathname === '//auth/callback') && urlObj.hash) {
+              console.log('[AuthStore] Handling implicit flow callback with hash tokens');
               // Redirect to the callback page which will handle the token extraction
               window.location.href = `/auth/callback${urlObj.hash}`;
+            } else if (urlObj.searchParams.has('code')) {
+              console.log('[AuthStore] PKCE flow detected (has code param), ignoring in deep-link handler');
+              console.log('[AuthStore] This should be handled by oauth-code-received event listener');
             }
           } catch (error) {
-            console.error('Failed to parse deep link URL:', error);
+            console.error('[AuthStore] Failed to parse deep link URL:', error);
           }
         });
       });
@@ -79,14 +86,20 @@ class AuthStore {
 
     if (session) {
       console.log('[AuthStore] Session detected, loading user...');
-      this.user = await getCurrentUser();
-      console.log('[AuthStore] User loaded:', this.user);
+      try {
+        // Pass the session we already have to avoid calling getSession() again
+        // which can cause deadlock during auth state change callback
+        this.user = await getCurrentUser(session);
+        console.log('[AuthStore] User loaded:', this.user);
 
-      // Sync user to local database
-      if (this.user) {
-        console.log('[AuthStore] Syncing user to database...');
-        await this.syncUserToDatabase(this.user);
-        console.log('[AuthStore] User synced to database');
+        // Sync user to local database
+        if (this.user) {
+          console.log('[AuthStore] Syncing user to database...');
+          await this.syncUserToDatabase(this.user);
+          console.log('[AuthStore] User synced to database');
+        }
+      } catch (error) {
+        console.error('[AuthStore] Error loading/syncing user:', error);
       }
     } else {
       console.log('[AuthStore] No session, clearing user');
@@ -133,29 +146,41 @@ class AuthStore {
     return this.user?.subscriptionTier === 'enterprise';
   }
 
-  async refreshUser() {
-    console.log('[AuthStore] Manual refresh requested');
+  async refreshUser(existingSession?: Session | null) {
+    console.log('[AuthStore] Manual refresh requested', existingSession ? 'with existing session' : 'will fetch if needed');
 
-    if (!this.session) {
+    // Use provided session first, fall back to stored session, then fetch
+    let session = existingSession ?? this.session;
+    
+    if (!session) {
       console.log('[AuthStore] No session found, fetching session...');
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session: fetchedSession } } = await supabase.auth.getSession();
+      session = fetchedSession;
       this.session = session;
       console.log('[AuthStore] Session fetched:', session ? `User: ${session.user.email}` : 'No session');
     }
 
-    if (!this.session) {
+    if (!session) {
       console.log('[AuthStore] Still no session after fetch, cannot refresh user');
       return;
     }
 
     console.log('[AuthStore] Refreshing user data...');
-    this.user = await getCurrentUser();
+    // Pass the session to avoid calling getSession() again
+    this.user = await getCurrentUser(session);
     console.log('[AuthStore] User refreshed:', this.user);
 
     if (this.user) {
       console.log('[AuthStore] Syncing refreshed user to database...');
-      await this.syncUserToDatabase(this.user);
+      try {
+        await this.syncUserToDatabase(this.user);
+        console.log('[AuthStore] User synced successfully');
+      } catch (error) {
+        console.error('[AuthStore] Error syncing user:', error);
+      }
       console.log('[AuthStore] Refresh complete. Authenticated:', this.isAuthenticated);
+    } else {
+      console.log('[AuthStore] No user after refresh');
     }
   }
 }

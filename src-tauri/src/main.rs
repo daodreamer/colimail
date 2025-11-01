@@ -166,17 +166,100 @@ async fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
+            // When a second instance is launched, this callback is triggered in the first instance
+            tracing::info!("Single instance callback triggered, args: {:?}, cwd: {:?}", args, cwd);
+            
+            // Check if args contain a deep link
+            for arg in args.iter() {
+                if arg.starts_with("colimail://") {
+                    tracing::info!("Processing deep link from second instance: {}", arg);
+                    
+                    // Parse the deep link
+                    if let Ok(url) = url::Url::parse(arg) {
+                        if url.scheme() == "colimail" && url.host_str() == Some("auth") {
+                            // Extract authorization code from query params
+                            if let Some(code) = url.query_pairs().find(|(key, _)| key == "code") {
+                                tracing::info!("OAuth code received from second instance via deep link");
+                                
+                                // Emit event to frontend with the code
+                                if let Some(window) = app.get_webview_window("main") {
+                                    let code_str = code.1.to_string();
+                                    tracing::info!("Emitting oauth-code-received event with code: {}", code_str);
+                                    match window.emit("oauth-code-received", code_str) {
+                                        Ok(_) => tracing::info!("Event emitted successfully"),
+                                        Err(e) => tracing::error!("Failed to emit event: {}", e),
+                                    }
+                                    let _ = window.show();
+                                    let _ = window.set_focus();
+                                    let _ = window.unminimize();
+                                } else {
+                                    tracing::error!("Failed to get main window");
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Bring the existing window to front
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             oauth2_config::init_credentials(app.handle());
 
-            // TODO: Setup deep link handler for OAuth callbacks
-            // The deep-link plugin API needs to be configured properly
-            // For now, users can manually copy the callback URL
+            // Setup deep link handler for OAuth callbacks
+            use tauri_plugin_deep_link::DeepLinkExt;
+            app.deep_link().register_all()?;
+            
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                // event.urls() consumes event, so call it once and store result
+                let urls = event.urls();
+                if urls.is_empty() {
+                    tracing::warn!("Deep link plugin: on_open_url called but no URLs provided");
+                    return;
+                }
+                
+                tracing::info!("Deep link plugin: on_open_url triggered with URL: {}", urls[0]);
+                
+                let url = &urls[0];
+                if url.scheme() == "colimail" && url.host_str() == Some("auth") {
+                    // Extract authorization code from query params
+                    if let Some(code) = url.query_pairs().find(|(key, _)| key == "code") {
+                        tracing::info!("Deep link plugin: OAuth code found, emitting oauth-code-received event");
+                        
+                        // Emit event to frontend with the code
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let code_str = code.1.to_string();
+                            tracing::info!("Deep link plugin: Emitting event with code: {}", code_str);
+                            match window.emit("oauth-code-received", code_str) {
+                                Ok(_) => tracing::info!("Deep link plugin: Event emitted successfully"),
+                                Err(e) => tracing::error!("Deep link plugin: Failed to emit event: {}", e),
+                            }
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        } else {
+                            tracing::error!("Deep link plugin: Failed to get main window");
+                        }
+                    } else {
+                        tracing::info!("Deep link plugin: No code parameter found in URL");
+                    }
+                } else {
+                    tracing::info!("Deep link plugin: URL is not an auth callback: scheme={}, host={:?}", 
+                        url.scheme(), url.host_str());
+                }
+            });
 
             // Request notification permission (important for Windows)
             use tauri_plugin_notification::NotificationExt;

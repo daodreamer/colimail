@@ -1,4 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type Session } from '@supabase/supabase-js';
 
 // Supabase configuration
 // TODO: Replace with your actual Supabase project URL and anon key
@@ -14,16 +14,23 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     autoRefreshToken: true,
     persistSession: true,
-    detectSessionInUrl: true,
+    // In Tauri, we manually handle OAuth via deep links and event listeners
+    // so we should disable automatic URL detection to avoid conflicts
+    detectSessionInUrl: typeof window === 'undefined' || !('__TAURI_INTERNALS__' in window),
     // Handle OAuth redirect for desktop apps
     flowType: 'pkce',
     storage: {
       getItem: async (key: string) => {
+        console.log(`[Supabase Storage] getItem called for key: ${key}`);
         // Try localStorage first (more reliable for large session tokens)
         if (typeof window !== 'undefined' && window.localStorage) {
           try {
             const value = localStorage.getItem(key);
-            if (value) return value;
+            if (value) {
+              console.log(`[Supabase Storage] Found ${key} in localStorage (${value.length} chars)`);
+              return value;
+            }
+            console.log(`[Supabase Storage] ${key} not found in localStorage`);
           } catch (error) {
             console.error('Failed to read from localStorage:', error);
           }
@@ -31,15 +38,20 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
         // Fallback to Tauri secure storage for smaller items
         if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+          console.log(`[Supabase Storage] Trying Tauri secure storage for ${key}...`);
           const { invoke } = await import('@tauri-apps/api/core');
           try {
-            return await invoke<string>('get_secure_storage', { key });
+            const result = await invoke<string>('get_secure_storage', { key });
+            console.log(`[Supabase Storage] Tauri secure storage result for ${key}:`, result ? `Found (${result.length} chars)` : 'Not found');
+            return result;
           } catch (error) {
             // Silently fail, item might not exist
+            console.log(`[Supabase Storage] Tauri secure storage failed for ${key}:`, error);
             return null;
           }
         }
 
+        console.log(`[Supabase Storage] No storage available for ${key}`);
         return null;
       },
       setItem: async (key: string, value: string) => {
@@ -103,17 +115,29 @@ export interface AppUser {
 
 // Get current user session
 export async function getCurrentSession() {
-  const { data, error } = await supabase.auth.getSession();
-  if (error) {
-    console.error('Error getting session:', error);
+  console.log('[Supabase] getCurrentSession: Calling supabase.auth.getSession()...');
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    console.log('[Supabase] getCurrentSession: getSession() returned', { hasSession: !!data.session, error });
+    if (error) {
+      console.error('Error getting session:', error);
+      return null;
+    }
+    return data.session;
+  } catch (err) {
+    console.error('[Supabase] getCurrentSession: Exception caught:', err);
     return null;
   }
-  return data.session;
 }
 
 // Get current user
-export async function getCurrentUser(): Promise<AppUser | null> {
-  const session = await getCurrentSession();
+export async function getCurrentUser(existingSession?: Session | null): Promise<AppUser | null> {
+  console.log('[Supabase] getCurrentUser: Starting...', existingSession ? 'with existing session' : 'will fetch session');
+  
+  // Use provided session or fetch from storage
+  const session = existingSession ?? await getCurrentSession();
+  console.log('[Supabase] getCurrentUser: Got session:', !!session);
+  
   if (!session?.user) {
     console.log('[Supabase] getCurrentUser: No session or user found');
     return null;
@@ -125,7 +149,7 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     metadata: session.user.user_metadata
   });
 
-  return {
+  const user = {
     id: session.user.id,
     email: session.user.email || '',
     // Try multiple possible name fields for better compatibility
@@ -138,6 +162,9 @@ export async function getCurrentUser(): Promise<AppUser | null> {
     subscriptionExpiresAt: session.user.user_metadata?.subscription_expires_at,
     createdAt: session.user.created_at,
   };
+  
+  console.log('[Supabase] getCurrentUser: Returning user:', user);
+  return user;
 }
 
 // Sign up with email and password
@@ -175,26 +202,47 @@ export async function signInWithEmail(email: string, password: string) {
 
 // Sign in with Google OAuth
 export async function signInWithGoogle() {
-  // Use Supabase's callback URL for OAuth
-  // After authorization, Supabase will redirect to the callback page with the session tokens
+  // Check if running in Tauri (desktop app)
+  const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+  
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: 'google',
     options: {
-      // Redirect back to our app's callback page after OAuth completes
-      // Always use production URL for both development and deployed apps
+      // Always use HTTP callback URL (your deployed website)
+      // This page will handle triggering the deep link for desktop app
       redirectTo: 'https://www.colimail.net/auth/callback',
-      // Explicitly request email scope for Google Suite accounts
       scopes: 'https://www.googleapis.com/auth/userinfo.email',
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
       },
-      // Skip automatic browser redirect (we'll handle it manually)
-      skipBrowserRedirect: true,
+      // CRITICAL: In Tauri, skip browser redirect since we manually handle via deep link
+      // This prevents Supabase from trying to handle the callback in the desktop app
+      skipBrowserRedirect: isTauri,
     },
   });
 
   if (error) throw error;
+  return data;
+}
+
+// Exchange authorization code for session (OAuth PKCE flow)
+export async function exchangeCodeForSession(code: string) {
+  console.log('[Supabase] Exchanging authorization code for session...');
+  
+  const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+  
+  if (error) {
+    console.error('[Supabase] Code exchange error:', error);
+    throw error;
+  }
+  
+  console.log('[Supabase] Code exchange successful:', {
+    hasSession: !!data.session,
+    hasUser: !!data.user,
+    userId: data.user?.id
+  });
+  
   return data;
 }
 

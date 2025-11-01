@@ -6,9 +6,10 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { cn } from "$lib/utils.js";
   import type { HTMLAttributes } from "svelte/elements";
-  import { signInWithEmail, signInWithGoogle, resetPassword, getAuthErrorMessage } from "$lib/supabase";
+  import { signInWithEmail, signInWithGoogle, resetPassword, getAuthErrorMessage, getCurrentSession, exchangeCodeForSession, supabase } from "$lib/supabase";
   import { goto } from "$app/navigation";
   import { authStore } from "$lib/stores/auth.svelte";
+  import { onMount } from "svelte";
 
   let { class: className, ...restProps }: HTMLAttributes<HTMLDivElement> = $props();
 
@@ -17,6 +18,93 @@
   let loading = $state(false);
   let error = $state("");
   let resetSent = $state(false);
+
+  // Setup OAuth callback listener on component mount (for desktop app)
+  onMount(() => {
+    console.log('[Login Component] onMount called');
+    const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+    console.log('[Login Component] isTauri:', isTauri);
+    console.log('[Login Component] window.__TAURI_INTERNALS__:', window && (window as any).__TAURI_INTERNALS__);
+    
+    if (isTauri) {
+      console.log('[Login] Setting up global OAuth callback listener...');
+      
+      let unlistenFn: (() => void) | null = null;
+      let isProcessing = false; // Prevent multiple simultaneous processing
+      
+      (async () => {
+        console.log('[Login] Importing @tauri-apps/api/event...');
+        const { listen } = await import('@tauri-apps/api/event');
+        console.log('[Login] listen function imported:', typeof listen);
+        
+        console.log('[Login] Calling listen for oauth-code-received event...');
+        unlistenFn = await listen<string>('oauth-code-received', async (event) => {
+          console.log('[Login] *** GLOBAL EVENT RECEIVED *** OAuth code:', event.payload);
+          console.log('[Login] Full event object:', event);
+          
+          // Prevent concurrent processing
+          if (isProcessing) {
+            console.warn('[Login] Already processing an OAuth callback, ignoring this event');
+            return;
+          }
+          
+          try {
+            isProcessing = true;
+            loading = true;
+            // Use the code directly with Supabase's session handling
+            // Supabase will handle PKCE verification internally
+            console.log('[Login] Processing OAuth code with Supabase...');
+            
+            // Exchange code for session using Supabase
+            const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(event.payload);
+            
+            if (exchangeError) {
+              console.error('[Login] Code exchange error:', exchangeError);
+              error = getAuthErrorMessage(exchangeError);
+              loading = false;
+              isProcessing = false;
+              return;
+            }
+            
+            console.log('[Login] Code exchange successful, session data:', data);
+            
+            // Refresh auth state, passing the session we just got to avoid calling getSession() again
+            console.log('[Login] Calling authStore.refreshUser() with session...');
+            await authStore.refreshUser(data.session);
+            console.log('[Login] authStore.refreshUser() completed');
+            console.log('[Login] authStore.isAuthenticated:', authStore.isAuthenticated);
+            
+            if (authStore.isAuthenticated) {
+              console.log('[Login] OAuth successful, redirecting to main app');
+              loading = false;
+              if (unlistenFn) unlistenFn();
+              console.log('[Login] Calling goto("/")...');
+              goto("/");
+              console.log('[Login] goto("/") called');
+            } else {
+              console.error('[Login] Authentication failed after code exchange');
+              error = "Authentication failed. Please try again.";
+              loading = false;
+            }
+          } catch (exchangeError: any) {
+            console.error('[Login] Error exchanging code:', exchangeError);
+            error = getAuthErrorMessage(exchangeError);
+            loading = false;
+          }
+        });
+        
+        console.log('[Login] Event listener registered successfully, unlisten function:', typeof unlistenFn);
+      })();
+
+      // Return cleanup function
+      return () => {
+        console.log('[Login] Cleanup: unlistening from oauth-code-received');
+        if (unlistenFn) unlistenFn();
+      };
+    } else {
+      console.log('[Login] Not in Tauri environment, skipping OAuth listener setup');
+    }
+  });
 
   async function handleEmailLogin(e: Event) {
     e.preventDefault();
@@ -60,7 +148,9 @@
     try {
       loading = true;
       console.log('[Login] Starting Google login...');
-      const { url } = await signInWithGoogle();
+      const response = await signInWithGoogle();
+      console.log('[Login] Full OAuth response:', response);
+      const { url } = response;
       console.log('[Login] Got OAuth URL:', url);
 
       if (url) {
@@ -69,57 +159,28 @@
         console.log('[Login] Is Tauri environment:', isTauri);
 
         if (isTauri) {
-          // Open OAuth in a new window (desktop app)
-          console.log('[Login] Importing WebviewWindow...');
-          const webviewWindowModule = await import('@tauri-apps/api/webviewWindow');
-          console.log('[Login] Module imported:', webviewWindowModule);
-          const { WebviewWindow } = webviewWindowModule;
-          console.log('[Login] WebviewWindow class:', WebviewWindow);
-
-          console.log('[Login] Creating new window with URL:', url);
-          const oauthWindow = new WebviewWindow('oauth-google-login', {
-            url,
-            title: 'Sign in with Google',
-            width: 500,
-            height: 700,
-            resizable: false,
-            center: true,
-            alwaysOnTop: true,
-          });
-
-          console.log('[Login] OAuth window object:', oauthWindow);
-
-          // Monitor when user closes the window (cancel OAuth)
-          oauthWindow.once('tauri://destroyed', () => {
-            console.log('[Login] OAuth window closed');
-
-            // Check if authentication was successful
-            setTimeout(async () => {
-              if (authStore.isAuthenticated) {
-                console.log('[Login] OAuth successful, redirecting to main app');
-                goto("/");
-              } else {
-                console.log('[Login] OAuth cancelled or failed');
-                loading = false;
-              }
-            }, 500);
-          });
-
-          oauthWindow.once('tauri://error', (e) => {
-            console.log('[Login] OAuth window error:', e);
-            loading = false;
-          });
-
-          // Important: Do not navigate the main window
-          // The OAuth window will handle the authentication
-          console.log('[Login] OAuth window created, main window stays on login page');
+          // Desktop app: Open OAuth URL in system default browser
+          console.log('[Login] Opening OAuth in system browser...');
+          const { openUrl } = await import('@tauri-apps/plugin-opener');
+          await openUrl(url);
+          console.log('[Login] System browser opened, waiting for callback via global listener...');
+          
+          // IMPORTANT: Don't reset loading state here!
+          // Keep button disabled while waiting for OAuth callback
+          // The global listener (set in onMount) will handle the callback and reset loading
+          console.log('[Login] Keeping loading state, waiting for deep link callback...');
         } else {
-          // Fallback for web/browser environment
-          console.log('[Login] Not in Tauri, redirecting main window to OAuth URL');
+          // Web environment: redirect main window
           window.location.href = url;
         }
       }
     } catch (err: any) {
+      console.error("[Login] Google login error details:", {
+        message: err.message,
+        code: err.code,
+        status: err.status,
+        details: err
+      });
       error = getAuthErrorMessage(err);
       console.error("Google login error:", err);
       loading = false;
