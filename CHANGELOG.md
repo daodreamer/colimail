@@ -23,8 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **User Authentication System**: Complete Supabase-based authentication for cloud features
   - **Email/Password Registration**: Users can create accounts with email and password
     - Email verification required via confirmation link sent to user's inbox
-    - Display name support for personalized experience
+    - User name support for personalized experience (replaces display_name to avoid confusion with email account display names)
+    - Password strength validation: requires lowercase, uppercase, digits, and symbols (8-72 characters)
     - Secure password handling with Supabase authentication
+    - Multi-field metadata storage: Sets `name`, `full_name`, and `display_name` for Supabase Dashboard compatibility
   - **Email/Password Login**: Existing users can sign in with credentials
     - Session persistence using localStorage for automatic re-login
     - Manual session refresh for reliable state synchronization
@@ -32,7 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Google OAuth Login**: One-click sign in with Google account
     - OAuth 2.0 flow with proper callback handling
     - Automatic user profile creation from Google account data
-    - Requires Google Cloud Console configuration (detailed in AUTH_SETUP_GUIDE.md)
+    - Explicitly requests email scope for Google Suite accounts compatibility
+    - Supports both browser and desktop app OAuth callback flows
   - **Session Management**: Robust token handling and persistence
     - Automatic token refresh for long-lived sessions
     - Local session storage with secure token management
@@ -87,12 +90,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - "Back to App" button in top-left corner
     - Professional card-based design
   - **Callback Page** (`src/routes/auth/callback/+page.svelte`):
-    - Handles OAuth and email verification redirects
-    - Displays loading spinner during authentication processing
+    - Handles OAuth redirects from Google authentication
+    - Environment detection: Shows different UI for browser vs desktop app
+    - Browser environment: Displays friendly message with instructions to open desktop app
+    - Desktop app environment: Automatically completes authentication and redirects to main app
+    - Attempts to trigger deep link (`colimail://`) to open desktop app from browser
     - Success/error states with visual feedback (checkmark/X icon)
-    - Automatic redirect to main app after 1 second on success
-    - Fallback to manual token extraction from URL hash if needed
     - Forces auth store refresh to ensure UI updates immediately
+  - **Verification Page** (`src/routes/auth/verify/+page.svelte`):
+    - Dedicated page for email verification workflow
+    - Handles email confirmation links from Supabase
+    - Environment-aware processing: Different flows for browser vs desktop app
+    - Browser environment: Shows "Email Verified!" success page with instructions
+    - Desktop app environment: Auto-completes verification and signs user in
+    - Automatic deep link attempt to open desktop app from browser
+    - Clear success/error messaging with visual feedback
+    - Graceful error handling with user-friendly messages
 
 - **NavUser Enhancement**: Dynamic menu based on authentication state
   - **Authenticated Menu**: Full feature access for logged-in users
@@ -121,7 +134,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added `app_user` table for storing user profiles locally:
     - `id TEXT PRIMARY KEY`: Supabase user UUID
     - `email TEXT NOT NULL UNIQUE`: User's email address
-    - `display_name TEXT`: User's display name (optional)
+    - `name TEXT`: User's name/username (changed from display_name to avoid confusion)
     - `avatar_url TEXT`: Profile picture URL (optional)
     - `subscription_tier TEXT`: free/pro/enterprise (default: 'free')
     - `subscription_expires_at INTEGER`: Unix timestamp for Pro subscription expiry
@@ -137,6 +150,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Testing procedures for all authentication flows
 
 ### Fixed
+- **Email Verification Browser Experience**: Resolved confusing error page when clicking verification links
+  - **Problem**: Clicking email verification link opened browser showing JavaScript error "Cannot read properties of undefined (reading 'invoke')"
+  - **Root Cause**: Verification links redirect to `http://localhost:1420/?code=...` which tried to call Tauri APIs in browser environment
+  - **Solution**: Implemented dedicated `/auth/verify` page with environment detection
+    - Browser environment: Shows professional "Email Verified!" success page with clear instructions
+    - Desktop app environment: Auto-completes verification and signs user in
+    - Attempts automatic deep link to open desktop app from browser
+    - Added `emailRedirectTo` parameter to signup flow directing to `/auth/verify`
+  - **Impact**: Professional, user-friendly verification experience matching mainstream applications
+  - **User Experience**: Clear guidance to open desktop app and sign in after verification
+
+- **Google OAuth Redirect URI Configuration**: Fixed "Error 400: redirect_uri_mismatch" for Google OAuth
+  - **Problem**: Users couldn't sign in with Google OAuth due to redirect URI mismatch
+  - **Root Cause**: Missing redirect URI configuration in Google Cloud Console
+  - **Solution**: Added proper redirect URIs in Google Cloud Console OAuth client:
+    - `https://[project-id].supabase.co/auth/v1/callback` for Supabase OAuth flow
+    - `http://localhost:1420/auth/callback` for local development
+  - **Configuration**: Requires separate OAuth clients for different purposes (Desktop for Gmail API, Web for authentication)
+  - **Impact**: Google OAuth now works seamlessly for both signup and login
+
+- **Supabase Dashboard Display Name**: Fixed missing display name in Supabase Dashboard user list
+  - **Problem**: Supabase Dashboard "Display name" column showed empty despite `raw_user_meta_data` containing user's name
+  - **Root Cause**: Dashboard searches for specific field names (`display_name`, `full_name`) not just `name`
+  - **Solution**: Updated signup to set multiple metadata fields simultaneously:
+    - `name`: Primary field for application use
+    - `full_name`: For Supabase Dashboard compatibility
+    - `display_name`: For Supabase Dashboard "Display Name" column
+  - **Fallback Logic**: `getCurrentUser()` reads from multiple fields with priority: name → full_name → display_name → email username
+  - **Impact**: User names now display correctly in Supabase Dashboard for better admin experience
+
+- **Password Validation**: Implemented comprehensive password strength requirements matching Supabase configuration
+  - **Added Validation**: `validatePassword()` function checks all requirements before signup
+    - Minimum 8 characters, maximum 72 characters
+    - At least one lowercase letter (a-z)
+    - At least one uppercase letter (A-Z)
+    - At least one digit (0-9)
+    - At least one symbol (!@#$%^&*...)
+  - **User Feedback**: Clear error messages for each validation failure
+  - **Impact**: Prevents signup failures due to weak passwords, improves security
+
 - **Windows Credential Manager Size Limit**: Resolved session storage failures
   - **Problem**: Windows limits credentials to 2560 characters (UTF-16 encoded)
   - **Impact**: Supabase session tokens typically exceed this limit (3000+ chars)
@@ -168,7 +221,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **UX**: Shows success toast, NavUser updates to guest menu automatically
   - **Implementation**: Removed `goto("/auth/login")`, added `toast.success()` notification
 
+### Improved
+- **Email Verification Workflow**: Enhanced user experience to match mainstream application standards
+  - **Smart Environment Detection**: Different flows for browser vs desktop app
+  - **Professional Browser UI**: Elegant success page with clear instructions when opened in browser
+  - **Automatic Deep Links**: Attempts to open desktop app automatically via `colimail://` protocol
+  - **Clear User Guidance**: Step-by-step instructions to complete signup (open app → sign in)
+  - **Consistent Design**: Follows shadcn-svelte design patterns with proper icons and styling
+  - **Error Handling**: Graceful error messages with helpful troubleshooting information
+
+- **OAuth Callback Handling**: Improved reliability and user experience for OAuth flows
+  - **Environment-Aware Processing**: Detects browser vs desktop app context
+  - **Browser Fallback**: Shows friendly instructions when OAuth completes in browser
+  - **Desktop Integration**: Seamless authentication completion in desktop app
+  - **Visual Feedback**: Clear loading, success, and error states with appropriate icons
+  - **Error Messages**: User-friendly error descriptions with recovery suggestions
+
+- **Supabase Configuration**: Simplified setup process with better documentation
+  - **Email Redirect Configuration**: Automatic `emailRedirectTo` parameter in signup
+  - **Multi-Field Metadata**: Compatibility with Supabase Dashboard display requirements
+  - **Flexible User Data**: Supports multiple name field conventions for broad compatibility
+  - **Development-Friendly**: Easy local testing with localhost redirect URLs
+
 ### Changed
+- **User Profile Field Naming**: Renamed from `display_name` to `name` for clarity
+  - **Rationale**: Avoid confusion with email account display names (sender names in emails)
+  - **Application Field**: `name` - user's name/username in the application
+  - **Email Account Field**: `display_name` - sender name shown in outgoing emails
+  - **Clear Separation**: Distinct naming prevents mixing user identity with email sender identity
+  - **Database Migration**: Updated `app_user` table schema and all related code
+  - **Supabase Compatibility**: Still sets `full_name` and `display_name` in metadata for Dashboard
+
 - **Authentication Architecture**: Dual-layer system for app users vs email accounts
   - **App Users** (new): Stored in Supabase cloud database
     - Managed via Supabase authentication API
@@ -195,7 +278,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Project URL: Configured via `VITE_SUPABASE_URL` environment variable
   - Anon Key: Configured via `VITE_SUPABASE_ANON_KEY` environment variable
   - OAuth Callback: `http://localhost:1420/auth/callback` (development)
+  - Email Verification Redirect: `http://localhost:1420/auth/verify` (development)
+  - Redirect URLs Configuration Required:
+    - `http://localhost:1420/auth/callback` - OAuth callback
+    - `http://localhost:1420/auth/verify` - Email verification
+    - `colimail://auth/callback` - Deep link for OAuth (optional)
+    - `colimail://auth/verify` - Deep link for verification (optional)
   - Production callback: Configurable via Supabase dashboard
+
+- **Email Verification Implementation**:
+  - `signUpWithEmail()` function sets `emailRedirectTo: ${window.location.origin}/auth/verify`
+  - Supabase email template uses default `{{ .ConfirmationURL }}` variable
+  - `/auth/verify` page handles token verification automatically via Supabase client
+  - Environment detection: `typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window`
+  - Browser flow: Display success UI + attempt deep link + show instructions
+  - Desktop flow: Complete verification + refresh auth store + redirect to main app
+  - Deep link format: Replaces `http://localhost:1420` with `colimail://`
+
+- **Password Validation Requirements**:
+  - Implementation: `validatePassword(password: string): { valid: boolean; message: string }`
+  - Length: 8-72 characters (PostgreSQL bcrypt limit)
+  - Character types: lowercase (a-z), uppercase (A-Z), digits (0-9), symbols
+  - Symbol regex: `/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/`
+  - UI integration: Real-time validation in signup form before submission
+  - Error messages: Specific feedback for each validation failure
+
+- **User Metadata Storage Strategy**:
+  - Three metadata fields set during signup for maximum compatibility:
+    - `name`: Primary field used by application (`AppUser.name`)
+    - `full_name`: Supabase Dashboard compatible field
+    - `display_name`: Supabase Dashboard "Display Name" column
+  - All three fields set to the same value during registration
+  - `getCurrentUser()` fallback priority: name → full_name → display_name → email username
+  - Ensures display in Supabase Dashboard regardless of field naming preferences
 
 - **Debug Logging System**: Comprehensive logging for troubleshooting
   - AuthStore initialization: Session detection, user loading, listener registration

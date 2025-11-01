@@ -247,7 +247,7 @@ pub async fn init() -> Result<(), sqlx::Error> {
         "CREATE TABLE IF NOT EXISTS app_user (
             id TEXT PRIMARY KEY,
             email TEXT NOT NULL UNIQUE,
-            display_name TEXT,
+            name TEXT,
             avatar_url TEXT,
             subscription_tier TEXT NOT NULL DEFAULT 'free',
             subscription_expires_at INTEGER,

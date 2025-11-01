@@ -6,7 +6,7 @@
   import { Separator } from "$lib/components/ui/separator/index.js";
   import { Input } from "$lib/components/ui/input/index.js";
   import type { HTMLAttributes } from "svelte/elements";
-  import { signUpWithEmail, signInWithGoogle } from "$lib/supabase";
+  import { signUpWithEmail, signInWithGoogle, getAuthErrorMessage, validatePassword } from "$lib/supabase";
   import { goto } from "$app/navigation";
   import { authStore } from "$lib/stores/auth.svelte";
 
@@ -15,7 +15,7 @@
   let email = $state("");
   let password = $state("");
   let confirmPassword = $state("");
-  let displayName = $state("");
+  let name = $state("");
   let loading = $state(false);
   let error = $state("");
   let successMessage = $state("");
@@ -26,13 +26,32 @@
     successMessage = "";
 
     // Validation
-    if (!email || !password || !confirmPassword) {
-      error = "Please fill in all fields";
+    if (!email || !password || !confirmPassword || !name) {
+      error = "Please fill in all required fields";
       return;
     }
 
-    if (password.length < 8) {
-      error = "Password must be at least 8 characters long";
+    // Validate name
+    if (name.length < 2) {
+      error = "Name must be at least 2 characters long";
+      return;
+    }
+
+    if (name.length > 30) {
+      error = "Name must be less than 30 characters";
+      return;
+    }
+
+    // Name should only contain alphanumeric characters, underscores, and hyphens
+    if (!/^[a-zA-Z0-9_-]+$/.test(name)) {
+      error = "Name can only contain letters, numbers, underscores, and hyphens";
+      return;
+    }
+
+    // Validate password strength
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.valid) {
+      error = passwordValidation.message;
       return;
     }
 
@@ -43,7 +62,7 @@
 
     try {
       loading = true;
-      await signUpWithEmail(email, password, displayName || undefined);
+      await signUpWithEmail(email, password, name);
       successMessage = "Account created successfully! Please check your email for verification.";
 
       // Wait a bit to show success message, then redirect
@@ -51,7 +70,7 @@
         goto("/");
       }, 2000);
     } catch (err: any) {
-      error = err.message || "Failed to create account";
+      error = getAuthErrorMessage(err);
       console.error("Signup error:", err);
     } finally {
       loading = false;
@@ -69,7 +88,7 @@
         window.location.href = url;
       }
     } catch (err: any) {
-      error = err.message || "Failed to sign up with Google";
+      error = getAuthErrorMessage(err);
       console.error("Google signup error:", err);
     } finally {
       loading = false;
@@ -117,14 +136,18 @@
           </div>
 
           <div class="space-y-2">
-            <Label for="display-name">Display Name (Optional)</Label>
+            <Label for="name">Name</Label>
             <Input
-              id="display-name"
+              id="name"
               type="text"
-              placeholder="Your Name"
-              bind:value={displayName}
+              placeholder="Your name"
+              required
+              bind:value={name}
               disabled={loading}
             />
+            <p class="text-xs text-muted-foreground">
+              2-30 characters. Letters, numbers, underscores, and hyphens only.
+            </p>
           </div>
 
           <div class="space-y-2">
@@ -150,7 +173,9 @@
                 />
               </div>
             </div>
-            <p class="text-xs text-muted-foreground">Must be at least 8 characters long.</p>
+            <p class="text-xs text-muted-foreground">
+              Must be at least 8 characters and include lowercase, uppercase, digits, and symbols.
+            </p>
           </div>
 
           <div class="space-y-2">

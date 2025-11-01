@@ -79,7 +79,7 @@
 
   // User data for NavUser component - use auth user if authenticated, otherwise show guest
   const userData = $derived({
-    name: authStore.user?.displayName || authStore.user?.email?.split('@')[0] || "Guest",
+    name: authStore.user?.name || authStore.user?.email?.split('@')[0] || "Guest",
     email: authStore.user?.email || "Not logged in",
     avatar: authStore.user?.avatarUrl || "", // Empty string when no custom avatar
   });

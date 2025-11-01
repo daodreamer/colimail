@@ -69,6 +69,14 @@ class AuthStore {
 
     this.session = session;
 
+    // Handle session refresh errors
+    if (event === 'TOKEN_REFRESHED' && !session) {
+      console.error('[AuthStore] Token refresh failed, session expired');
+      this.user = null;
+      // Optionally notify user that they need to log in again
+      return;
+    }
+
     if (session) {
       console.log('[AuthStore] Session detected, loading user...');
       this.user = await getCurrentUser();
@@ -96,7 +104,7 @@ class AuthStore {
         await invoke('sync_app_user', {
           userId: user.id,
           email: user.email,
-          displayName: user.displayName,
+          name: user.name,
           avatarUrl: user.avatarUrl,
           subscriptionTier: user.subscriptionTier,
           subscriptionExpiresAt: user.subscriptionExpiresAt

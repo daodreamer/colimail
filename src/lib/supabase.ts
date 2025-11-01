@@ -15,6 +15,8 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
+    // Handle OAuth redirect for desktop apps
+    flowType: 'pkce',
     storage: {
       getItem: async (key: string) => {
         // Try localStorage first (more reliable for large session tokens)
@@ -92,7 +94,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 export interface AppUser {
   id: string;
   email: string;
-  displayName?: string;
+  name?: string;
   avatarUrl?: string;
   subscriptionTier: 'free' | 'pro' | 'enterprise';
   subscriptionExpiresAt?: string;
@@ -126,7 +128,11 @@ export async function getCurrentUser(): Promise<AppUser | null> {
   return {
     id: session.user.id,
     email: session.user.email || '',
-    displayName: session.user.user_metadata?.display_name || session.user.email?.split('@')[0],
+    // Try multiple possible name fields for better compatibility
+    name: session.user.user_metadata?.name ||
+          session.user.user_metadata?.full_name ||
+          session.user.user_metadata?.display_name ||
+          session.user.email?.split('@')[0],
     avatarUrl: session.user.user_metadata?.avatar_url,
     subscriptionTier: session.user.user_metadata?.subscription_tier || 'free',
     subscriptionExpiresAt: session.user.user_metadata?.subscription_expires_at,
@@ -135,15 +141,21 @@ export async function getCurrentUser(): Promise<AppUser | null> {
 }
 
 // Sign up with email and password
-export async function signUpWithEmail(email: string, password: string, displayName?: string) {
+export async function signUpWithEmail(email: string, password: string, name: string) {
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
     options: {
       data: {
-        display_name: displayName,
+        name: name,
+        full_name: name, // For Supabase Dashboard compatibility
+        display_name: name, // For Supabase Dashboard Display Name column
         subscription_tier: 'free',
       },
+      // Redirect to verification page after email confirmation
+      emailRedirectTo: typeof window !== 'undefined'
+        ? `${window.location.origin}/auth/verify`
+        : undefined,
     },
   });
 
@@ -171,6 +183,8 @@ export async function signInWithGoogle() {
     options: {
       // Redirect back to our app's callback page after OAuth completes
       redirectTo: `${window.location.origin}/auth/callback`,
+      // Explicitly request email scope for Google Suite accounts
+      scopes: 'https://www.googleapis.com/auth/userinfo.email',
       queryParams: {
         access_type: 'offline',
         prompt: 'consent',
@@ -195,7 +209,7 @@ export async function signOut() {
 
 // Update user profile
 export async function updateUserProfile(updates: {
-  displayName?: string;
+  name?: string;
   avatarUrl?: string;
 }) {
   const { data, error } = await supabase.auth.updateUser({
@@ -213,4 +227,73 @@ export async function resetPassword(email: string) {
   });
 
   if (error) throw error;
+}
+
+// Validate password strength (matches Supabase requirements)
+export function validatePassword(password: string): { valid: boolean; message: string } {
+  // Minimum length check
+  if (password.length < 8) {
+    return { valid: false, message: 'Password must be at least 8 characters long' };
+  }
+
+  // Maximum length check (PostgreSQL limit)
+  if (password.length > 72) {
+    return { valid: false, message: 'Password must be less than 72 characters' };
+  }
+
+  // Check for at least one lowercase letter
+  if (!/[a-z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+
+  // Check for at least one uppercase letter
+  if (!/[A-Z]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+
+  // Check for at least one digit
+  if (!/\d/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one digit' };
+  }
+
+  // Check for at least one symbol (special character)
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    return { valid: false, message: 'Password must contain at least one symbol (!@#$%^&*...)' };
+  }
+
+  return { valid: true, message: 'Password is strong' };
+}
+
+// Helper function to get user-friendly error messages
+export function getAuthErrorMessage(error: any): string {
+  const errorMessage = error?.message || '';
+
+  // Map common Supabase auth errors to user-friendly messages
+  if (errorMessage.includes('Invalid login credentials')) {
+    return 'Invalid email or password. Please try again.';
+  }
+  if (errorMessage.includes('Email not confirmed')) {
+    return 'Please verify your email address before signing in.';
+  }
+  if (errorMessage.includes('User already registered')) {
+    return 'An account with this email already exists. Please sign in instead.';
+  }
+  if (errorMessage.includes('Password should be at least')) {
+    return 'Password must be at least 6 characters long.';
+  }
+  if (errorMessage.includes('Unable to validate email address')) {
+    return 'Please enter a valid email address.';
+  }
+  if (errorMessage.includes('Email rate limit exceeded')) {
+    return 'Too many requests. Please wait a few minutes before trying again.';
+  }
+  if (errorMessage.includes('Invalid refresh token')) {
+    return 'Your session has expired. Please sign in again.';
+  }
+  if (errorMessage.includes('network')) {
+    return 'Network error. Please check your internet connection.';
+  }
+
+  // Return the original error message if no match found
+  return errorMessage || 'An unexpected error occurred. Please try again.';
 }

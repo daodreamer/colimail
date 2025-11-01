@@ -41,7 +41,7 @@ pub async fn delete_secure_storage(key: String) -> Result<(), String> {
 pub async fn sync_app_user(
     user_id: String,
     email: String,
-    display_name: Option<String>,
+    name: Option<String>,
     avatar_url: Option<String>,
     subscription_tier: String,
     subscription_expires_at: Option<i64>,
@@ -49,11 +49,11 @@ pub async fn sync_app_user(
     let pool = crate::db::pool();
 
     sqlx::query(
-        "INSERT INTO app_user (id, email, display_name, avatar_url, subscription_tier, subscription_expires_at, last_synced_at)
+        "INSERT INTO app_user (id, email, name, avatar_url, subscription_tier, subscription_expires_at, last_synced_at)
          VALUES (?, ?, ?, ?, ?, ?, strftime('%s', 'now'))
          ON CONFLICT(id) DO UPDATE SET
             email = excluded.email,
-            display_name = excluded.display_name,
+            name = excluded.name,
             avatar_url = excluded.avatar_url,
             subscription_tier = excluded.subscription_tier,
             subscription_expires_at = excluded.subscription_expires_at,
@@ -61,7 +61,7 @@ pub async fn sync_app_user(
     )
     .bind(&user_id)
     .bind(&email)
-    .bind(&display_name)
+    .bind(&name)
     .bind(&avatar_url)
     .bind(&subscription_tier)
     .bind(subscription_expires_at)
@@ -78,7 +78,7 @@ pub async fn get_app_user(user_id: String) -> Result<Option<AppUserData>, String
     let pool = crate::db::pool();
 
     let result = sqlx::query_as::<_, AppUserData>(
-        "SELECT id, email, display_name, avatar_url, subscription_tier, subscription_expires_at, created_at
+        "SELECT id, email, name, avatar_url, subscription_tier, subscription_expires_at, created_at
          FROM app_user
          WHERE id = ?",
     )
@@ -108,7 +108,7 @@ pub async fn delete_app_user(user_id: String) -> Result<(), String> {
 pub struct AppUserData {
     pub id: String,
     pub email: String,
-    pub display_name: Option<String>,
+    pub name: Option<String>,
     pub avatar_url: Option<String>,
     pub subscription_tier: String,
     pub subscription_expires_at: Option<i64>,

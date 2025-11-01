@@ -6,7 +6,7 @@
   import { Input } from "$lib/components/ui/input/index.js";
   import { cn } from "$lib/utils.js";
   import type { HTMLAttributes } from "svelte/elements";
-  import { signInWithEmail, signInWithGoogle, resetPassword } from "$lib/supabase";
+  import { signInWithEmail, signInWithGoogle, resetPassword, getAuthErrorMessage } from "$lib/supabase";
   import { goto } from "$app/navigation";
   import { authStore } from "$lib/stores/auth.svelte";
 
@@ -46,7 +46,7 @@
       console.log('[Login] Redirecting to main app');
       goto("/");
     } catch (err: any) {
-      error = err.message || "Failed to sign in";
+      error = getAuthErrorMessage(err);
       console.error("[Login] Login error:", err);
     } finally {
       loading = false;
@@ -66,7 +66,7 @@
         window.location.href = url;
       }
     } catch (err: any) {
-      error = err.message || "Failed to sign in with Google";
+      error = getAuthErrorMessage(err);
       console.error("Google login error:", err);
     } finally {
       loading = false;
@@ -85,7 +85,7 @@
       await resetPassword(email);
       resetSent = true;
     } catch (err: any) {
-      error = err.message || "Failed to send reset email";
+      error = getAuthErrorMessage(err);
       console.error("Reset password error:", err);
     } finally {
       loading = false;
