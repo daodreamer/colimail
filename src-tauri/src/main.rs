@@ -169,19 +169,19 @@ async fn main() {
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             // When a second instance is launched, this callback is triggered in the first instance
             tracing::info!("Single instance callback triggered, args: {:?}, cwd: {:?}", args, cwd);
-            
+
             // Check if args contain a deep link
             for arg in args.iter() {
                 if arg.starts_with("colimail://") {
                     tracing::info!("Processing deep link from second instance: {}", arg);
-                    
+
                     // Parse the deep link
                     if let Ok(url) = url::Url::parse(arg) {
                         if url.scheme() == "colimail" && url.host_str() == Some("auth") {
                             // Extract authorization code from query params
                             if let Some(code) = url.query_pairs().find(|(key, _)| key == "code") {
                                 tracing::info!("OAuth code received from second instance via deep link");
-                                
+
                                 // Emit event to frontend with the code
                                 if let Some(window) = app.get_webview_window("main") {
                                     let code_str = code.1.to_string();
@@ -201,7 +201,7 @@ async fn main() {
                     }
                 }
             }
-            
+
             // Bring the existing window to front
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
@@ -221,7 +221,7 @@ async fn main() {
             // Setup deep link handler for OAuth callbacks
             use tauri_plugin_deep_link::DeepLinkExt;
             app.deep_link().register_all()?;
-            
+
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| {
                 // event.urls() consumes event, so call it once and store result
@@ -230,15 +230,15 @@ async fn main() {
                     tracing::warn!("Deep link plugin: on_open_url called but no URLs provided");
                     return;
                 }
-                
+
                 tracing::info!("Deep link plugin: on_open_url triggered with URL: {}", urls[0]);
-                
+
                 let url = &urls[0];
                 if url.scheme() == "colimail" && url.host_str() == Some("auth") {
                     // Extract authorization code from query params
                     if let Some(code) = url.query_pairs().find(|(key, _)| key == "code") {
                         tracing::info!("Deep link plugin: OAuth code found, emitting oauth-code-received event");
-                        
+
                         // Emit event to frontend with the code
                         if let Some(window) = handle.get_webview_window("main") {
                             let code_str = code.1.to_string();
