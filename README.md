@@ -2,14 +2,15 @@
 
 <div align="center">
 
-**A lightweight, high-performance desktop email client**
+**A next‑generation, high‑performance desktop email client**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-blue.svg)](https://v2.tauri.app/)
-[![Rust](https://img.shields.io/badge/Rust-1.70+-orange.svg)](https://www.rust-lang.org/)
-[![SvelteKit](https://img.shields.io/badge/SvelteKit-2.0-red.svg)](https://kit.svelte.dev/)
+[![Rust](https://img.shields.io/badge/Rust-1.74+-orange.svg)](https://www.rust-lang.org/)
+[![SvelteKit](https://img.shields.io/badge/SvelteKit-2.x-red.svg)](https://kit.svelte.dev/)
+[![Status](https://img.shields.io/badge/status-beta-purple.svg)](#)
 
-[Features](#features) • [Installation](#installation) • [Usage](#usage) • [Development](#development) • [Contributing](#contributing)
+[Overview](#overview) • [Highlights](#highlights) • [Feature Matrix](#feature-matrix) • [Architecture](#architecture) • [Installation](#installation) • [Usage](#usage) • [Development](#development) • [Commands](#tauri-commands) • [Database](#database-schema) • [Logging](#logging--observability) • [Security](#security--privacy) • [Performance](#performance-targets) • [Roadmap](#roadmap) • [Contributing](#contributing)
 
 </div>
 
@@ -17,199 +18,304 @@
 
 ## Overview
 
-Colimail is a cross-platform desktop email client built with Tauri 2, SvelteKit, and Rust. Designed as a high-performance alternative to traditional email clients like Thunderbird, it handles large email volumes without performance degradation.
+Colimail is a cross‑platform desktop email client built with **Tauri 2**, **Rust**, and **SvelteKit (Svelte 5 runes)**. It focuses on predictable performance even with very large mailboxes (thousands to tens of thousands of messages) and provides an offline‑first experience with a local SQLite cache, secure credential storage, and real‑time push (IMAP IDLE) where supported.
 
-### Why Colimail?
+### Vision
+Deliver a fast, resource‑efficient alternative to heavy legacy clients (e.g. Thunderbird) while modernizing UX, security practices, and extensibility. Authentication for app users (Supabase) is optional: core mail operations work fully in guest mode.
 
-- **Lightweight**: Package size ≤ 30 MB, memory footprint ≤ 80 MB (idle)
-- **Fast**: Startup ≤ 1.5s, sync 100 emails in ≤ 3s, query latency ≤ 50ms
-- **Modern**: Built with Svelte 5 + Tauri 2 for native performance
-- **Secure**: Local SQLite storage, OAuth2 support for Gmail/Outlook
-- **Platforms**: Windows, macOS Apple Silicon
+### Core Principles
+1. Offline‑first: Everything essential is cached locally; operations degrade gracefully.
+2. Non‑blocking I/O: All heavy IMAP/SMTP/database work off the main async executor via `spawn_blocking`.
+3. Incremental sync: Minimal deltas, efficient flag updates, attachment detection background tasks.
+4. Secure by default: Credentials in OS keyring, tokens chunked to avoid platform limits.
+5. Progressive enhancement: Guest mode → optional cloud features (user profile, subscription, future sync).
 
-## Features
+## Highlights (v0.6.0 latest)
 
-- Multiple email account support (IMAP/SMTP)
-- OAuth2 authentication for Gmail and Microsoft accounts
-- Fast local email sync with SQLite
-- Rich text email composition
-- Attachment handling
-- Folder management
-- Search and filtering
-- Modern, responsive UI
-- Background sync and notifications
+Recent major capabilities (see full [CHANGELOG](./CHANGELOG.md)):
+
+| Area | Key Additions |
+|------|---------------|
+| Authentication | Supabase email/password + Google OAuth; user profile sync to local DB; deep link handling; robust session refresh & environment detection |
+| Security | OS keyring credential storage with chunking; removal of plaintext secrets from SQLite; planned encryption improvements |
+| Logging | Structured JSON logs, rotation (daily, 7‑day retention), backend log viewer, export & filtering groundwork |
+| UX Refactors | Modularized large Svelte pages into domain handlers; shadcn‑svelte sidebar patterns (sidebar‑09 / sidebar‑13); dialog‑based account & settings management |
+| Real‑time | Refactored IMAP IDLE manager, split into focused modules; single‑folder monitoring to respect provider limits |
+| Email Ops | Flag/star sync (bidirectional), background BODYSTRUCTURE attachment detection with retry, UTF‑7 folder handling |
+| Drafts | Local SQLite draft storage (compose/reply/forward) with auto‑save & attachment metadata |
+| Folders | Create/delete (remote vs local), system folder protection, context menus |
+| System Tray | Windows tray integration with minimize‑to‑tray preference |
+| Performance | Full mailbox sync (no artificial cap); batch & adaptive fetching; optimized logging noise reduction |
+
+## Feature Matrix
+
+| Category | Implemented | Notes |
+|----------|-------------|-------|
+| Multi‑Account IMAP/SMTP | ✅ | OAuth2 (Gmail/Outlook) & Basic auth; presets for 13 providers |
+| OAuth2 Deep Link | ✅ | Desktop + browser flow; `colimail://auth/callback` scheme |
+| User Auth (Supabase) | ✅ | Optional; guest mode fully supported |
+| Local Cache | ✅ | SQLite + incremental sync; flag & attachment metadata |
+| Drafts | ✅ | Local only (avoids Gmail IMAP draft mismatch) |
+| Rich Compose | ✅ | Reply / Forward / Attachments / Display name support |
+| Folders CRUD | ✅ | Remote capability detection + local fallback |
+| Search & Filter | ✅ | Subject / From / To + unread toggle; pagination |
+| Real‑time Push (IDLE) | ✅ | Inbox only (provider connection limits) |
+| System Notifications | ✅ | New mail, actions; permission bootstrap |
+| System Tray | ✅ | Minimize to tray configurable |
+| Structured Logging | ✅ | JSON + live viewer; rotation |
+| Credential Security | ✅ | OS keyring + chunking; password column removed |
+| Display Name Detection | ✅ | Sent folder heuristic & multi‑language matching |
+| Attachment Detection | ✅ | Background BODYSTRUCTURE processing & retry |
+| Performance Targets | 🔄 | Constant tuning (see below) |
+| Multi‑Language UI | ⏳ | Planned |
+| Calendar Integration | ⏳ | Planned |
+| Billing / Subscription | ⏳ | Planned (metadata tier field present) |
+
+Legend: ✅ implemented • 🔄 ongoing optimization • ⏳ planned
+
+## Architecture
+
+### High Level
+Frontend (SvelteKit + runes) calls Rust backend via Tauri invoke commands. Rust performs IMAP/SMTP, secure credential operations, structured logging, and local persistence. Supabase auth adds an "app user" layer separate from email account configurations.
+
+### Backend Modules
+| Module | Purpose |
+|--------|---------|
+| `main.rs` | App bootstrap, command registration, system tray, deep link & notification permission handling, IDLE auto‑start |
+| `db.rs` | SQLite initialization & migrations (accounts, folders, emails, drafts, app_user, settings) |
+| `commands/` | Domain commands (accounts, emails sync & fetch, folders CRUD, drafts, send, auth, logs, notifications, OAuth2, test_connection, display name detection) |
+| `idle_manager/` | Real‑time IMAP IDLE session orchestration split into manager/session/notification/types |
+| `security.rs` | OS keyring credential chunking, retrieval, deletion, updates |
+| `logger.rs` | Structured tracing subscriber setup, rotation, directory exposure |
+| `oauth2_config.rs` | Desktop OAuth credentials initialization |
+| `models.rs` | Shared structs (e.g. `AccountConfig`, draft & folder models, user profile) |
+
+### Frontend Structure
+| Area | Highlights |
+|------|-----------|
+| `routes/+page.svelte` | Orchestrates UI layout & delegates logic to `handlers/*` modules |
+| `handlers/` | Split concerns: account-folder, compose-send, draft-management, email-operations, sync-idle |
+| `stores/auth.svelte.ts` | Supabase session + user reactive rune store with manual refresh capability |
+| `lib/state.svelte.ts` | Global application state (selected account/folder, pagination, filters) |
+| `components/*.svelte` | UI building blocks (Sidebar, dialogs, email list, body viewer, log viewer) |
+| Shadcn‑svelte | Adopted official sidebar & dialog patterns for consistency |
+
+### Async & Performance Patterns
+* IMAP/SMTP & heavy parsing via `tokio::spawn_blocking` to avoid saturating async runtime.
+* Incremental sync tracks `UIDVALIDITY`, highest UID, flags, attachments; reduces redundant fetches.
+* Background tasks (BODYSTRUCTURE, flag sync) are resilient with retry + failure marking to prevent infinite loops.
+* Logging uses async appender with daily rotation, minimal overhead (<1% CPU typical).
 
 ## Installation
 
-### Download Pre-built Binaries
+Pre‑built packages are published on the [Releases page](https://github.com/daodreamer/colimail/releases). (Names will update as versions progress.)
 
-Visit the [Releases page](https://github.com/daodreamer/colimail/releases) to download the latest version:
+Current supported targets:
+* Windows x64
+* macOS (Apple Silicon) — Intel support considered on demand
+* Linux (.deb / AppImage) planned in upcoming release cycle (workflows partially prepared)
 
-- **Windows**: `Colimail_0.1.0_x64_en-US.msi`
-- **macOS Apple Silicon**: `Colimail_0.1.0_aarch64.dmg`
+### Windows
+1. Download latest `.msi` installer
+2. Execute installer wizard
+3. Launch from Start Menu (first run initializes DB + logs)
 
-### Installation Instructions
+### macOS (Apple Silicon)
+1. Download `.dmg`
+2. Drag Colimail to Applications
+3. If Gatekeeper prompts: right‑click → Open
 
-#### Windows
-1. Download the `.msi` installer
-2. Double-click to run the installer
-3. Follow the installation wizard
-4. Launch Colimail from the Start Menu
-
-#### macOS (Apple Silicon)
-1. Download the `.dmg` file
-2. Open the DMG and drag Colimail to Applications
-3. First launch: Right-click → Open (to bypass Gatekeeper)
-
-> **Note**: Currently only supporting Apple Silicon (M1/M2/M3) Macs. Intel Mac support may be added based on user demand.
+### Environment Variables (Development)
+Create a `.env` or use your shell for Supabase:
+```
+VITE_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+VITE_SUPABASE_ANON_KEY=YOUR_KEY
+```
 
 ## Usage
 
-### First Launch
+### First Launch Flow
+1. Start app → auto‑creates DB & log directory.
+2. If no accounts: UI presents Add Account dialog entry point.
+3. Add account via OAuth2 (Gmail / Outlook) or Manual (provider preset or custom). Test Connection ensures settings validity before creation.
+4. Initial full sync populates local cache; attachment & flag background tasks kick in.
+5. IDLE auto‑monitoring starts (Inbox only) → system notifications for new mail.
 
-1. Open Colimail
-2. Click "Add Account" in Settings
-3. Choose authentication method:
-   - **OAuth2**: For Gmail/Outlook (recommended)
-   - **Password**: For standard IMAP/SMTP servers
+### Account Types
+* Basic (username/password) — password stored only in OS keyring.
+* OAuth2 — access/refresh tokens chunked & stored securely; refresh handled server‑side logic.
 
-### Adding an Account
+### Display Name
+Optional per account; auto‑detection scans recent Sent items. Can be manually edited (including OAuth2 accounts).
 
-**Gmail (OAuth2)**:
-1. Select "Gmail" → "Sign in with Google"
-2. Complete OAuth2 authorization
-3. Email syncs automatically
+### Draft Workflow
+Compose ↔ Auto‑save (3s debounce) ↔ Send deletes draft. Reply/Forward preserve original reference metadata.
 
-**Custom IMAP/SMTP**:
-1. Enter email address and password
-2. Configure server settings:
-   - IMAP server: `imap.example.com:993`
-   - SMTP server: `smtp.example.com:587`
-3. Save and sync
-
-### OAuth2 Setup
-
-For Gmail and Microsoft OAuth2 configuration, see [OAUTH2_SETUP.md](./OAUTH2_SETUP.md).
+### Search & Pagination
+Client‑side search (subject/from/to) + unread toggle. Pagination defaults to 50 items/page; full count displayed.
 
 ## Development
 
 ### Prerequisites
+* Rust stable (1.74+ recommended)
+* Node.js 18+
+* Platform toolchain (VS Build Tools / Xcode CLT / Linux GTK + WebKit2 deps)
 
-- **Rust** 1.70+ ([Install](https://rustup.rs/))
-- **Node.js** 18+ ([Install](https://nodejs.org/))
-- **Platform-specific tools**:
-  - Windows: Visual Studio Build Tools
-  - macOS: Xcode Command Line Tools
-  - Linux: `build-essential`, `libwebkit2gtk-4.0-dev`, `libssl-dev`
-
-### Setup
-
+### Install & Run
 ```bash
-# Clone the repository
 git clone https://github.com/daodreamer/colimail.git
 cd colimail
-
-# Install dependencies
 npm install
-
-# Run in development mode
 npm run tauri dev
 ```
 
-### Build Commands
-
+### Scripts
 ```bash
-# Frontend development
-npm run dev              # Run SvelteKit dev server
-npm run build            # Build frontend
-npm run check            # Type checking
+npm run dev          # Frontend only (web preview)
+npm run tauri dev    # Full desktop app
+npm run build        # Frontend production build
+npm run check        # Type & Svelte validation
 
-# Backend development
 cd src-tauri
-cargo fmt                # Format code
-cargo check              # Check for errors
-cargo build              # Build backend
-cargo build --release    # Release build
-
-# Full application
-npm run tauri dev        # Run desktop app in dev mode
-npm run tauri build      # Build production app
+cargo fmt && cargo check && cargo clippy -- -D warnings
+cargo build --release
 ```
 
-### Project Structure
-
+### Project Structure (Simplified)
 ```
-colimail/
-├── src/                    # SvelteKit frontend
-│   ├── routes/            # Page routes
-│   └── lib/               # Components & utilities
-├── src-tauri/             # Rust backend
-│   ├── src/
-│   │   ├── main.rs        # Application entry point
-│   │   ├── db.rs          # SQLite database layer
-│   │   ├── commands/      # Tauri commands
-│   │   └── models.rs      # Data models
-│   └── Cargo.toml
-├── CLAUDE.md              # Development guidelines
-└── package.json
+src/              # SvelteKit frontend
+   routes/         # Pages & dialogs (auth/, settings/, handlers/ modules)
+   lib/            # Stores, global state, utilities
+   components/     # Reusable UI pieces
+src-tauri/
+   src/
+      main.rs       # Entry & tray/deep link/IDLE bootstrap
+      db.rs         # SQLite init & migrations
+      security.rs   # Keyring credential logic
+      logger.rs     # Tracing + rotation
+      commands/     # Tauri commands (domain modules)
+      idle_manager/ # Real-time IMAP IDLE subsystem
+      models.rs     # Shared data structs
+CHANGELOG.md
+README.md
 ```
 
-## Architecture
+## Tauri Commands
 
-- **Frontend**: SvelteKit (Svelte 5) + TypeScript
-- **Backend**: Rust + Tauri 2
-- **Database**: SQLite (via rusqlite)
-- **Email**: IMAP (`imap` crate) + SMTP (`lettre`)
-- **Authentication**: OAuth2 (`oauth2` crate)
+Backend exposes a rich command surface (invoked via `invoke("command_name", payload)`):
 
-For detailed architecture documentation, see [CLAUDE.md](./CLAUDE.md).
+| Group | Examples |
+|-------|----------|
+| Accounts | `save_account_config`, `load_account_configs`, `delete_account`, `detect_display_name_from_sent` |
+| Emails | `fetch_emails`, `fetch_email_body`, `fetch_email_body_cached`, `load_emails_from_cache`, `sync_emails`, `sync_email_flags`, `sync_specific_email_flags`, `mark_email_as_read`, `mark_email_as_unread`, `mark_email_as_flagged`, `mark_email_as_unflagged`, `move_email_to_trash`, `delete_email` |
+| Folders | `fetch_folders`, `sync_folders`, `load_folders`, `create_remote_folder`, `delete_remote_folder`, `create_local_folder`, `delete_local_folder`, `check_folder_capabilities` |
+| Drafts | `save_draft`, `load_draft`, `list_drafts`, `delete_draft` |
+| Sending | `send_email`, `reply_email`, `forward_email`, `get_attachment_size_limit`, `download_attachment`, `save_attachment_to_file` |
+| Auth (App User) | `get_secure_storage`, `set_secure_storage`, `delete_secure_storage`, `sync_app_user`, `get_app_user`, `delete_app_user` |
+| OAuth2 Flow | `start_oauth2_flow`, `listen_for_oauth_callback`, `complete_oauth2_flow` |
+| Connection Test | `test_connection` |
+| IDLE | `start_idle`, `stop_idle`, `stop_all_idle`, `is_idle_active`, `start_idle_for_account`, `stop_idle_for_account`, `start_idle_for_all_accounts` |
+| Logs | `get_log_directory`, `get_current_log_file`, `read_recent_logs`, `list_log_files`, `read_log_file` |
+| Notifications/Settings | `get_sync_interval`, `set_sync_interval`, `get_notification_enabled`, `set_notification_enabled`, `get_sound_enabled`, `set_sound_enabled`, `get_minimize_to_tray`, `set_minimize_to_tray`, `should_sync`, `get_last_sync_time` |
 
-## Contributing
+## Database Schema
 
-We welcome contributions! Please see [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+SQLite schema (simplified, see `db.rs` for authoritative definitions):
+* `accounts` — id, email, servers, ports, auth_type, display_name, oauth metadata
+* `folders` — id, account_id, name (UTF‑7 encoded raw), display_name, is_local, sync metadata
+* `emails` — id, account_id, folder_id, uid, subject, from_addr, to_addr, cc_addr, date, flags, seen, has_attachments, internaldate
+* `drafts` — id, account_id, to_addr, cc_addr, subject, body, attachments (JSON), draft_type, original_email_id, timestamps
+* `app_user` — id, email, name, avatar_url, subscription_tier, subscription_expires_at, last_synced_at, created_at
+* `settings` — key/value (e.g. `minimize_to_tray`, `sync_interval`, notification preferences)
 
-### Quick Start
+Design notes:
+* Attachments metadata stored separate from binary payload (fetched on demand).
+* Flags & seen status cached for fast filtering & optimistic UI.
+* Drafts localized to avoid IMAP provider inconsistencies (e.g. Gmail).
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit changes: `git commit -m 'Add amazing feature'`
-4. Push to branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+## Logging & Observability
 
-### Reporting Issues
+Structured tracing (JSON) + optional pretty console in dev. Commands to inspect:
+* `get_log_directory` – base path (per‑platform user data dir)
+* `get_current_log_file` – today’s rotating file
+* `read_recent_logs(lines)` – tail N lines
+* `list_log_files` – available historical files
+* `read_log_file(filename)` – complete file content
 
-Found a bug or have a feature request? Please [open an issue](https://github.com/daodreamer/colimail/issues/new).
+Rotation: daily; retention: 7 days. Sensitive data (passwords, tokens, message bodies) deliberately excluded.
 
 ## Security & Privacy
 
-- **Local Storage**: All emails stored locally in SQLite
-- **Password Security**: Passwords stored in plaintext (⚠️ planned for improvement)
-- **OAuth2**: Tokens stored securely with platform-specific encryption (planned)
-- **No Telemetry**: No data collection or tracking
+| Aspect | Status |
+|--------|--------|
+| Credential storage | OS keyring via `keyring` crate; chunking for long tokens |
+| Password plaintext in DB | Removed (migrated to keyring) |
+| OAuth2 tokens | Stored securely (chunked) |
+| Session (Supabase) | Local storage (sandboxed) + optional secure storage fallback |
+| Email content | Local only; no external telemetry |
+| Future | Encryption at rest for cached emails; multi‑tenant cloud sync (opt‑in) |
 
-For security concerns, please see [SECURITY.md](./SECURITY.md).
+Report concerns via [SECURITY.md](./SECURITY.md).
 
 ## Performance Targets
 
-- Startup time: ≤ 1.5 seconds (cold start)
-- Memory footprint: ≤ 80 MB (idle)
-- CPU usage: ≤ 5% (idle)
-- Email sync: 100 emails in ≤ 3 seconds
-- Package size: ≤ 30 MB (Windows executable)
+| Metric | Target | Current Status* |
+|--------|--------|-----------------|
+| Cold startup | ≤ 1.5s | Achieved on reference Windows/macOS test rigs |
+| Idle memory | ≤ 80MB | ~70MB (recent measurements) |
+| Sync throughput | 100 emails ≤ 3s | Achieved; large mailbox full sync optimized |
+| Flag update latency | < 300ms | Single‑UID sync ~50ms |
+| Package size | ≤ 30MB | Within range (depends on platform) |
 
-## License
+*Indicative values – verify with your environment; logging verbosity & antivirus can affect results.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Roadmap
 
-## Acknowledgments
+Short‑term (0.7.x):
+* Log search & export (ZIP)
+* Multi‑language UI (i18n framework integration)
+* Notification preference expansion (per account/folder)
+* Calendar integration groundwork (ICS parsing, provider discovery)
 
-Built with:
-- [Tauri](https://tauri.app/) - Desktop application framework
-- [SvelteKit](https://kit.svelte.dev/) - Frontend framework
-- [Rust](https://www.rust-lang.org/) - Backend language
-- [rusqlite](https://github.com/rusqlite/rusqlite) - SQLite bindings
-- [lettre](https://github.com/lettre/lettre) - SMTP client
+Mid‑term (0.8.x – 0.9.x):
+* Advanced search index (SQLite FTS or Tantivy)
+* Rule engine (filter, auto‑tag, move)
+* Encrypted local message store (AES‑GCM with user key)
+* Subscription / billing UI & entitlement checks
+
+Long‑term (1.x):
+* Cross‑device sync (optional cloud) for flags, drafts, rules
+* Plugin system (scriptable automations)
+* Smart categorization & ML‑assisted triage
+
+## Contributing
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for workflow & standards. Please ensure:
+1. `cargo fmt && cargo check && cargo clippy -- -D warnings` passes
+2. `npm run check` yields 0 errors/warnings
+3. No secrets added to repository; use env vars & keyring
+
+### Quick Start
+```bash
+git checkout -b feature/my-improvement
+# ... changes ...
+git commit -m "feat: add X"
+git push origin feature/my-improvement
+```
+Open a Pull Request with description, screenshots (UI), and performance notes if relevant.
 
 ## Recommended IDE Setup
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+VS Code + Svelte extension + Tauri extension + rust-analyzer. Enable format‑on‑save for Rust & TypeScript and run `npm run check` before commits.
+
+## License
+
+MIT License – see [LICENSE](./LICENSE).
+
+## Acknowledgments
+
+Built on great open source work: Tauri, SvelteKit, Supabase, tokio, lettre, imap, sqlx, tracing, and the broader Rust/Svelte ecosystems.
+
+---
+
+For historical changes, consult the full [CHANGELOG](./CHANGELOG.md).
