@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Subscription/billing management interface
 - Notifications settings dialog
 
+## [0.6.1] - 2025-11-05
+
+### Fixed
+- **ComposeDialog Positioning**: Fixed dialog centering issue with Tailwind CSS v4
+  - Resolved positioning bug where Compose dialog appeared incorrectly positioned (at top of viewport) on initial open
+  - Fixed Tailwind CSS v4 compatibility issue with `translate-x-[-50%]` and `translate-y-[-50%]` utilities in Chrome
+  - Replaced buggy Tailwind translate utilities with standard CSS `transform: translate(-50%, -50%)`
+  - Dialog now consistently appears centered regardless of whether opened via Compose, Reply, or Forward buttons
+  - Related to known Tailwind CSS v4 issue affecting bits-ui/shadcn-svelte Dialog components
+  - References: [shadcn-svelte#1647](https://github.com/huntabyte/shadcn-svelte/issues/1647), [shadcn-ui#7507](https://github.com/shadcn-ui/ui/issues/7507)
+
 ## [0.6.0] - 2025-11-01
 
 ### Fixed

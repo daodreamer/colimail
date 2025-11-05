@@ -148,7 +148,7 @@
         aria-label="Font family"
         style="font-family: {currentFontFamily};"
       >
-        {#each fontFamilies as font}
+        {#each fontFamilies as font (font.value)}
           <option value={font.value} style="font-family: {font.value};">
             {font.label}
           </option>
@@ -165,7 +165,7 @@
         {disabled}
         aria-label="Font size"
       >
-        {#each fontSizes as size}
+        {#each fontSizes as size (size.value)}
           <option value={size.value}>{size.label}</option>
         {/each}
       </select>
@@ -303,6 +303,7 @@
   .rich-text-editor {
     display: flex;
     flex-direction: column;
+    flex: 1;
     border: 1px solid var(--border-color);
     border-radius: 4px;
     background-color: var(--app-bg);
@@ -404,7 +405,7 @@
 
   .editor-content {
     min-height: 150px;
-    max-height: 400px;
+    flex: 1;
     padding: 0.75rem;
     overflow-y: auto;
     font-family: sans-serif;
