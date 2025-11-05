@@ -706,6 +706,14 @@
     padding-left: 2rem;
   }
 
+  .editor-content :global(ul) {
+    list-style: disc outside;
+  }
+
+  .editor-content :global(ol) {
+    list-style: decimal outside;
+  }
+
   .editor-content :global(li) {
     margin: 0.25rem 0;
   }
