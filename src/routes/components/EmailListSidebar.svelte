@@ -70,27 +70,27 @@
   let showUnreadsOnly = $state(false);
   let searchQuery = $state("");
 
-  const filteredEmails = $derived(() => {
+  const filteredEmails = $derived.by(() => {
     let result = showUnreadsOnly ? emails.filter((email) => !email.seen) : emails;
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter((email) => 
+      result = result.filter((email) =>
         email.subject.toLowerCase().includes(query) ||
         email.from.toLowerCase().includes(query) ||
         email.to.toLowerCase().includes(query)
       );
     }
-    
+
     return result;
   });
 
   // Pagination calculations
-  const totalPages = $derived(Math.ceil(filteredEmails().length / pageSize));
-  const paginatedEmails = $derived(() => {
+  const totalPages = $derived(Math.ceil(filteredEmails.length / pageSize));
+  const paginatedEmails = $derived.by(() => {
     const start = (currentPage - 1) * pageSize;
     const end = start + pageSize;
-    return filteredEmails().slice(start, end);
+    return filteredEmails.slice(start, end);
   });
 
   // If current page exceeds total pages due to filtering, reset to page 1
@@ -106,9 +106,9 @@
   );
 
   // Derived state: check if this email's context menu is open
-  const isEmailContextMenuOpen = $derived((uid: number) => {
+  function isEmailContextMenuOpen(uid: number): boolean {
     return openContextMenuType === 'email' && openContextMenuId === uid;
-  });
+  }
 </script>
 
 <Sidebar.Root collapsible="none" class="hidden flex-1 md:flex">
@@ -125,11 +125,11 @@
     <Sidebar.Input bind:value={searchQuery} placeholder="Type to search..." />
     
     <!-- Pagination component -->
-    <Pagination 
+    <Pagination
       currentPage={currentPage}
       totalPages={totalPages}
       pageSize={pageSize}
-      totalItems={filteredEmails().length}
+      totalItems={filteredEmails.length}
       onPageChange={onPageChange}
     />
   </Sidebar.Header>
@@ -149,8 +149,8 @@
           {/each}
         {:else if error && emails.length === 0}
           <div class="p-4 text-center text-sm text-destructive">{error}</div>
-        {:else if paginatedEmails().length > 0}
-          {#each paginatedEmails() as email (email.uid)}
+        {:else if paginatedEmails.length > 0}
+          {#each paginatedEmails as email (email.uid)}
             <ContextMenu.Root
               open={isEmailContextMenuOpen(email.uid)}
               onOpenChange={(isOpen) => {

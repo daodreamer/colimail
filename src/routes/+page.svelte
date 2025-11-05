@@ -109,7 +109,7 @@
   });
 
   // Reload sync interval when returning from settings
-  $effect(() => {
+  onMount(() => {
     const handleVisibilityChange = async () => {
       if (document.visibilityState === "visible") {
         try {

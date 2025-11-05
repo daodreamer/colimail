@@ -141,7 +141,7 @@
 
         {#if attachments.length > 0}
           <div class="space-y-2 pt-2">
-            {#each attachments as file, index}
+            {#each attachments as file, index (file.name + file.size + index)}
               <div class="flex items-center gap-2 rounded-md border bg-muted/40 p-2">
                 <span class="flex-1 truncate text-sm">{file.name}</span>
                 <Badge variant="secondary" class="text-xs">{formatFileSize(file.size)}</Badge>
