@@ -1,5 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import BoldIcon from "@lucide/svelte/icons/bold";
+  import ItalicIcon from "@lucide/svelte/icons/italic";
+  import UnderlineIcon from "@lucide/svelte/icons/underline";
+  import TextAlignStartIcon from "@lucide/svelte/icons/text-align-start";
+  import TextAlignCenterIcon from "@lucide/svelte/icons/text-align-center";
+  import TextAlignEndIcon from "@lucide/svelte/icons/text-align-end";
+  import ListIcon from "@lucide/svelte/icons/list";
+  import ListOrderedIcon from "@lucide/svelte/icons/list-ordered";
+  import IndentDecreaseIcon from "@lucide/svelte/icons/indent-decrease";
+  import IndentIncreaseIcon from "@lucide/svelte/icons/indent-increase";
+  import PaletteIcon from "@lucide/svelte/icons/palette";
+  import HighlighterIcon from "@lucide/svelte/icons/highlighter";
 
   // Props
   let {
@@ -15,6 +27,19 @@
   let editorElement: HTMLDivElement;
   let currentFontFamily = $state("Arial, sans-serif");
   let currentFontSize = $state("3");
+  let currentTextColor = $state("#000000");
+  let currentHighlightColor = $state("#ffffff");
+  let lastSelection = $state<Range | null>(null);
+  let formattingState = $state({
+    bold: false,
+    italic: false,
+    underline: false,
+    alignStart: false,
+    alignCenter: false,
+    alignEnd: false,
+    unorderedList: false,
+    orderedList: false,
+  });
 
   // Comprehensive font list based on mainstream email clients (Gmail, Outlook, etc.)
   const fontFamilies = [
@@ -66,25 +91,38 @@
   ];
 
   onMount(() => {
-    if (editorElement) {
-      // Set initial content
-      if (value) {
-        editorElement.innerHTML = value;
-      }
-
-      // Update value when content changes
-      const observer = new MutationObserver(() => {
-        value = editorElement.innerHTML;
-      });
-
-      observer.observe(editorElement, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
-
-      return () => observer.disconnect();
+    if (!editorElement) {
+      return;
     }
+
+    if (value) {
+      editorElement.innerHTML = value;
+    }
+
+    const observer = new MutationObserver(() => {
+      value = editorElement.innerHTML;
+    });
+
+    observer.observe(editorElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+
+    const selectionHandler = () => updateFormattingState();
+
+    document.addEventListener("selectionchange", selectionHandler);
+    editorElement.addEventListener("keyup", updateFormattingState);
+    editorElement.addEventListener("mouseup", updateFormattingState);
+
+    updateFormattingState();
+
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("selectionchange", selectionHandler);
+      editorElement.removeEventListener("keyup", updateFormattingState);
+      editorElement.removeEventListener("mouseup", updateFormattingState);
+    };
   });
 
   // Watch for external value changes
@@ -93,6 +131,7 @@
       const selection = saveSelection();
       editorElement.innerHTML = value;
       restoreSelection(selection);
+      updateFormattingState();
     }
   });
 
@@ -105,16 +144,17 @@
   }
 
   function restoreSelection(range: Range | null) {
-    if (range) {
-      const sel = window.getSelection();
-      sel?.removeAllRanges();
-      sel?.addRange(range);
-    }
+    if (!range) return;
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
   }
 
   function execCommand(command: string, value: string | boolean = false) {
+    restoreSelection(lastSelection);
     document.execCommand(command, false, value as string);
     editorElement.focus();
+    updateFormattingState();
   }
 
   function handleFontFamilyChange(event: Event) {
@@ -133,6 +173,143 @@
     event.preventDefault();
     const text = event.clipboardData?.getData("text/plain") || "";
     document.execCommand("insertText", false, text);
+  }
+
+  function handleTextColorChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    currentTextColor = target.value;
+    execCommand("foreColor", target.value);
+  }
+
+  function handleHighlightColorChange(event: Event) {
+    const target = event.target as HTMLInputElement;
+    currentHighlightColor = target.value;
+    restoreSelection(lastSelection);
+    if (!document.execCommand("hiliteColor", false, target.value)) {
+      document.execCommand("backColor", false, target.value);
+    }
+    editorElement.focus();
+    updateFormattingState();
+  }
+
+  function cacheSelection() {
+    const selection = saveSelection();
+    if (!selection || !editorElement) return;
+    if (isNodeInsideEditor(selection.commonAncestorContainer)) {
+      lastSelection = selection;
+    }
+  }
+
+  function updateFormattingState() {
+    if (!editorElement) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!isNodeInsideEditor(range.commonAncestorContainer)) return;
+
+    lastSelection = range;
+
+    formattingState = {
+      bold: document.queryCommandState("bold"),
+      italic: document.queryCommandState("italic"),
+      underline: document.queryCommandState("underline"),
+      alignStart: document.queryCommandState("justifyLeft"),
+      alignCenter: document.queryCommandState("justifyCenter"),
+      alignEnd: document.queryCommandState("justifyRight"),
+      unorderedList: document.queryCommandState("insertUnorderedList"),
+      orderedList: document.queryCommandState("insertOrderedList"),
+    };
+
+    const fontName = document.queryCommandValue("fontName");
+    if (fontName) {
+      currentFontFamily = normalizeFontName(fontName);
+    }
+
+    const fontSize = document.queryCommandValue("fontSize");
+    if (fontSize) {
+      currentFontSize = fontSize;
+    }
+
+    const foreColor = document.queryCommandValue("foreColor");
+    if (foreColor) {
+      currentTextColor = normalizeColor(foreColor);
+    } else {
+      currentTextColor = "#000000";
+    }
+
+    const highlightColor = document.queryCommandValue("hiliteColor") || document.queryCommandValue("backColor");
+    if (highlightColor) {
+      currentHighlightColor = normalizeColor(highlightColor, "#ffffff");
+    } else {
+      currentHighlightColor = "#ffffff";
+    }
+  }
+
+  function isNodeInsideEditor(node: Node) {
+    if (!editorElement) return false;
+    const elementNode = node instanceof Element ? node : node.parentElement ?? node;
+    return editorElement.contains(elementNode);
+  }
+
+  function normalizeFontName(name: string) {
+    const cleaned = name.replace(/"/g, "").toLowerCase();
+    const match = fontFamilies.find(
+      (font) => font.value.replace(/"/g, "").toLowerCase() === cleaned
+    );
+    return match ? match.value : name;
+  }
+
+  function normalizeColor(value: string, fallback = "#000000") {
+    if (!value) return fallback;
+    if (value === "transparent") return fallback;
+    if (value.startsWith("#")) {
+      if (value.length === 4) {
+        return (
+          "#" +
+          value[1] + value[1] +
+          value[2] + value[2] +
+          value[3] + value[3]
+        ).toLowerCase();
+      }
+      return value.toLowerCase();
+    }
+
+    const rgbaMatch = value.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?/i);
+    if (rgbaMatch) {
+      const r = Number(rgbaMatch[1]);
+      const g = Number(rgbaMatch[2]);
+      const b = Number(rgbaMatch[3]);
+      const alpha = rgbaMatch[4] !== undefined ? Number(rgbaMatch[4]) : 1;
+      if (alpha === 0) {
+        return fallback;
+      }
+      return rgbToHex(r, g, b);
+    }
+
+    const temp = document.createElement("div");
+    temp.style.color = value;
+    document.body.appendChild(temp);
+    const computedColor = getComputedStyle(temp).color;
+    document.body.removeChild(temp);
+
+    const computedMatch = computedColor.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([0-9.]+))?/i);
+    if (computedMatch) {
+      const r = Number(computedMatch[1]);
+      const g = Number(computedMatch[2]);
+      const b = Number(computedMatch[3]);
+      const alpha = computedMatch[4] !== undefined ? Number(computedMatch[4]) : 1;
+      if (alpha === 0) {
+        return fallback;
+      }
+      return rgbToHex(r, g, b);
+    }
+
+    return fallback;
+  }
+
+  function rgbToHex(r: number, g: number, b: number) {
+    const toHex = (num: number) => num.toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
   }
 </script>
 
@@ -171,36 +348,68 @@
       </select>
     </div>
 
+    <div class="toolbar-group color-group">
+      <label class="color-button" aria-label="Text color" class:disabled={disabled}>
+        <PaletteIcon size={18} />
+        <input
+          type="color"
+          class="color-input"
+          value={currentTextColor}
+          onchange={handleTextColorChange}
+          onfocus={cacheSelection}
+          onpointerdown={cacheSelection}
+          {disabled}
+          aria-label="Choose text color"
+        />
+      </label>
+      <label class="color-button" aria-label="Highlight color" class:disabled={disabled}>
+        <HighlighterIcon size={18} />
+        <input
+          type="color"
+          class="color-input"
+          value={currentHighlightColor}
+          onchange={handleHighlightColorChange}
+          onfocus={cacheSelection}
+          onpointerdown={cacheSelection}
+          {disabled}
+          aria-label="Choose highlight color"
+        />
+      </label>
+    </div>
+
     <div class="toolbar-divider"></div>
 
     <!-- Text formatting -->
     <div class="toolbar-group">
       <button
         class="toolbar-button"
+        class:active={formattingState.bold}
         onclick={() => execCommand("bold")}
         {disabled}
         title="Bold (Ctrl+B)"
         aria-label="Bold"
       >
-        <strong>B</strong>
+        <BoldIcon size={18} />
       </button>
       <button
         class="toolbar-button"
+        class:active={formattingState.italic}
         onclick={() => execCommand("italic")}
         {disabled}
         title="Italic (Ctrl+I)"
         aria-label="Italic"
       >
-        <em>I</em>
+        <ItalicIcon size={18} />
       </button>
       <button
         class="toolbar-button"
+        class:active={formattingState.underline}
         onclick={() => execCommand("underline")}
         {disabled}
         title="Underline (Ctrl+U)"
         aria-label="Underline"
       >
-        <span style="text-decoration: underline;">U</span>
+        <UnderlineIcon size={18} />
       </button>
     </div>
 
@@ -210,30 +419,33 @@
     <div class="toolbar-group">
       <button
         class="toolbar-button"
+        class:active={formattingState.alignStart && !formattingState.alignCenter && !formattingState.alignEnd}
         onclick={() => execCommand("justifyLeft")}
         {disabled}
-        title="Align left"
-        aria-label="Align left"
+        title="Align start"
+        aria-label="Align start"
       >
-        ☰
+        <TextAlignStartIcon size={18} />
       </button>
       <button
         class="toolbar-button"
+        class:active={formattingState.alignCenter}
         onclick={() => execCommand("justifyCenter")}
         {disabled}
         title="Align center"
         aria-label="Align center"
       >
-        ☷
+        <TextAlignCenterIcon size={18} />
       </button>
       <button
         class="toolbar-button"
+        class:active={formattingState.alignEnd && !formattingState.alignCenter && !formattingState.alignStart}
         onclick={() => execCommand("justifyRight")}
         {disabled}
-        title="Align right"
-        aria-label="Align right"
+        title="Align end"
+        aria-label="Align end"
       >
-        ≡
+        <TextAlignEndIcon size={18} />
       </button>
     </div>
 
@@ -243,21 +455,23 @@
     <div class="toolbar-group">
       <button
         class="toolbar-button"
+        class:active={formattingState.unorderedList}
         onclick={() => execCommand("insertUnorderedList")}
         {disabled}
         title="Bulleted list"
         aria-label="Bulleted list"
       >
-        • •
+        <ListIcon size={18} />
       </button>
       <button
         class="toolbar-button"
+        class:active={formattingState.orderedList}
         onclick={() => execCommand("insertOrderedList")}
         {disabled}
         title="Numbered list"
         aria-label="Numbered list"
       >
-        1. 2.
+        <ListOrderedIcon size={18} />
       </button>
     </div>
 
@@ -272,7 +486,7 @@
         title="Decrease indent"
         aria-label="Decrease indent"
       >
-        ◁
+        <IndentDecreaseIcon size={18} />
       </button>
       <button
         class="toolbar-button"
@@ -281,12 +495,11 @@
         title="Increase indent"
         aria-label="Increase indent"
       >
-        ▷
+        <IndentIncreaseIcon size={18} />
       </button>
     </div>
   </div>
-
-  <!-- Editor content area -->
+<!-- Editor content area -->
   <div
     bind:this={editorElement}
     class="editor-content"
@@ -329,6 +542,10 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
+  }
+
+  .color-group {
+    margin-left: 0.25rem;
   }
 
   .toolbar-divider {
@@ -401,6 +618,55 @@
   .toolbar-button:disabled {
     opacity: 0.5;
     cursor: not-allowed;
+  }
+
+  .toolbar-button.active {
+    background-color: var(--selected-bg);
+    border-color: var(--border-color);
+    color: var(--accent-foreground, var(--text-color));
+  }
+
+  .toolbar-button :global(svg) {
+    width: 18px;
+    height: 18px;
+  }
+
+  .color-button {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: transparent;
+    color: var(--text-color);
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .color-button:hover {
+    background-color: var(--hover-bg);
+    border-color: var(--border-color);
+  }
+
+  .color-button:focus-within {
+    border-color: var(--border-color);
+    background-color: var(--hover-bg);
+  }
+
+  .color-button.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  .color-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
   }
 
   .editor-content {

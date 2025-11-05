@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Related to known Tailwind CSS v4 issue affecting bits-ui/shadcn-svelte Dialog components
   - References: [shadcn-svelte#1647](https://github.com/huntabyte/shadcn-svelte/issues/1647), [shadcn-ui#7507](https://github.com/shadcn-ui/ui/issues/7507)
 
+### Changed
+- **ComposeDialog Rich Text Toolbar**: Upgraded editing controls for a clearer, more capable compose experience
+  - Replaced legacy glyph buttons with lucide icons and highlighted active formatting states
+  - Added inline text and highlight color pickers that respect the current selection and sync with external updates
+
 ## [0.6.0] - 2025-11-01
 
 ### Fixed
