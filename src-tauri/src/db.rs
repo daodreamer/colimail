@@ -191,6 +191,19 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await?;
 
+    // Encryption settings
+    sqlx::query(
+        "INSERT OR IGNORE INTO settings (key, value) VALUES ('encryption_enabled', 'false')",
+    )
+    .execute(&pool)
+    .await?;
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('encryption_salt', '')")
+        .execute(&pool)
+        .await?;
+    sqlx::query("INSERT OR IGNORE INTO settings (key, value) VALUES ('password_hash', '')")
+        .execute(&pool)
+        .await?;
+
     // Create attachments table for storing email attachments
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS attachments (

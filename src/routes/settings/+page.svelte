@@ -17,7 +17,7 @@
   let minimizeToTray = $state<boolean>(true);
   let isSavingWindowSettings = $state(false);
   let isCheckingUpdate = $state(false);
-  let appVersion = $state("0.6.1");
+  let appVersion = $state("0.6.2");
 
   // Load settings on mount
   onMount(async () => {

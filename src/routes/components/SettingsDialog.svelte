@@ -44,7 +44,18 @@
   let minimizeToTray = $state<boolean>(true);
   let isSaving = $state(false);
   let isCheckingUpdate = $state(false);
-  let appVersion = $state("0.6.1");
+  let appVersion = $state("0.6.2");
+
+  // Encryption state
+  interface EncryptionStatus {
+    enabled: boolean;
+    unlocked: boolean;
+  }
+  let encryptionStatus = $state<EncryptionStatus>({ enabled: false, unlocked: false });
+  let masterPassword = $state("");
+  let confirmPassword = $state("");
+  let unlockPassword = $state("");
+  let isEnablingEncryption = $state(false);
 
   // Load settings when dialog opens
   $effect(() => {
@@ -59,8 +70,62 @@
       notificationEnabled = await invoke<boolean>("get_notification_enabled");
       soundEnabled = await invoke<boolean>("get_sound_enabled");
       minimizeToTray = await invoke<boolean>("get_minimize_to_tray");
+      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
     } catch (error) {
       console.error("Failed to load settings:", error);
+    }
+  }
+
+  async function enableEncryption() {
+    if (masterPassword.length < 8) {
+      toast.error("Password must be at least 8 characters long");
+      return;
+    }
+    if (masterPassword !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    isEnablingEncryption = true;
+    try {
+      await invoke("enable_encryption", { password: masterPassword });
+      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      toast.success("Encryption enabled successfully!");
+      masterPassword = "";
+      confirmPassword = "";
+    } catch (error) {
+      console.error("Failed to enable encryption:", error);
+      toast.error(`Failed to enable encryption: ${error}`);
+    } finally {
+      isEnablingEncryption = false;
+    }
+  }
+
+  async function unlockEncryption() {
+    if (!unlockPassword) {
+      toast.error("Please enter your password");
+      return;
+    }
+
+    try {
+      await invoke("unlock_encryption_with_password", { password: unlockPassword });
+      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      toast.success("Encryption unlocked successfully!");
+      unlockPassword = "";
+    } catch (error) {
+      console.error("Failed to unlock encryption:", error);
+      toast.error("Invalid password");
+    }
+  }
+
+  async function lockEncryption() {
+    try {
+      await invoke("lock_encryption_command");
+      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      toast.success("Encryption locked");
+    } catch (error) {
+      console.error("Failed to lock encryption:", error);
+      toast.error("Failed to lock encryption");
     }
   }
 
@@ -275,10 +340,127 @@
             </div>
 
           {:else if currentPage === "Privacy & visibility"}
-            <div class="bg-muted/50 rounded-xl p-6 space-y-4 max-w-3xl">
-              <p class="text-sm text-muted-foreground">
-                Privacy and visibility settings coming soon...
-              </p>
+            <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- Local Data Encryption -->
+              <div class="space-y-4">
+                <div>
+                  <h4 class="text-sm font-medium mb-1">Local data encryption</h4>
+                  <p class="text-xs text-muted-foreground">
+                    Encrypt email content stored in the local cache database
+                  </p>
+                </div>
+
+                <!-- Encryption Status Badge -->
+                <div class="flex items-center gap-2">
+                  {#if encryptionStatus.enabled}
+                    {#if encryptionStatus.unlocked}
+                      <div class="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 px-3 py-1 text-xs font-medium text-green-800 dark:text-green-200">
+                        <span class="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400"></span>
+                        Unlocked
+                      </div>
+                    {:else}
+                      <div class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-3 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+                        <span class="h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-amber-400"></span>
+                        Locked
+                      </div>
+                    {/if}
+                  {:else}
+                    <div class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                      <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
+                      Disabled
+                    </div>
+                  {/if}
+                </div>
+
+                {#if !encryptionStatus.enabled}
+                  <!-- Enable Encryption Form -->
+                  <div class="rounded-lg border bg-card p-4 space-y-4">
+                    <div class="space-y-2">
+                      <Label for="master-password" class="text-sm">
+                        Master password
+                      </Label>
+                      <input
+                        id="master-password"
+                        type="password"
+                        bind:value={masterPassword}
+                        placeholder="Enter master password (min. 8 characters)"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      />
+                    </div>
+                    <div class="space-y-2">
+                      <Label for="confirm-password" class="text-sm">
+                        Confirm password
+                      </Label>
+                      <input
+                        id="confirm-password"
+                        type="password"
+                        bind:value={confirmPassword}
+                        placeholder="Re-enter master password"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      />
+                    </div>
+                    <div class="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3">
+                      <p class="text-xs text-blue-900 dark:text-blue-200">
+                        <strong>Important:</strong> Your master password cannot be recovered if lost. Make sure to remember it or store it securely.
+                      </p>
+                    </div>
+                    <Button onclick={enableEncryption} disabled={isEnablingEncryption}>
+                      {isEnablingEncryption ? "Enabling..." : "Enable encryption"}
+                    </Button>
+                  </div>
+                {:else if !encryptionStatus.unlocked}
+                  <!-- Unlock Encryption Form -->
+                  <div class="rounded-lg border bg-card p-4 space-y-4">
+                    <div class="space-y-2">
+                      <Label for="unlock-password" class="text-sm">
+                        Enter master password
+                      </Label>
+                      <input
+                        id="unlock-password"
+                        type="password"
+                        bind:value={unlockPassword}
+                        placeholder="Enter your master password"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        onkeydown={(e) => e.key === 'Enter' && unlockEncryption()}
+                      />
+                    </div>
+                    <Button onclick={unlockEncryption}>
+                      Unlock encryption
+                    </Button>
+                  </div>
+                {:else}
+                  <!-- Encryption Active - Show Lock Button -->
+                  <div class="rounded-lg border bg-card p-4 space-y-4">
+                    <div class="flex items-center gap-3">
+                      <div class="flex-shrink-0">
+                        <svg class="h-10 w-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                      </div>
+                      <div class="flex-1">
+                        <p class="text-sm font-medium">Encryption is active</p>
+                        <p class="text-xs text-muted-foreground">Your email data is being encrypted</p>
+                      </div>
+                    </div>
+                    <Button onclick={lockEncryption} variant="outline">
+                      Lock encryption
+                    </Button>
+                  </div>
+                {/if}
+
+                <!-- Info Section -->
+                <div class="rounded-lg border bg-muted/50 p-4 space-y-2">
+                  <h5 class="text-xs font-semibold">What gets encrypted?</h5>
+                  <ul class="text-xs text-muted-foreground space-y-1 ml-4">
+                    <li class="list-disc">• Email subjects</li>
+                    <li class="list-disc">• Email body content</li>
+                    <li class="list-disc">• Email attachments</li>
+                  </ul>
+                  <p class="text-xs text-muted-foreground mt-3">
+                    <strong>Note:</strong> Email metadata (sender, recipient, date) is not encrypted for performance reasons.
+                  </p>
+                </div>
+              </div>
             </div>
 
           {:else if currentPage === "Advanced"}

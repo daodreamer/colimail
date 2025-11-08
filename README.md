@@ -30,14 +30,14 @@ Deliver a fast, resource‑efficient alternative to heavy legacy clients (e.g. T
 4. Secure by default: Credentials in OS keyring, tokens chunked to avoid platform limits.
 5. Progressive enhancement: Guest mode → optional cloud features (user profile, subscription, future sync).
 
-## Highlights (v0.6.0 latest)
+## Highlights (v0.6.2 latest)
 
 Recent major capabilities (see full [CHANGELOG](./CHANGELOG.md)):
 
 | Area | Key Additions |
 |------|---------------|
 | Authentication | Supabase email/password + Google OAuth; user profile sync to local DB; deep link handling; robust session refresh & environment detection |
-| Security | OS keyring credential storage with chunking; removal of plaintext secrets from SQLite; planned encryption improvements |
+| Security | OS keyring credential storage with chunking; **AES-256-GCM local data encryption** for email content; Argon2 key derivation; zero-knowledge master password; auto-update with signature verification |
 | Logging | Structured JSON logs, rotation (daily, 7‑day retention), backend log viewer, export & filtering groundwork |
 | UX Refactors | Modularized large Svelte pages into domain handlers; shadcn‑svelte sidebar patterns (sidebar‑09 / sidebar‑13); dialog‑based account & settings management |
 | Real‑time | Refactored IMAP IDLE manager, split into focused modules; single‑folder monitoring to respect provider limits |
@@ -64,6 +64,7 @@ Recent major capabilities (see full [CHANGELOG](./CHANGELOG.md)):
 | System Tray | ✅ | Minimize to tray configurable |
 | Structured Logging | ✅ | JSON + live viewer; rotation |
 | Credential Security | ✅ | OS keyring + chunking; password column removed |
+| **Local Data Encryption** | ✅ | **AES-256-GCM encryption for cached email content** |
 | Display Name Detection | ✅ | Sent folder heuristic & multi‑language matching |
 | Attachment Detection | ✅ | Background BODYSTRUCTURE processing & retry |
 | Performance Targets | 🔄 | Constant tuning (see below) |
@@ -86,6 +87,7 @@ Frontend (SvelteKit + runes) calls Rust backend via Tauri invoke commands. Rust 
 | `commands/` | Domain commands (accounts, emails sync & fetch, folders CRUD, drafts, send, auth, logs, notifications, OAuth2, test_connection, display name detection) |
 | `idle_manager/` | Real‑time IMAP IDLE session orchestration split into manager/session/notification/types |
 | `security.rs` | OS keyring credential chunking, retrieval, deletion, updates |
+| `encryption.rs` | **AES-256-GCM encryption/decryption with Argon2 key derivation** |
 | `logger.rs` | Structured tracing subscriber setup, rotation, directory exposure |
 | `oauth2_config.rs` | Desktop OAuth credentials initialization |
 | `models.rs` | Shared structs (e.g. `AccountConfig`, draft & folder models, user profile) |
@@ -251,9 +253,33 @@ Rotation: daily; retention: 7 days. Sensitive data (passwords, tokens, message b
 | Credential storage | OS keyring via `keyring` crate; chunking for long tokens |
 | Password plaintext in DB | Removed (migrated to keyring) |
 | OAuth2 tokens | Stored securely (chunked) |
+| **Local data encryption** | **✅ AES-256-GCM for email subjects, bodies, and attachments** |
+| **Key management** | **Zero-knowledge: Argon2 key derivation from master password** |
+| **Session security** | **Keys in memory only; auto-locked on app close** |
 | Session (Supabase) | Local storage (sandboxed) + optional secure storage fallback |
 | Email content | Local only; no external telemetry |
-| Future | Encryption at rest for cached emails; multi‑tenant cloud sync (opt‑in) |
+| Future | Multi‑tenant cloud sync (opt‑in); biometric unlock |
+
+### Encryption Details
+
+**What's Protected:**
+- Email subjects (`emails.subject`) - encrypted with AES-256-GCM
+- Email bodies (`emails.body`) - encrypted with AES-256-GCM
+- Attachment data (`attachments.data`) - encrypted with AES-256-GCM
+
+**Security Features:**
+- **Algorithm**: AES-256-GCM (authenticated encryption)
+- **Key Derivation**: Argon2id (memory-hard, brute-force resistant)
+- **Key Storage**: Memory only - never persisted to disk
+- **Session Isolation**: Encryption locked on app close; password required on restart
+- **Zero-Knowledge**: Master password cannot be recovered if lost
+- **Memory Safety**: Keys securely cleared using `zeroize` crate
+
+**Performance**: < 10% overhead for encrypt/decrypt operations
+
+**Setup**: Settings → Privacy & visibility → Enable encryption (8+ character password required)
+
+**Documentation**: See [ENCRYPTION_USAGE.md](./ENCRYPTION_USAGE.md) and [ENCRYPTION_TESTING.md](./ENCRYPTION_TESTING.md)
 
 Report concerns via [SECURITY.md](./SECURITY.md).
 

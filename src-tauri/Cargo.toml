@@ -1,6 +1,6 @@
 [package]
 name = "colimail"
-version = "0.6.1"
+version = "0.6.2"
 description = "Colimail - A Lightweight Email Client"
 authors = ["you"]
 edition = "2021"
@@ -50,6 +50,9 @@ keyring = { version = "3.6", features = ["windows-native"] }
 aes-gcm = "0.10"
 base64 = "0.22"
 imap-proto = "0.16.4"
+argon2 = "0.5"
+rand = "0.8"
+zeroize = "1.8"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 tracing-appender = "0.2"

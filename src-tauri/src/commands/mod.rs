@@ -3,6 +3,7 @@ pub mod auth;
 pub mod detect_display_name;
 pub mod drafts;
 pub mod emails;
+pub mod encryption_manager;
 pub mod folders;
 pub mod logs;
 pub mod notifications;
@@ -24,6 +25,10 @@ pub use emails::{
     mark_email_as_flagged, mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread,
     move_email_to_trash, save_attachment_to_file, set_sync_interval, should_sync, sync_email_flags,
     sync_emails, sync_specific_email_flags,
+};
+pub use encryption_manager::{
+    change_master_password, disable_encryption, enable_encryption, get_encryption_status,
+    lock_encryption_command, unlock_encryption_with_password,
 };
 pub use folders::{
     check_folder_capabilities, create_local_folder, create_remote_folder, delete_local_folder,

@@ -2,10 +2,24 @@
 // This module handles loading and downloading email attachments
 
 use crate::db;
+use crate::encryption::{decrypt_bytes, is_encryption_unlocked};
 use crate::models::{Attachment, AttachmentInfo};
 use std::fs::File;
 use std::io::Write;
 use tauri::command;
+
+/// Check if encryption is enabled in database settings
+async fn is_encryption_enabled() -> Result<bool, String> {
+    let pool = db::pool();
+    let result = sqlx::query_as::<_, (String,)>(
+        "SELECT value FROM settings WHERE key = 'encryption_enabled'",
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to check encryption status: {}", e))?;
+
+    Ok(result.map(|(value,)| value == "true").unwrap_or(false))
+}
 
 /// Load attachment info from cache (without data)
 #[command]
@@ -75,12 +89,25 @@ pub async fn download_attachment(attachment_id: i64) -> Result<Attachment, Strin
     .await
     .map_err(|e| format!("Failed to load attachment: {}", e))?;
 
+    // Check if encryption is enabled
+    let encryption_enabled = is_encryption_enabled().await?;
+
+    // Decrypt attachment data if encryption is enabled and unlocked
+    let decrypted_data = if encryption_enabled && is_encryption_unlocked() {
+        // Data is stored as base64 string, convert to string first
+        let encrypted_str = String::from_utf8(row.3)
+            .map_err(|e| format!("Failed to convert encrypted data to string: {}", e))?;
+        decrypt_bytes(&encrypted_str).map_err(|e| format!("Failed to decrypt attachment: {}", e))?
+    } else {
+        row.3
+    };
+
     Ok(Attachment {
         id: Some(attachment_id),
         filename: row.0,
         content_type: row.1,
         size: row.2,
-        data: Some(row.3),
+        data: Some(decrypted_data),
     })
 }
 
@@ -96,7 +123,18 @@ pub async fn save_attachment_to_file(attachment_id: i64, file_path: String) -> R
         .await
         .map_err(|e| format!("Failed to load attachment: {}", e))?;
 
-    let data = row.0;
+    // Check if encryption is enabled
+    let encryption_enabled = is_encryption_enabled().await?;
+
+    // Decrypt attachment data if encryption is enabled and unlocked
+    let data = if encryption_enabled && is_encryption_unlocked() {
+        // Data is stored as base64 string, convert to string first
+        let encrypted_str = String::from_utf8(row.0)
+            .map_err(|e| format!("Failed to convert encrypted data to string: {}", e))?;
+        decrypt_bytes(&encrypted_str).map_err(|e| format!("Failed to decrypt attachment: {}", e))?
+    } else {
+        row.0
+    };
 
     // Write to file
     let mut file = File::create(&file_path).map_err(|e| format!("Failed to create file: {}", e))?;
