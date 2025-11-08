@@ -6,6 +6,7 @@
   import * as Breadcrumb from "$lib/components/ui/breadcrumb";
   import { Button } from "$lib/components/ui/button";
   import * as Dialog from "$lib/components/ui/dialog";
+  import * as AlertDialog from "$lib/components/ui/alert-dialog";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { Label } from "$lib/components/ui/label";
   import { Separator } from "$lib/components/ui/separator";
@@ -15,6 +16,7 @@
   import PaintbrushIcon from "lucide-svelte/icons/paintbrush";
   import SettingsIcon from "lucide-svelte/icons/settings";
   import InfoIcon from "lucide-svelte/icons/info";
+  import { state as appState } from "../lib/state.svelte";
 
   interface SettingsDialogProps {
     open: boolean;
@@ -63,6 +65,7 @@
   let newPassword = $state("");
   let confirmNewPassword = $state("");
   let isChangingPassword = $state(false);
+  let showConfirmPasswordChange = $state(false);
 
   // Load settings when dialog opens
   $effect(() => {
@@ -136,7 +139,7 @@
     }
   }
 
-  async function changeMasterPassword() {
+  function validateAndShowConfirmation() {
     // Validation
     if (!oldPassword) {
       toast.error("Please enter your current password");
@@ -155,6 +158,12 @@
       return;
     }
 
+    // Show confirmation dialog
+    showConfirmPasswordChange = true;
+  }
+
+  async function confirmChangeMasterPassword() {
+    showConfirmPasswordChange = false;
     isChangingPassword = true;
     try {
       await invoke("change_master_password", {
@@ -163,6 +172,12 @@
       });
       toast.success("Master password changed successfully!");
 
+      // Clear email cache from UI state
+      appState.emails = [];
+      appState.selectedEmailUid = null;
+      appState.emailBody = null;
+      appState.attachments = [];
+
       // Clear form and hide
       oldPassword = "";
       newPassword = "";
@@ -170,7 +185,14 @@
       showChangePassword = false;
     } catch (error) {
       console.error("Failed to change password:", error);
-      toast.error(String(error));
+      const errorMsg = String(error);
+
+      // Show specific error message for wrong password
+      if (errorMsg.includes("Invalid old password")) {
+        toast.error("Current password is incorrect");
+      } else {
+        toast.error(errorMsg);
+      }
     } finally {
       isChangingPassword = false;
     }
@@ -550,15 +572,20 @@
                           />
                         </div>
 
-                        <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3">
+                        <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
                           <p class="text-xs text-amber-900 dark:text-amber-200">
-                            <strong>Important:</strong> There is no password recovery option. Make sure to remember your new password.
+                            <strong>Important:</strong>
                           </p>
+                          <ul class="text-xs text-amber-900 dark:text-amber-200 list-disc list-inside space-y-1">
+                            <li>There is no password recovery option. Make sure to remember your new password.</li>
+                            <li><strong>All cached email data will be cleared</strong> after changing the password.</li>
+                            <li>You will need to sync your emails again after the password change.</li>
+                          </ul>
                         </div>
 
                         <div class="flex gap-2">
                           <Button
-                            onclick={changeMasterPassword}
+                            onclick={validateAndShowConfirmation}
                             disabled={isChangingPassword || !oldPassword || !newPassword || !confirmNewPassword}
                           >
                             {isChangingPassword ? "Changing..." : "Change password"}
@@ -575,10 +602,10 @@
                 <!-- Info Section -->
                 <div class="rounded-lg border bg-muted/50 p-4 space-y-2">
                   <h5 class="text-xs font-semibold">What gets encrypted?</h5>
-                  <ul class="text-xs text-muted-foreground space-y-1 ml-4">
-                    <li class="list-disc">• Email subjects</li>
-                    <li class="list-disc">• Email body content</li>
-                    <li class="list-disc">• Email attachments</li>
+                  <ul class="text-xs text-muted-foreground space-y-1 ml-4 list-disc">
+                    <li>Email subjects</li>
+                    <li>Email body content</li>
+                    <li>Email attachments</li>
                   </ul>
                   <p class="text-xs text-muted-foreground mt-3">
                     <strong>Note:</strong> Email metadata (sender, recipient, date) is not encrypted for performance reasons.
@@ -673,3 +700,26 @@
     </Sidebar.Provider>
   </Dialog.Content>
 </Dialog.Root>
+
+<!-- Confirm Password Change Dialog -->
+<AlertDialog.Root bind:open={showConfirmPasswordChange}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Confirm Password Change</AlertDialog.Title>
+      <AlertDialog.Description>
+        Are you sure you want to change your master password? This action will:
+        <ul class="list-disc list-inside mt-2 space-y-1">
+          <li>Delete all cached email data</li>
+          <li>Require you to sync your emails again</li>
+          <li>Cannot be undone</li>
+        </ul>
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={confirmChangeMasterPassword}>
+        Yes, change password
+      </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>

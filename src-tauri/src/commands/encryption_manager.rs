@@ -240,28 +240,46 @@ pub async fn change_master_password(
     }
 
     // Generate a new salt
-    let mut salt_bytes = [0u8; 16];
-    OsRng.fill_bytes(&mut salt_bytes);
-    let salt_b64 = BASE64.encode(salt_bytes);
+    let mut new_salt_bytes = [0u8; 16];
+    OsRng.fill_bytes(&mut new_salt_bytes);
+    let new_salt_b64 = BASE64.encode(new_salt_bytes);
 
     // Create new password hash
     let argon2 = Argon2::default();
-    let salt_string =
-        SaltString::encode_b64(&salt_bytes).map_err(|e| format!("Salt encoding failed: {}", e))?;
+    let salt_string = SaltString::encode_b64(&new_salt_bytes)
+        .map_err(|e| format!("Salt encoding failed: {}", e))?;
     let new_password_hash = argon2
         .hash_password(new_password.as_bytes(), &salt_string)
         .map_err(|e| format!("Password hashing failed: {}", e))?
         .to_string();
 
-    // Re-initialize encryption with new password
-    // Note: This only changes the key in memory. Existing encrypted data would need to be re-encrypted
-    // with the new key for full password change support. For now, we'll just update the password hash.
-    unlock_encryption(&new_password, &salt_bytes)
+    tracing::info!("🔄 Starting password change process");
+
+    // Delete all cached email data and sync state
+    // This is simpler and more reliable than re-encrypting
+    tracing::info!("Deleting all cached email data and sync state...");
+
+    // Delete all emails
+    sqlx::query("DELETE FROM emails")
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to delete email cache: {}", e))?;
+
+    // Delete all sync state (uidvalidity, highest_uid, etc.)
+    sqlx::query("DELETE FROM sync_status")
+        .execute(pool.as_ref())
+        .await
+        .map_err(|e| format!("Failed to delete sync state: {}", e))?;
+
+    tracing::info!("✅ Cached email data and sync state deleted successfully");
+
+    // Update encryption key in memory immediately with new password
+    unlock_encryption(&new_password, &new_salt_bytes)
         .map_err(|e| format!("Failed to unlock with new password: {}", e))?;
 
-    // Update database
+    // Update database with new credentials
     sqlx::query("UPDATE settings SET value = ? WHERE key = 'encryption_salt'")
-        .bind(&salt_b64)
+        .bind(&new_salt_b64)
         .execute(pool.as_ref())
         .await
         .map_err(|e| format!("Failed to save new encryption salt: {}", e))?;
@@ -272,9 +290,9 @@ pub async fn change_master_password(
         .await
         .map_err(|e| format!("Failed to save new password hash: {}", e))?;
 
-    println!("✅ Master password changed successfully");
-    println!(
-        "⚠️  Note: Existing encrypted data will need to be re-encrypted with the new password"
+    tracing::info!(
+        "✅ Master password changed successfully. Email cache and sync state have been deleted."
     );
+
     Ok(())
 }

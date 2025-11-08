@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Privacy & Visibility Settings**: New settings page for encryption management
   - Master password setup interface (minimum 8 characters)
+  - Forced master password setup on first launch for new users
+  - Master password unlock dialog on app startup
+  - Master password change functionality with confirmation
   - Real-time encryption status display (Disabled/Locked/Unlocked)
   - One-click encryption lock/unlock functionality
   - Visual status indicators with color-coded badges
@@ -72,7 +75,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Settings dialog: "Privacy & visibility" page now includes encryption controls
 - Database: Three new settings fields for encryption state management
 - Cache operations: Automatic encryption for new data when encryption is enabled
-- **Note**: Existing cached data remains unencrypted until re-synced
+- **Password Change Behavior**: Changing master password now clears all cached email data and sync state to ensure security
+  - Email list cache is deleted
+  - Sync state is reset (requires full re-sync)
+  - UI state is cleared automatically
+  - Users need to re-sync emails after password change
 
 ### Performance
 - Minimal performance impact (<10% overhead for encrypt/decrypt operations)

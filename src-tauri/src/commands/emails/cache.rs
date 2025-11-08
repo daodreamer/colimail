@@ -126,12 +126,14 @@ pub async fn load_emails_from_cache(
             |(uid, subject, from, to, cc, date, timestamp, has_attachments, seen, flagged)| {
                 // Decrypt subject if encryption is enabled and unlocked
                 let decrypted_subject = if encryption_enabled && is_encryption_unlocked() {
-                    decrypt(&subject).unwrap_or_else(|_| {
-                        eprintln!(
-                            "⚠️  Failed to decrypt subject for UID {}, using encrypted data",
-                            uid
+                    decrypt(&subject).unwrap_or_else(|e| {
+                        tracing::warn!(
+                            "Failed to decrypt subject for UID {} (might be during re-encryption): {}. Using placeholder.",
+                            uid,
+                            e
                         );
-                        subject.clone()
+                        // Return a placeholder subject so user can still see the email in the list
+                        format!("[Subject temporarily unavailable - UID {}]", uid)
                     })
                 } else {
                     subject
@@ -221,9 +223,19 @@ pub async fn load_email_body_from_cache(
     // Decrypt body if encryption is enabled and unlocked
     if let Some((Some(body),)) = result {
         if encryption_enabled && is_encryption_unlocked() {
-            let decrypted_body = decrypt(&body)
-                .map_err(|e| format!("Failed to decrypt body for UID {}: {}", uid, e))?;
-            Ok(Some(decrypted_body))
+            match decrypt(&body) {
+                Ok(decrypted_body) => Ok(Some(decrypted_body)),
+                Err(e) => {
+                    // Decryption failed - this could happen during password change re-encryption
+                    // Return None to trigger a fresh fetch from server
+                    tracing::warn!(
+                        "Failed to decrypt body for UID {} (might be during re-encryption): {}. Will fetch from server.",
+                        uid,
+                        e
+                    );
+                    Ok(None)
+                }
+            }
         } else {
             Ok(Some(body))
         }

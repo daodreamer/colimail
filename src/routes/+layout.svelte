@@ -2,6 +2,7 @@
 	import '../app.css';
 	import { onMount } from 'svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { Toaster } from '$lib/components/ui/sonner';
 
 	let { children } = $props();
 
@@ -24,3 +25,4 @@
 </script>
 
 {@render children()}
+<Toaster />
