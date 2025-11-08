@@ -19,3 +19,6 @@ vite.config.ts.timestamp-*
 /rust_example
 
 /target
+
+# Tauri signing keys (private key should never be committed)
+src-tauri/*.key

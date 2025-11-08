@@ -1,5 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { toast } from "svelte-sonner";
   import * as Breadcrumb from "$lib/components/ui/breadcrumb";
   import { Button } from "$lib/components/ui/button";
@@ -12,6 +14,7 @@
   import LockIcon from "lucide-svelte/icons/lock";
   import PaintbrushIcon from "lucide-svelte/icons/paintbrush";
   import SettingsIcon from "lucide-svelte/icons/settings";
+  import InfoIcon from "lucide-svelte/icons/info";
 
   interface SettingsDialogProps {
     open: boolean;
@@ -27,6 +30,7 @@
       { name: "Language & region", icon: GlobeIcon },
       { name: "Privacy & visibility", icon: LockIcon },
       { name: "Advanced", icon: SettingsIcon },
+      { name: "About", icon: InfoIcon },
     ],
   };
 
@@ -39,6 +43,8 @@
   let soundEnabled = $state<boolean>(true);
   let minimizeToTray = $state<boolean>(true);
   let isSaving = $state(false);
+  let isCheckingUpdate = $state(false);
+  let appVersion = $state("0.6.1");
 
   // Load settings when dialog opens
   $effect(() => {
@@ -84,6 +90,33 @@
 
   function handleNavClick(pageName: string) {
     currentPage = pageName;
+  }
+
+  // Check for updates
+  async function checkForUpdates() {
+    isCheckingUpdate = true;
+    try {
+      const update = await check();
+      if (update) {
+        toast.success(`New version available: ${update.version}`);
+        const shouldUpdate = confirm(
+          `A new version (${update.version}) is available!\n\nRelease notes:\n${update.body || "No release notes provided."}\n\nWould you like to download and install it now?`
+        );
+        if (shouldUpdate) {
+          toast.info("Downloading update...");
+          await update.downloadAndInstall();
+          toast.success("Update installed! Restarting application...");
+          await relaunch();
+        }
+      } else {
+        toast.success("You are running the latest version!");
+      }
+    } catch (error) {
+      console.error("Failed to check for updates:", error);
+      toast.error("Failed to check for updates. Please try again later.");
+    } finally {
+      isCheckingUpdate = false;
+    }
   }
 </script>
 
@@ -280,6 +313,52 @@
                 <Button onclick={saveNotificationSettings} disabled={isSaving}>
                   {isSaving ? "Saving..." : "Save changes"}
                 </Button>
+              </div>
+            </div>
+
+          {:else if currentPage === "About"}
+            <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- Version Info -->
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-sm font-medium">Version</h4>
+                  <span class="text-sm text-muted-foreground">{appVersion}</span>
+                </div>
+                <Separator />
+                <div class="flex items-center justify-between">
+                  <h4 class="text-sm font-medium">Project</h4>
+                  <a
+                    href="https://github.com/daodreamer/colimail"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-sm text-primary hover:underline"
+                  >
+                    GitHub Repository
+                  </a>
+                </div>
+              </div>
+
+              <Separator />
+
+              <!-- Check for Updates -->
+              <div class="space-y-3">
+                <h4 class="text-sm font-medium">Software Updates</h4>
+                <p class="text-xs text-muted-foreground">
+                  Check for the latest version to get new features and bug fixes.
+                </p>
+                <Button
+                  onclick={checkForUpdates}
+                  disabled={isCheckingUpdate}
+                  class="w-full"
+                >
+                  {isCheckingUpdate ? "Checking for Updates..." : "Check for Updates"}
+                </Button>
+
+                <div class="rounded-md bg-blue-50 p-3 dark:bg-blue-950/30">
+                  <p class="text-xs text-blue-900 dark:text-blue-200">
+                    💡 <strong>Auto Update:</strong> The application automatically checks for updates on startup and will notify you when a new version is available.
+                  </p>
+                </div>
               </div>
             </div>
           {/if}

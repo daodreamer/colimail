@@ -39,7 +39,7 @@ After any code changes, **always run** the appropriate checks before reporting c
 **IMPORTANT**: The `cargo clippy -- -D warnings` command treats all Clippy warnings as errors. This ensures code quality and prevents warnings from accumulating. Always fix any Clippy warnings before completing a task.
 
 ## Architecture
-
+**The most Important documentation file**: `ARCHITECTURE.md` and `README.md`
 ### Backend Structure (Rust/Tauri)
 
 **Entry Point**: `src-tauri/src/main.rs`

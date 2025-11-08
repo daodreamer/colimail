@@ -17,7 +17,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Subscription/billing management interface
 - Notifications settings dialog
 
-## [0.6.1] - 2025-11-05
+## [0.6.1] - 2025-11-08
+
+### Added
+- **🎉 Auto-Update System**: Implemented automatic application updates for seamless version upgrades
+  - Integrated Tauri updater plugin with GitHub Releases as update source
+  - Automatic update check on application startup (3 seconds delay)
+  - Manual update check available in Settings → About section
+  - Cryptographic signature verification for secure updates
+  - One-click download and install with automatic restart
+  - Update notifications with release notes display
+  - Support for all platforms (Windows, macOS, Linux)
+  - GitHub Actions workflow configured for automatic signing and artifact generation
+  - **Note**: Users on v0.6.0 need to manually update to v0.6.1 once. After that, all future updates will be automatic.
+
+- **Settings Dialog: About Section**: New "About" page in Settings
+  - Display current application version
+  - Link to GitHub repository
+  - "Check for Updates" button for manual update checks
+  - Auto-update information and status
+  - Clean, modern UI with Info icon in sidebar navigation
 
 ### Fixed
 - **ComposeDialog Positioning**: Fixed dialog centering issue with Tailwind CSS v4
@@ -28,10 +47,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Related to known Tailwind CSS v4 issue affecting bits-ui/shadcn-svelte Dialog components
   - References: [shadcn-svelte#1647](https://github.com/huntabyte/shadcn-svelte/issues/1647), [shadcn-ui#7507](https://github.com/shadcn-ui/ui/issues/7507)
 
+- **Update Check Error Handling**: Improved logging for update checks
+  - Downgraded "no release found" errors from ERROR to DEBUG level
+  - Added friendly messages for expected failures (e.g., when no releases exist yet)
+  - Better error messages in UI when update checks fail
+
 ### Changed
 - **ComposeDialog Rich Text Toolbar**: Upgraded editing controls for a clearer, more capable compose experience
   - Replaced legacy glyph buttons with lucide icons and highlighted active formatting states
   - Added inline text and highlight color pickers that respect the current selection and sync with external updates
+
+### Technical
+- Added `tauri-plugin-updater` dependency
+- Generated signing keypair for update verification (`colimail.key` and `colimail.key.pub`)
+- Configured updater endpoint: `https://github.com/daodreamer/colimail/releases/latest/download/latest.json`
+- Enabled `createUpdaterArtifacts` in Tauri build configuration
+- Added `TAURI_SIGNING_PRIVATE_KEY` support in GitHub Actions workflow
+- Protected signing key from git commits (added to `.gitignore`)
+- Installed `@tauri-apps/plugin-process` for application relaunch after updates
 
 ## [0.6.0] - 2025-11-01
 

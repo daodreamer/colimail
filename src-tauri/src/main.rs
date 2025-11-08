@@ -34,6 +34,7 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager, State,
 };
+use tauri_plugin_updater::UpdaterExt;
 
 // IDLE manager commands
 #[command]
@@ -166,6 +167,7 @@ async fn main() {
     }
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
             // When a second instance is launched, this callback is triggered in the first instance
             tracing::info!("Single instance callback triggered, args: {:?}, cwd: {:?}", args, cwd);
@@ -358,6 +360,56 @@ async fn main() {
             app.manage(idle_manager.clone());
 
             tracing::info!("IDLE manager initialized");
+
+            // Check for updates on startup
+            let app_handle_for_update = app.handle().clone();
+            tokio::spawn(async move {
+                // Wait a bit for the app to fully initialize
+                tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+
+                tracing::info!("Checking for application updates");
+
+                match app_handle_for_update.updater() {
+                    Ok(updater_builder) => {
+                        match updater_builder.check().await {
+                            Ok(Some(update)) => {
+                                tracing::info!(
+                                    version = %update.version,
+                                    current_version = %update.current_version,
+                                    "Update available"
+                                );
+
+                                // Emit event to frontend to notify user about update
+                                if let Some(window) = app_handle_for_update.get_webview_window("main") {
+                                    let update_info = serde_json::json!({
+                                        "version": update.version,
+                                        "current_version": update.current_version,
+                                        "body": update.body.unwrap_or_default(),
+                                        "date": update.date,
+                                    });
+                                    match window.emit("update-available", update_info) {
+                                        Ok(_) => tracing::info!("Update notification sent to frontend"),
+                                        Err(e) => tracing::error!(error = %e, "Failed to emit update-available event"),
+                                    }
+                                } else {
+                                    tracing::error!("Failed to get main window for update notification");
+                                }
+                            }
+                            Ok(None) => {
+                                tracing::info!("Application is up to date");
+                            }
+                            Err(e) => {
+                                // This is expected when there's no release yet or network issues
+                                // Log as debug instead of error to avoid alarming users
+                                tracing::debug!(error = %e, "Could not check for updates (this is normal if no releases exist yet)");
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        tracing::warn!(error = %e, "Failed to initialize updater");
+                    }
+                }
+            });
 
             // Auto-start IDLE monitoring for all accounts on app startup
             let idle_manager_clone = idle_manager.clone();

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import { onMount } from "svelte";
   import { Button } from "$lib/components/ui/button";
   import { Label } from "$lib/components/ui/label";
@@ -14,6 +16,8 @@
   let isSavingNotificationSettings = $state(false);
   let minimizeToTray = $state<boolean>(true);
   let isSavingWindowSettings = $state(false);
+  let isCheckingUpdate = $state(false);
+  let appVersion = $state("0.6.1");
 
   // Load settings on mount
   onMount(async () => {
@@ -92,6 +96,33 @@
     if (interval < 60) return `${interval} seconds`;
     if (interval < 3600) return `${Math.floor(interval / 60)} minutes`;
     return `${Math.floor(interval / 3600)} hours`;
+  }
+
+  // Check for updates
+  async function checkForUpdates() {
+    isCheckingUpdate = true;
+    try {
+      const update = await check();
+      if (update) {
+        toast.success(`New version available: ${update.version}`);
+        const shouldUpdate = confirm(
+          `A new version (${update.version}) is available!\n\nRelease notes:\n${update.body || "No release notes provided."}\n\nWould you like to download and install it now?`
+        );
+        if (shouldUpdate) {
+          toast.info("Downloading update...");
+          await update.downloadAndInstall();
+          toast.success("Update installed! Restarting application...");
+          await relaunch();
+        }
+      } else {
+        toast.success("You are running the latest version!");
+      }
+    } catch (error) {
+      console.error("Failed to check for updates:", error);
+      toast.error(`Failed to check for updates: ${error}`);
+    } finally {
+      isCheckingUpdate = false;
+    }
   }
 </script>
 
@@ -244,6 +275,56 @@
       >
         {isSavingWindowSettings ? "Saving..." : "Save Settings"}
       </Button>
+    </CardContent>
+  </Card>
+
+  <Card>
+    <CardHeader>
+      <CardTitle>About Colimail</CardTitle>
+      <CardDescription>
+        Application information and updates.
+      </CardDescription>
+    </CardHeader>
+    <CardContent class="space-y-4">
+      <div class="space-y-2">
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-medium">Version</span>
+          <span class="text-sm text-muted-foreground">{appVersion}</span>
+        </div>
+        <Separator />
+        <div class="flex justify-between items-center">
+          <span class="text-sm font-medium">Project</span>
+          <a
+            href="https://github.com/daodreamer/colimail"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-sm text-primary hover:underline"
+          >
+            GitHub Repository
+          </a>
+        </div>
+      </div>
+
+      <Separator />
+
+      <div class="space-y-2">
+        <p class="text-sm text-muted-foreground">
+          Check for software updates to get the latest features and bug fixes.
+        </p>
+        <Button
+          class="w-full"
+          onclick={checkForUpdates}
+          disabled={isCheckingUpdate}
+        >
+          {isCheckingUpdate ? "Checking for Updates..." : "Check for Updates"}
+        </Button>
+      </div>
+
+      <div class="rounded-md bg-blue-50 p-3 dark:bg-blue-950/30">
+        <p class="text-sm text-blue-900 dark:text-blue-200">
+          💡 <strong>Auto Update:</strong> The application automatically checks for updates on startup and will notify you when a new version is available.
+        </p>
+      </div>
     </CardContent>
   </Card>
 </div>

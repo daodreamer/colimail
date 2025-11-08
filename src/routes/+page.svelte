@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
+  import { check } from "@tauri-apps/plugin-updater";
+  import { relaunch } from "@tauri-apps/plugin-process";
   import * as Sidebar from "$lib/components/ui/sidebar";
 
   // Components
@@ -87,6 +89,26 @@
         // Listen for open settings event from system tray
         unlistenSettings = await listen("open-settings", () => {
           showSettingsDialog = true;
+        });
+
+        // Listen for update available event
+        await listen("update-available", async (event: any) => {
+          const updateInfo = event.payload;
+          const shouldUpdate = confirm(
+            `A new version (${updateInfo.version}) is available!\n\nCurrent version: ${updateInfo.current_version}\n\nRelease notes:\n${updateInfo.body || "No release notes provided."}\n\nWould you like to download and install it now?`
+          );
+          if (shouldUpdate) {
+            try {
+              const update = await check();
+              if (update) {
+                await update.downloadAndInstall();
+                await relaunch();
+              }
+            } catch (error) {
+              console.error("Failed to download and install update:", error);
+              alert(`Failed to install update: ${error}`);
+            }
+          }
         });
 
         // Update current time every minute
