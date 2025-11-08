@@ -57,6 +57,13 @@
   let unlockPassword = $state("");
   let isEnablingEncryption = $state(false);
 
+  // Change password state
+  let showChangePassword = $state(false);
+  let oldPassword = $state("");
+  let newPassword = $state("");
+  let confirmNewPassword = $state("");
+  let isChangingPassword = $state(false);
+
   // Load settings when dialog opens
   $effect(() => {
     if (open) {
@@ -127,6 +134,53 @@
       console.error("Failed to lock encryption:", error);
       toast.error("Failed to lock encryption");
     }
+  }
+
+  async function changeMasterPassword() {
+    // Validation
+    if (!oldPassword) {
+      toast.error("Please enter your current password");
+      return;
+    }
+    if (newPassword.length < 8) {
+      toast.error("New password must be at least 8 characters long");
+      return;
+    }
+    if (newPassword !== confirmNewPassword) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (oldPassword === newPassword) {
+      toast.error("New password must be different from current password");
+      return;
+    }
+
+    isChangingPassword = true;
+    try {
+      await invoke("change_master_password", {
+        oldPassword: oldPassword,
+        newPassword: newPassword,
+      });
+      toast.success("Master password changed successfully!");
+
+      // Clear form and hide
+      oldPassword = "";
+      newPassword = "";
+      confirmNewPassword = "";
+      showChangePassword = false;
+    } catch (error) {
+      console.error("Failed to change password:", error);
+      toast.error(String(error));
+    } finally {
+      isChangingPassword = false;
+    }
+  }
+
+  function cancelChangePassword() {
+    oldPassword = "";
+    newPassword = "";
+    confirmNewPassword = "";
+    showChangePassword = false;
   }
 
   async function saveNotificationSettings() {
@@ -429,7 +483,7 @@
                     </Button>
                   </div>
                 {:else}
-                  <!-- Encryption Active - Show Lock Button -->
+                  <!-- Encryption Active - Show Lock Button and Change Password -->
                   <div class="rounded-lg border bg-card p-4 space-y-4">
                     <div class="flex items-center gap-3">
                       <div class="flex-shrink-0">
@@ -442,9 +496,79 @@
                         <p class="text-xs text-muted-foreground">Your email data is being encrypted</p>
                       </div>
                     </div>
-                    <Button onclick={lockEncryption} variant="outline">
-                      Lock encryption
-                    </Button>
+
+                    <div class="flex gap-2">
+                      <Button onclick={lockEncryption} variant="outline">
+                        Lock encryption
+                      </Button>
+                      <Button onclick={() => showChangePassword = !showChangePassword} variant="outline">
+                        {showChangePassword ? "Cancel" : "Change password"}
+                      </Button>
+                    </div>
+
+                    {#if showChangePassword}
+                      <Separator />
+                      <div class="space-y-4 pt-2">
+                        <h5 class="text-sm font-medium">Change master password</h5>
+
+                        <div class="space-y-2">
+                          <Label for="old-password" class="text-sm">
+                            Current password
+                          </Label>
+                          <input
+                            id="old-password"
+                            type="password"
+                            bind:value={oldPassword}
+                            placeholder="Enter current password"
+                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          />
+                        </div>
+
+                        <div class="space-y-2">
+                          <Label for="new-password" class="text-sm">
+                            New password
+                          </Label>
+                          <input
+                            id="new-password"
+                            type="password"
+                            bind:value={newPassword}
+                            placeholder="Enter new password (min. 8 characters)"
+                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          />
+                        </div>
+
+                        <div class="space-y-2">
+                          <Label for="confirm-new-password" class="text-sm">
+                            Confirm new password
+                          </Label>
+                          <input
+                            id="confirm-new-password"
+                            type="password"
+                            bind:value={confirmNewPassword}
+                            placeholder="Re-enter new password"
+                            class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                          />
+                        </div>
+
+                        <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3">
+                          <p class="text-xs text-amber-900 dark:text-amber-200">
+                            <strong>Important:</strong> There is no password recovery option. Make sure to remember your new password.
+                          </p>
+                        </div>
+
+                        <div class="flex gap-2">
+                          <Button
+                            onclick={changeMasterPassword}
+                            disabled={isChangingPassword || !oldPassword || !newPassword || !confirmNewPassword}
+                          >
+                            {isChangingPassword ? "Changing..." : "Change password"}
+                          </Button>
+                          <Button onclick={cancelChangePassword} variant="outline">
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    {/if}
                   </div>
                 {/if}
 

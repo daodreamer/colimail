@@ -17,6 +17,8 @@
   import SettingsDialog from "./components/SettingsDialog.svelte";
   import AddAccountDialog from "./components/AddAccountDialog.svelte";
   import ManageAccountDialog from "./components/ManageAccountDialog.svelte";
+  import SetMasterPasswordDialog from "./components/SetMasterPasswordDialog.svelte";
+  import UnlockEncryptionDialog from "./components/UnlockEncryptionDialog.svelte";
 
   // Types and utilities
   import type { AccountConfig } from "./lib/types";
@@ -34,6 +36,10 @@
   let showSettingsDialog = $state(false);
   let showAddAccountDialog = $state(false);
   let showManageAccountDialog = $state(false);
+
+  // Encryption dialog state
+  let showSetMasterPasswordDialog = $state(false);
+  let showUnlockEncryptionDialog = $state(false);
 
   // Confirm delete draft dialog state
   let showConfirmDeleteDraft = $state(false);
@@ -55,6 +61,20 @@
 
     (async () => {
       try {
+        // Check encryption status first
+        const encryptionStatus = await invoke<{enabled: boolean, unlocked: boolean}>("get_encryption_status");
+
+        if (!encryptionStatus.enabled) {
+          // First launch - force user to set master password
+          showSetMasterPasswordDialog = true;
+          return; // Don't load anything until password is set
+        } else if (!encryptionStatus.unlocked) {
+          // Encryption enabled but locked - need to unlock
+          showUnlockEncryptionDialog = true;
+          return; // Don't load anything until unlocked
+        }
+
+        // Encryption is enabled and unlocked, proceed normally
         appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
         appState.syncInterval = await invoke<number>("get_sync_interval");
 
@@ -175,6 +195,36 @@
   // ============================================
   // Wrapper functions for handlers
   // ============================================
+
+  // Initialize app after encryption is set up
+  async function initializeApp() {
+    try {
+      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+      appState.syncInterval = await invoke<number>("get_sync_interval");
+
+      // Auto-select first account if available and none is selected
+      if (appState.accounts.length > 0 && !appState.selectedAccountId) {
+        await handleAccountClick(appState.accounts[0].id);
+      }
+
+      startAutoSyncTimer();
+
+      // Start IDLE connections for all accounts
+      for (const account of appState.accounts) {
+        try {
+          await invoke("start_idle", {
+            accountId: account.id,
+            folderName: "INBOX",
+            config: account,
+          });
+        } catch (e) {
+          console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
+        }
+      }
+    } catch (e) {
+      appState.error = `Failed to initialize app: ${e}`;
+    }
+  }
 
   // Auto-sync timer management
   function startAutoSyncTimer() {
@@ -590,5 +640,15 @@
     variant="destructive"
     onConfirm={confirmDeleteDraft}
     onCancel={cancelDeleteDraft}
+  />
+
+  <SetMasterPasswordDialog
+    bind:open={showSetMasterPasswordDialog}
+    onpasswordset={initializeApp}
+  />
+
+  <UnlockEncryptionDialog
+    bind:open={showUnlockEncryptionDialog}
+    onunlock={initializeApp}
   />
 </Sidebar.Provider>
