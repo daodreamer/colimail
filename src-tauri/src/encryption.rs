@@ -5,13 +5,13 @@ use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
-use std::convert::TryInto;
 use argon2::{
     password_hash::{PasswordHasher, SaltString},
     Argon2, PasswordHash, PasswordVerifier,
 };
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use rand::RngCore;
+use std::convert::TryInto;
 use std::sync::{Arc, Mutex, OnceLock};
 use zeroize::Zeroize;
 
