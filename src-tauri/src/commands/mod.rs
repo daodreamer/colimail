@@ -35,7 +35,8 @@ pub use folders::{
     delete_remote_folder, fetch_folders, load_folders, sync_folders,
 };
 pub use logs::{
-    get_current_log_file, get_log_directory, list_log_files, read_log_file, read_recent_logs,
+    export_logs_as_zip, get_current_log_file, get_log_directory, list_log_files, read_log_file,
+    read_recent_logs,
 };
 pub use notifications::{
     get_minimize_to_tray, get_notification_enabled, get_sound_enabled, set_minimize_to_tray,

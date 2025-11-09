@@ -2,6 +2,7 @@
   import { invoke } from "@tauri-apps/api/core";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
+  import { revealItemInDir } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
   import * as Breadcrumb from "$lib/components/ui/breadcrumb";
   import { Button } from "$lib/components/ui/button";
@@ -46,7 +47,8 @@
   let minimizeToTray = $state<boolean>(true);
   let isSaving = $state(false);
   let isCheckingUpdate = $state(false);
-  let appVersion = $state("0.6.2");
+  let isExportingLogs = $state(false);
+  let appVersion = $state("0.6.3");
 
   // Encryption state
   interface EncryptionStatus {
@@ -257,6 +259,32 @@
       toast.error("Failed to check for updates. Please try again later.");
     } finally {
       isCheckingUpdate = false;
+    }
+  }
+
+  // Export logs as ZIP
+  async function exportLogs() {
+    isExportingLogs = true;
+    try {
+      const zipPath = await invoke<string>("export_logs_as_zip");
+
+      // Automatically reveal the file in explorer
+      try {
+        await revealItemInDir(zipPath);
+        toast.success(`Logs exported successfully!`);
+      } catch (openError) {
+        console.error("Failed to reveal file:", openError);
+        // Show success with file path if reveal fails
+        toast.success(
+          `Logs exported successfully!\nSaved to: ${zipPath}`,
+          { duration: 8000 }
+        );
+      }
+    } catch (error) {
+      console.error("Failed to export logs:", error);
+      toast.error(`Failed to export logs: ${error}`);
+    } finally {
+      isExportingLogs = false;
     }
   }
 </script>
@@ -690,6 +718,30 @@
                 <div class="rounded-md bg-blue-50 p-3 dark:bg-blue-950/30">
                   <p class="text-xs text-blue-900 dark:text-blue-200">
                     💡 <strong>Auto Update:</strong> The application automatically checks for updates on startup and will notify you when a new version is available.
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <!-- Export Logs -->
+              <div class="space-y-3">
+                <h4 class="text-sm font-medium">Debug Logs</h4>
+                <p class="text-xs text-muted-foreground">
+                  Export application logs as a ZIP file to help the development team troubleshoot issues.
+                </p>
+                <Button
+                  onclick={exportLogs}
+                  disabled={isExportingLogs}
+                  variant="outline"
+                  class="w-full"
+                >
+                  {isExportingLogs ? "Exporting Logs..." : "Export Logs as ZIP"}
+                </Button>
+
+                <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/30">
+                  <p class="text-xs text-amber-900 dark:text-amber-200">
+                    📋 <strong>Bug Reports:</strong> When reporting issues on GitHub, please attach the exported log file to help us diagnose the problem faster.
                   </p>
                 </div>
               </div>

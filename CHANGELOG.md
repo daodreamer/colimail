@@ -9,13 +9,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 - Log viewer UI interface in settings
-- Log export functionality (ZIP download)
 - Log search and filtering in UI
 - Calendar integration
 - Multi-language support
 - Account settings dialog for user profile management
 - Subscription/billing management interface
 - Notifications settings dialog
+
+## [0.6.3] - 2025-11-09
+
+### Added
+- **📦 Log Export Functionality**: One-click log export for bug reporting and debugging
+  - Export all application logs as a ZIP archive
+  - Automatic timestamped filename (`colimail_logs_YYYYMMDD_HHMMSS.zip`)
+  - Includes all `.log` files from the application's log directory
+  - Auto-generated `README.txt` with export metadata and instructions
+  - ZIP file saved in application data directory for easy access
+  - "Export Logs as ZIP" button in Settings → About → Debug Logs section
+  - Automatic file reveal in system explorer after export
+  - User-friendly error handling with fallback messages
+
+### Changed
+- **Improved User Experience**: Streamlined log export workflow
+  - Removed confirmation dialog for opening file location
+  - Automatically reveals exported ZIP file in file explorer
+  - Shows file path in success message if auto-reveal fails
+  - Enhanced error messages with longer display duration (8 seconds)
+
+### Technical
+- Added `zip = "2.2"` dependency for ZIP archive creation
+- Implemented `export_logs_as_zip` Tauri command in `commands/logs.rs`
+- Added Tauri opener plugin permissions:
+  - `opener:allow-open-path` - For opening file paths
+  - `opener:allow-open-url` - For opening URLs
+  - `opener:allow-reveal-item-in-dir` - For revealing files in explorer
+- Updated capabilities configuration in `src-tauri/capabilities/default.json`
+- Integrated `revealItemInDir` API for cross-platform file reveal functionality
+
+### UI/UX
+- Added "Debug Logs" section in Settings → About page
+- Informative amber-colored help text for bug reporting guidance
+- Loading state during export operation ("Exporting Logs..." button text)
+- Toast notifications for success and error states
+- Graceful degradation when file explorer cannot be opened automatically
 
 ## [0.6.2] - 2025-11-08
 
