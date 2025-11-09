@@ -239,12 +239,41 @@ Design notes:
 
 Structured tracing (JSON) + optional pretty console in dev. Commands to inspect:
 * `get_log_directory` – base path (per‑platform user data dir)
-* `get_current_log_file` – today’s rotating file
+* `get_current_log_file` – today's rotating file
 * `read_recent_logs(lines)` – tail N lines
 * `list_log_files` – available historical files
 * `read_log_file(filename)` – complete file content
+* `export_logs_as_zip` – **NEW in v0.6.3**: Export all logs as timestamped ZIP archive
 
 Rotation: daily; retention: 7 days. Sensitive data (passwords, tokens, message bodies) deliberately excluded.
+
+### Developer Tools
+
+#### Log Viewer (`log-viewer.html`)
+
+A standalone HTML tool for analyzing exported log files (located in project root, **not included in release builds**):
+
+**Features:**
+* 📦 Drag & drop ZIP or LOG files
+* 🎯 Multi-level filtering (TRACE/DEBUG/INFO/WARN/ERROR)
+* 🔍 Real-time keyword search with highlighting
+* 📊 Statistics dashboard with log level distribution chart
+* 🐛 Error categorization (Connection/Timeout/Parsing/Operation failures)
+* ⚡ Performance analysis (Top 10 slowest operations)
+* 💾 Export filtered results as TXT/CSV/ZIP
+* 🎨 Expandable JSON metadata for each log entry
+* 🌐 Zero dependencies - runs in any modern browser
+
+**Usage:**
+1. Export logs from app: Settings → About → Export Logs as ZIP
+2. Open `log-viewer.html` in your browser
+3. Drag the exported ZIP file onto the viewer
+4. Use filters and search to analyze logs
+5. Export filtered subsets for bug reports
+
+**Location:** Root directory (`maildesk/log-viewer.html`)
+**Platform:** Cross-platform (Windows/macOS/Linux)
+**Privacy:** All processing done locally in browser, no data sent anywhere
 
 ## Security & Privacy
 
