@@ -8,13 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Planned
-- Log viewer UI interface in settings
-- Log search and filtering in UI
 - Calendar integration
 - Multi-language support
-- Account settings dialog for user profile management
 - Subscription/billing management interface
-- Notifications settings dialog
 
 ## [0.6.3] - 2025-11-09
 
