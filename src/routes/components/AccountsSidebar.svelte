@@ -20,6 +20,7 @@
     onRefresh,
     onDeleteAccount,
     onManageAccounts,
+    onOpenSettings,
   }: {
     accounts?: AccountConfig[];
     selectedAccountId?: number | null;
@@ -31,6 +32,7 @@
     onRefresh: () => void;
     onDeleteAccount: (email: string, event: MouseEvent) => void;
     onManageAccounts: () => void;
+    onOpenSettings: () => void;
   } = $props();
 </script>
 
@@ -120,7 +122,7 @@
         <span class="text-base">⚙️</span>
         <span class="ml-2">Manage Account</span>
       </Button>
-      <Button variant="outline" class="w-full justify-start" href="/settings">
+      <Button variant="outline" class="w-full justify-start" onclick={onOpenSettings}>
         <span class="text-base">⚙️</span>
         <span class="ml-2">Settings</span>
       </Button>

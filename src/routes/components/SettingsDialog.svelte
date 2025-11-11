@@ -17,7 +17,17 @@
   import PaintbrushIcon from "lucide-svelte/icons/paintbrush";
   import SettingsIcon from "lucide-svelte/icons/settings";
   import InfoIcon from "lucide-svelte/icons/info";
+  import ShieldIcon from "lucide-svelte/icons/shield";
+  import RotateCcwIcon from "lucide-svelte/icons/rotate-ccw";
+  import SaveIcon from "lucide-svelte/icons/save";
   import { state as appState } from "../lib/state.svelte";
+  import {
+    loadConfig,
+    saveConfig,
+    resetConfig,
+    type CMVHConfig,
+    NETWORK_CONFIG
+  } from "$lib/cmvh";
 
   interface SettingsDialogProps {
     open: boolean;
@@ -32,6 +42,7 @@
       { name: "Appearance", icon: PaintbrushIcon },
       { name: "Language & region", icon: GlobeIcon },
       { name: "Privacy & visibility", icon: LockIcon },
+      { name: "CMVH Verification", icon: ShieldIcon },
       { name: "Advanced", icon: SettingsIcon },
       { name: "About", icon: InfoIcon },
     ],
@@ -49,6 +60,10 @@
   let isCheckingUpdate = $state(false);
   let isExportingLogs = $state(false);
   let appVersion = $state("0.6.3");
+
+  // CMVH settings state
+  let cmvhConfig = $state<CMVHConfig>(loadConfig());
+  let showResetCMVHDialog = $state(false);
 
   // Encryption state
   interface EncryptionStatus {
@@ -286,6 +301,18 @@
     } finally {
       isExportingLogs = false;
     }
+  }
+
+  // CMVH Settings Functions
+  function saveCMVHSettings() {
+    saveConfig(cmvhConfig);
+    toast.success("CMVH settings saved successfully");
+  }
+
+  function handleResetCMVH() {
+    cmvhConfig = resetConfig();
+    showResetCMVHDialog = false;
+    toast.success("CMVH settings reset to defaults");
   }
 </script>
 
@@ -642,6 +669,149 @@
               </div>
             </div>
 
+          {:else if currentPage === "CMVH Verification"}
+            <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- General Settings -->
+              <div class="space-y-4">
+                <div>
+                  <h4 class="text-sm font-medium mb-1">Email Signature Verification</h4>
+                  <p class="text-xs text-muted-foreground">
+                    Verify email signatures using CMVH (ColiMail Verification Header) blockchain standard
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label for="cmvh-enabled" class="text-sm">Enable CMVH Verification</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Automatically verify email signatures when available
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="cmvh-enabled"
+                    bind:checked={cmvhConfig.enabled}
+                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                <Separator />
+
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label for="cmvh-auto-verify" class="text-sm">Auto-verify on Email Open</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Automatically verify signatures when opening emails
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="cmvh-auto-verify"
+                    bind:checked={cmvhConfig.autoVerify}
+                    disabled={!cmvhConfig.enabled}
+                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  />
+                </div>
+
+                <Separator />
+
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label for="cmvh-onchain" class="text-sm">Enable On-Chain Verification</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Verify signatures using smart contracts (slower but more secure)
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="cmvh-onchain"
+                    bind:checked={cmvhConfig.verifyOnChain}
+                    disabled={!cmvhConfig.enabled}
+                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <!-- Blockchain Settings -->
+              <div class="space-y-4">
+                <div>
+                  <h4 class="text-sm font-medium mb-1">Blockchain Settings</h4>
+                  <p class="text-xs text-muted-foreground">
+                    Configure blockchain network and RPC endpoint for on-chain verification
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="cmvh-network" class="text-sm">Network</Label>
+                  <select
+                    id="cmvh-network"
+                    bind:value={cmvhConfig.network}
+                    disabled={!cmvhConfig.enabled}
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  >
+                    <option value="arbitrum-sepolia">Arbitrum Sepolia (Testnet)</option>
+                    <option value="arbitrum">Arbitrum One (Mainnet)</option>
+                  </select>
+                  <p class="text-xs text-muted-foreground">
+                    Chain ID: {NETWORK_CONFIG[cmvhConfig.network].chainId} |
+                    Explorer: {NETWORK_CONFIG[cmvhConfig.network].explorerUrl}
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="cmvh-rpc" class="text-sm">RPC Endpoint</Label>
+                  <input
+                    id="cmvh-rpc"
+                    type="url"
+                    bind:value={cmvhConfig.rpcUrl}
+                    placeholder={NETWORK_CONFIG[cmvhConfig.network].rpcUrl}
+                    disabled={!cmvhConfig.enabled}
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    Leave empty to use default public RPC endpoint
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="cmvh-contract" class="text-sm">Contract Address</Label>
+                  <input
+                    id="cmvh-contract"
+                    type="text"
+                    value={cmvhConfig.contractAddress || NETWORK_CONFIG[cmvhConfig.network].contractAddress}
+                    readonly
+                    disabled={!cmvhConfig.enabled}
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none disabled:opacity-50"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    CMVHVerifier contract address (read-only)
+                  </p>
+                </div>
+              </div>
+
+              <!-- Info Section -->
+              <div class="rounded-lg border bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
+                <h5 class="text-xs font-semibold text-blue-900 dark:text-blue-200">What is CMVH?</h5>
+                <p class="text-xs text-blue-900 dark:text-blue-200">
+                  CMVH (ColiMail Verification Header) is a blockchain-based email authentication system that allows you to verify the sender's identity and ensure email content hasn't been tampered with.
+                </p>
+              </div>
+
+              <!-- Save/Reset Buttons -->
+              <div class="flex justify-between gap-2 pt-4">
+                <Button variant="outline" onclick={() => showResetCMVHDialog = true}>
+                  <RotateCcwIcon class="h-4 w-4 mr-2" />
+                  Reset to Defaults
+                </Button>
+                <Button onclick={saveCMVHSettings}>
+                  <SaveIcon class="h-4 w-4 mr-2" />
+                  Save Settings
+                </Button>
+              </div>
+            </div>
+
           {:else if currentPage === "Advanced"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- System Tray Settings -->
@@ -772,6 +942,22 @@
       <AlertDialog.Action onclick={confirmChangeMasterPassword}>
         Yes, change password
       </AlertDialog.Action>
+    </AlertDialog.Footer>
+  </AlertDialog.Content>
+</AlertDialog.Root>
+
+<!-- Confirm CMVH Reset Dialog -->
+<AlertDialog.Root bind:open={showResetCMVHDialog}>
+  <AlertDialog.Content>
+    <AlertDialog.Header>
+      <AlertDialog.Title>Reset CMVH Settings?</AlertDialog.Title>
+      <AlertDialog.Description>
+        This will reset all CMVH verification settings to their default values. This action cannot be undone.
+      </AlertDialog.Description>
+    </AlertDialog.Header>
+    <AlertDialog.Footer>
+      <AlertDialog.Cancel onclick={() => showResetCMVHDialog = false}>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Action onclick={handleResetCMVH}>Reset</AlertDialog.Action>
     </AlertDialog.Footer>
   </AlertDialog.Content>
 </AlertDialog.Root>

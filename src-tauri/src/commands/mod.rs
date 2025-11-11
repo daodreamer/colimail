@@ -1,5 +1,6 @@
 pub mod accounts;
 pub mod auth;
+pub mod cmvh;
 pub mod detect_display_name;
 pub mod drafts;
 pub mod emails;
@@ -45,3 +46,6 @@ pub use notifications::{
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
 pub use test_connection::test_connection;
+pub use cmvh::{
+    has_cmvh_headers, hash_email_content, parse_email_cmvh_headers, verify_cmvh_signature,
+};
