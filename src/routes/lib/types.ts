@@ -104,4 +104,7 @@ export interface CMVHVerificationResult {
   headers?: CMVHHeaders;
   error?: string;
   verifiedAt?: number;
+  isOnChainVerified?: boolean;
+  onChainVerifiedAt?: number;
+  isVerifyingOnChain?: boolean;
 }

@@ -25,10 +25,10 @@ use commands::{
     load_emails_from_cache, load_folders, lock_encryption_command, mark_email_as_flagged,
     mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash,
     parse_email_cmvh_headers, read_log_file, read_recent_logs, reply_email, save_account_config,
-    save_attachment_to_file, save_draft, send_email, send_email_with_cmvh,
-    set_minimize_to_tray, set_notification_enabled, set_secure_storage, set_sound_enabled,
-    set_sync_interval, should_sync, sign_email_with_cmvh, start_oauth2_flow, sync_app_user,
-    sync_email_flags, sync_emails, sync_folders, sync_specific_email_flags, test_connection,
+    save_attachment_to_file, save_draft, send_email, send_email_with_cmvh, set_minimize_to_tray,
+    set_notification_enabled, set_secure_storage, set_sound_enabled, set_sync_interval,
+    should_sync, sign_email_with_cmvh, start_oauth2_flow, sync_app_user, sync_email_flags,
+    sync_emails, sync_folders, sync_specific_email_flags, test_connection,
     unlock_encryption_with_password, verify_cmvh_signature,
 };
 use idle_manager::{IdleCommand, IdleManager};

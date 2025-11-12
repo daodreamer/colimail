@@ -7,10 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// Canonicalize email content for signing (must match JavaScript implementation)
 /// NOTE: Only sign metadata (subject, from, to), not body to avoid HTML formatting issues
 pub fn canonicalize_email(content: &EmailContent) -> String {
-    format!(
-        "{}\n{}\n{}",
-        content.subject, content.from, content.to
-    )
+    format!("{}\n{}\n{}", content.subject, content.from, content.to)
 }
 
 /// Compute keccak256 hash of email content
@@ -23,6 +20,8 @@ pub fn hash_email(content: &EmailContent) -> Vec<u8> {
 
 /// Add Ethereum signed message prefix and hash
 /// EIP-191: "\x19Ethereum Signed Message:\n" + len(message) + message
+/// Note: Currently unused as we sign raw hashes for contract compatibility
+#[allow(dead_code)]
 pub fn eth_message_hash(hash: &[u8]) -> Vec<u8> {
     let prefix = format!("\x19Ethereum Signed Message:\n{}", hash.len());
     let mut prefixed = Vec::new();
@@ -53,16 +52,15 @@ pub fn derive_address(secret_key: &SecretKey) -> Result<String, String> {
 }
 
 /// Sign email content with CMVH headers
-pub fn sign_email(
-    private_key_hex: &str,
-    content: &EmailContent,
-) -> Result<CMVHHeaders, String> {
+pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHHeaders, String> {
     println!("📝 Signing email with CMVH");
     println!("   Subject: {}", content.subject);
     println!("   From: {} → To: {}", content.from, content.to);
 
     // Parse private key
-    let private_key_hex = private_key_hex.strip_prefix("0x").unwrap_or(private_key_hex);
+    let private_key_hex = private_key_hex
+        .strip_prefix("0x")
+        .unwrap_or(private_key_hex);
     let private_key_bytes =
         hex::decode(private_key_hex).map_err(|e| format!("Invalid private key hex: {}", e))?;
 
@@ -75,12 +73,10 @@ pub fn sign_email(
     // Hash email content
     let email_hash = hash_email(content);
 
-    // Add Ethereum signed message prefix and hash again
-    let message_hash = eth_message_hash(&email_hash);
-
-    // Sign the message
+    // Sign the message hash directly (without EIP-191 prefix)
+    // The contract's ECDSA.tryRecover expects signatures of raw hashes
     let secp = Secp256k1::new();
-    let message = Message::from_digest_slice(&message_hash)
+    let message = Message::from_digest_slice(&email_hash)
         .map_err(|e| format!("Failed to create message: {}", e))?;
 
     let signature = secp.sign_ecdsa_recoverable(&message, &secret_key);

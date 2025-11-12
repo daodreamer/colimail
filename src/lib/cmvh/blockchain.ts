@@ -10,7 +10,7 @@ const CMVH_VERIFIER_ABI = [
   {
     name: "verifySignature",
     type: "function",
-    stateMutability: "view",
+    stateMutability: "pure",
     inputs: [
       { name: "signer", type: "address" },
       { name: "emailHash", type: "bytes32" },
@@ -21,16 +21,36 @@ const CMVH_VERIFIER_ABI = [
   {
     name: "verifyEmail",
     type: "function",
-    stateMutability: "view",
+    stateMutability: "pure",
     inputs: [
       { name: "signer", type: "address" },
       { name: "subject", type: "string" },
       { name: "from", type: "string" },
       { name: "to", type: "string" },
-      { name: "body", type: "string" },
       { name: "signature", type: "bytes" },
     ],
     outputs: [{ name: "isValid", type: "bool" }],
+  },
+  {
+    name: "hashEmail",
+    type: "function",
+    stateMutability: "pure",
+    inputs: [
+      { name: "subject", type: "string" },
+      { name: "from", type: "string" },
+      { name: "to", type: "string" },
+    ],
+    outputs: [{ name: "hash", type: "bytes32" }],
+  },
+  {
+    name: "recoverSigner",
+    type: "function",
+    stateMutability: "pure",
+    inputs: [
+      { name: "emailHash", type: "bytes32" },
+      { name: "signature", type: "bytes" },
+    ],
+    outputs: [{ name: "signer", type: "address" }],
   },
 ] as const;
 
@@ -58,11 +78,39 @@ export async function verifyOnChain(
   try {
     const client = createCMVHClient(config);
     const networkConfig = NETWORK_CONFIG[config.network];
+    const contractAddress = (config.contractAddress || networkConfig.contractAddress) as Address;
 
-    // Call contract verifyEmail function
+    console.log("📋 On-chain verification parameters:");
+    console.log(`   Contract: ${contractAddress}`);
+    console.log(`   Signer: ${headers.address}`);
+    console.log(`   Subject: "${content.subject}"`);
+    console.log(`   From: "${content.from}"`);
+    console.log(`   To: "${content.to}"`);
+    console.log(`   Signature length: ${headers.signature.length} chars (expected: 132 for 0x + 65 bytes)`);
+    console.log(`   Signature: ${headers.signature}`);
+
+    // Test: Call contract's hashEmail function to see what hash it computes
+    const contractEmailHash = await client.readContract({
+      address: contractAddress,
+      abi: CMVH_VERIFIER_ABI,
+      functionName: "hashEmail",
+      args: [content.subject, content.from, content.to],
+    });
+    console.log(`📊 Contract computed hash: ${contractEmailHash}`);
+
+    // Test: Try to recover signer from signature
+    const recoveredSigner = await client.readContract({
+      address: contractAddress,
+      abi: CMVH_VERIFIER_ABI,
+      functionName: "recoverSigner",
+      args: [contractEmailHash as `0x${string}`, headers.signature as Hex],
+    });
+    console.log(`🔍 Contract recovered signer: ${recoveredSigner}`);
+    console.log(`🔍 Expected signer: ${headers.address}`);
+
+    // Call contract verifyEmail function (body excluded from signature)
     const isValid = await client.readContract({
-      address: (config.contractAddress ||
-        networkConfig.contractAddress) as Address,
+      address: contractAddress,
       abi: CMVH_VERIFIER_ABI,
       functionName: "verifyEmail",
       args: [
@@ -70,14 +118,22 @@ export async function verifyOnChain(
         content.subject,
         content.from,
         content.to,
-        content.body,
         headers.signature as Hex,
       ],
     });
 
-    return { isValid };
+    console.log(`📊 Contract returned: ${isValid}`);
+
+    if (!isValid) {
+      return {
+        isValid: false,
+        error: "Signature verification failed on-chain (contract returned false)"
+      };
+    }
+
+    return { isValid: true };
   } catch (error) {
-    console.error("On-chain verification failed:", error);
+    console.error("❌ On-chain verification exception:", error);
     return {
       isValid: false,
       error: error instanceof Error ? error.message : String(error),

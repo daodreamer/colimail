@@ -5,10 +5,7 @@ use sha3::{Digest, Keccak256};
 /// Canonicalize email content for consistent hashing
 /// Format: "subject\nfrom\nto" (body excluded to avoid HTML formatting issues)
 pub fn canonicalize_email(content: &EmailContent) -> String {
-    format!(
-        "{}\n{}\n{}",
-        content.subject, content.from, content.to
-    )
+    format!("{}\n{}\n{}", content.subject, content.from, content.to)
 }
 
 /// Hash email content using keccak256
@@ -111,9 +108,9 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
         }
     };
 
-    // Create message from email hash (add Ethereum signed message prefix)
-    let prefixed_hash = ethereum_message_hash(&email_hash);
-    let message = match Message::from_digest_slice(&prefixed_hash) {
+    // Create message from email hash directly (without EIP-191 prefix)
+    // Must match the signing process which signs the raw hash
+    let message = match Message::from_digest_slice(&email_hash) {
         Ok(msg) => msg,
         Err(e) => {
             return VerificationResult {
@@ -160,8 +157,11 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
     if is_valid {
         println!("✅ CMVH verification PASSED: {}", claimed_address);
     } else {
-        println!("❌ CMVH verification FAILED: claimed {} ≠ recovered {}",
-                 claimed_address, recovered_address.to_lowercase());
+        println!(
+            "❌ CMVH verification FAILED: claimed {} ≠ recovered {}",
+            claimed_address,
+            recovered_address.to_lowercase()
+        );
     }
 
     VerificationResult {
@@ -187,6 +187,8 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
 
 /// Create Ethereum signed message hash
 /// "\x19Ethereum Signed Message:\n" + len(message) + message
+/// Note: Currently unused as we verify raw hash signatures for contract compatibility
+#[allow(dead_code)]
 fn ethereum_message_hash(message_hash: &[u8]) -> [u8; 32] {
     let prefix = format!("\x19Ethereum Signed Message:\n{}", message_hash.len());
     let mut hasher = Keccak256::new();

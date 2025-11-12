@@ -2,7 +2,9 @@ use crate::attachment_limits::{get_limit_for_email, validate_attachment_sizes};
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
 use lettre::{
-    message::{Attachment as LettreAttachment, Body, Mailbox, MultiPart, SinglePart, MessageBuilder},
+    message::{
+        Attachment as LettreAttachment, Body, Mailbox, MessageBuilder, MultiPart, SinglePart,
+    },
     transport::smtp::authentication::{Credentials, Mechanism},
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
@@ -11,9 +13,15 @@ use tauri::command;
 /// Add CMVH headers to email builder
 /// Note: Due to lettre library limitations with custom headers, CMVH headers are logged but not added to outgoing emails.
 /// Users can verify incoming CMVH-signed emails. For sending CMVH-signed emails, use the provided test scripts.
-fn add_cmvh_headers(builder: MessageBuilder, cmvh_headers: Option<serde_json::Value>) -> MessageBuilder {
+fn add_cmvh_headers(
+    builder: MessageBuilder,
+    cmvh_headers: Option<serde_json::Value>,
+) -> MessageBuilder {
     if let Some(cmvh) = cmvh_headers {
-        println!("CMVH headers provided (not added to email due to lettre limitations): {:?}", cmvh);
+        println!(
+            "CMVH headers provided (not added to email due to lettre limitations): {:?}",
+            cmvh
+        );
         // TODO: Upgrade to lettre version with better custom header support or use alternative SMTP library
     }
     builder
@@ -27,6 +35,7 @@ pub struct AttachmentData {
 }
 
 #[derive(serde::Deserialize)]
+#[allow(dead_code)]
 pub struct ForwardEmailParams {
     pub to: String,
     pub original_subject: String,

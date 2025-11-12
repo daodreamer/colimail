@@ -383,6 +383,10 @@
     EmailOps.handlePageChange(page);
   }
 
+  async function handleVerifyOnChain() {
+    await EmailOps.handleVerifyOnChain(appState.selectedEmailUid, appState.emails);
+  }
+
   // Draft management handlers
   async function loadDrafts() {
     await DraftMgmt.loadDrafts(appState.selectedAccountId);
@@ -583,6 +587,7 @@
         onDelete={handleDeleteEmail}
         onDownloadAttachment={downloadAttachment}
         onToggleRead={handleToggleReadStatus}
+        onVerifyOnChain={handleVerifyOnChain}
       />
     </div>
   </Sidebar.Inset>

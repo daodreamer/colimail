@@ -19,6 +19,10 @@ pub use auth::{
     delete_app_user, delete_secure_storage, get_app_user, get_secure_storage, set_secure_storage,
     sync_app_user,
 };
+pub use cmvh::{
+    derive_eth_address, has_cmvh_headers, hash_email_content, parse_email_cmvh_headers,
+    sign_email_with_cmvh, verify_cmvh_signature,
+};
 pub use detect_display_name::detect_display_name_from_sent;
 pub use drafts::{delete_draft, list_drafts, load_draft, save_draft};
 pub use emails::{
@@ -48,7 +52,3 @@ pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_f
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
 pub use send_cmvh::send_email_with_cmvh;
 pub use test_connection::test_connection;
-pub use cmvh::{
-    derive_eth_address, has_cmvh_headers, hash_email_content, parse_email_cmvh_headers,
-    sign_email_with_cmvh, verify_cmvh_signature,
-};

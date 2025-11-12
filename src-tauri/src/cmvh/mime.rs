@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use super::types::CMVHHeaders;
 use base64::{engine::general_purpose, Engine as _};
 use std::collections::HashMap;
@@ -24,7 +26,7 @@ fn sanitize_header_value(value: &str) -> Result<String, String> {
     }
 
     // Remove any CR/LF to prevent header injection
-    let sanitized = value.replace('\r', "").replace('\n', "");
+    let sanitized = value.replace(['\r', '\n'], "");
 
     Ok(sanitized)
 }
@@ -93,10 +95,7 @@ pub fn build_raw_email_with_cmvh(
         }
     }
     email.push_str(&format!("Subject: {}\r\n", subject));
-    email.push_str(&format!(
-        "Date: {}\r\n",
-        chrono::Utc::now().to_rfc2822()
-    ));
+    email.push_str(&format!("Date: {}\r\n", chrono::Utc::now().to_rfc2822()));
     email.push_str("MIME-Version: 1.0\r\n");
 
     // Inject CMVH headers BEFORE Content-Type

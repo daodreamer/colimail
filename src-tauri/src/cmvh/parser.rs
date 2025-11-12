@@ -78,10 +78,7 @@ pub fn validate_cmvh_headers(headers: &CMVHHeaders) -> Result<(), String> {
 
     // Validate hash algorithm
     if headers.hash_algo.to_lowercase() != "keccak256" {
-        return Err(format!(
-            "Unsupported hash algorithm: {}",
-            headers.hash_algo
-        ));
+        return Err(format!("Unsupported hash algorithm: {}", headers.hash_algo));
     }
 
     // Validate address format (0x + 40 hex chars)
@@ -134,7 +131,11 @@ X-CMVH-ENS: alice.eth
         "#;
 
         let result = parse_cmvh_headers(raw);
-        assert!(result.is_ok(), "Failed to parse headers: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to parse headers: {:?}",
+            result.err()
+        );
 
         let headers = result.unwrap();
         assert_eq!(headers.version, "1");

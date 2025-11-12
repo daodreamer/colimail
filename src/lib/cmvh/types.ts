@@ -44,6 +44,7 @@ export interface VerificationState {
 
 // CMVH Configuration
 export interface CMVHConfig {
+  version?: number; // Config version for migration
   enabled: boolean;
   autoVerify: boolean;
   verifyOnChain: boolean;
@@ -56,14 +57,18 @@ export interface CMVHConfig {
   derivedAddress: string; // Ethereum address derived from private key
 }
 
+// Configuration version for migration
+export const CMVH_CONFIG_VERSION = 2; // Updated for pure functions contract
+
 // Default configuration
 export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
+  version: CMVH_CONFIG_VERSION,
   enabled: true,
   autoVerify: true,
   verifyOnChain: false,
   rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
   network: "arbitrum-sepolia",
-  contractAddress: "0xf251c131d6b9f71992e2ba43023d3b52588dbd02", // Deployed contract
+  contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Deployed contract (pure functions)
   enableSigning: false,
   privateKey: "",
   derivedAddress: "",
@@ -75,7 +80,7 @@ export const NETWORK_CONFIG = {
     chainId: 421614,
     name: "Arbitrum Sepolia",
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-    contractAddress: "0xf251c131d6b9f71992e2ba43023d3b52588dbd02",
+    contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Updated to pure functions
     explorerUrl: "https://sepolia.arbiscan.io",
   },
   arbitrum: {

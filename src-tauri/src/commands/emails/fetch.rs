@@ -486,7 +486,10 @@ pub async fn fetch_email_raw_headers(
     folder: Option<String>,
 ) -> Result<String, String> {
     let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
-    println!("Fetching raw headers for UID {} in folder {}", uid, folder_name);
+    println!(
+        "Fetching raw headers for UID {} in folder {}",
+        uid, folder_name
+    );
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;

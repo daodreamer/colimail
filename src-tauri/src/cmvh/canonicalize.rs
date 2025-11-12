@@ -1,3 +1,6 @@
+// Note: Some items in this module are reserved for future Phase 3+ features
+#![allow(dead_code, unused_imports)]
+
 use sha3::{Digest, Keccak256};
 use std::collections::BTreeMap;
 
@@ -51,6 +54,7 @@ pub fn normalize_html(html: &str) -> String {
 
 /// Build canonical string for email signing
 /// Format: From|To|Cc|Subject|Timestamp|BodyHash|AttachmentsHash
+#[allow(clippy::vec_init_then_push)]
 pub fn build_canonical_string(input: &CanonicalInput) -> String {
     let mut parts = Vec::new();
 

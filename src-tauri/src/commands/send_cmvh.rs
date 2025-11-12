@@ -5,8 +5,7 @@ use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
 use lettre::{
     transport::smtp::authentication::{Credentials, Mechanism},
-    AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
-    Address,
+    Address, AsyncSmtpTransport, AsyncTransport, Tokio1Executor,
 };
 use tauri::command;
 
@@ -80,7 +79,10 @@ async fn send_raw_email_smtp(
         .ok_or("Invalid sender address")?
         .clone();
 
-    println!("📨 Sending email from {} to {:?}", sender_email, to_addresses);
+    println!(
+        "📨 Sending email from {} to {:?}",
+        sender_email, to_addresses
+    );
 
     // Parse email addresses into Address objects
     let from_address: Address = sender_email
@@ -151,10 +153,16 @@ pub async fn send_email_with_cmvh(
         attachments_data.as_deref(),
     )?;
 
-    println!("✅ Built raw email with CMVH headers ({} bytes)", raw_email.len());
+    println!(
+        "✅ Built raw email with CMVH headers ({} bytes)",
+        raw_email.len()
+    );
     println!("   CMVH-Version: {}", cmvh_headers.version);
     println!("   CMVH-Address: {}", cmvh_headers.address);
-    println!("   CMVH-Signature: {}...", &cmvh_headers.signature[..20.min(cmvh_headers.signature.len())]);
+    println!(
+        "   CMVH-Signature: {}...",
+        &cmvh_headers.signature[..20.min(cmvh_headers.signature.len())]
+    );
 
     // Log first 500 chars of raw email for debugging
     let preview = String::from_utf8_lossy(&raw_email);

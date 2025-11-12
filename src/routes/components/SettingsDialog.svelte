@@ -334,7 +334,7 @@
     }
   }
 
-  function saveCMVHSettings() {
+  async function saveCMVHSettings() {
     // Validate signing configuration if enabled
     if (cmvhConfig.enableSigning) {
       if (!cmvhConfig.privateKey) {
@@ -347,14 +347,24 @@
       }
     }
 
-    saveConfig(cmvhConfig);
-    toast.success("CMVH settings saved successfully");
+    try {
+      await saveConfig(cmvhConfig);
+      toast.success("CMVH settings saved successfully");
+    } catch (error) {
+      console.error("Failed to save CMVH settings:", error);
+      toast.error(`Failed to save settings: ${error}`);
+    }
   }
 
-  function handleResetCMVH() {
-    cmvhConfig = resetConfig();
-    showResetCMVHDialog = false;
-    toast.success("CMVH settings reset to defaults");
+  async function handleResetCMVH() {
+    try {
+      cmvhConfig = await resetConfig();
+      showResetCMVHDialog = false;
+      toast.success("CMVH settings reset to defaults");
+    } catch (error) {
+      console.error("Failed to reset CMVH settings:", error);
+      toast.error(`Failed to reset settings: ${error}`);
+    }
   }
 </script>
 

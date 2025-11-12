@@ -9,6 +9,7 @@ import type { AccountConfig, EmailHeader, AttachmentInfo, CMVHHeaders, CMVHVerif
 import { state as appState } from "../lib/state.svelte";
 import { isTrashFolder } from "../lib/utils";
 import { loadConfig } from "$lib/cmvh";
+import { verifyOnChain } from "$lib/cmvh/blockchain";
 
 /**
  * Handle email click - load and display email body
@@ -595,6 +596,102 @@ async function verifyCMVHIfEnabled(
     console.error("❌ CMVH verification failed:", error);
     appState.cmvhVerification = {
       hasCMVH: false,
+      error: String(error),
+    };
+  }
+}
+
+/**
+ * Verify CMVH signature on-chain via smart contract
+ */
+export async function handleVerifyOnChain(
+  selectedEmailUid: number | null,
+  emails: EmailHeader[]
+) {
+  if (!appState.cmvhVerification?.hasCMVH || !appState.cmvhVerification.isValid) {
+    console.error("Cannot verify on-chain: email not locally verified");
+    return;
+  }
+
+  if (!appState.cmvhVerification.headers) {
+    console.error("Cannot verify on-chain: missing CMVH headers");
+    return;
+  }
+
+  // Load config asynchronously to ensure we have the latest from secure storage
+  const { loadConfigAsync } = await import("$lib/cmvh");
+  const cmvhConfig = await loadConfigAsync();
+
+  console.log("🔧 CMVH Config loaded:");
+  console.log(`   Enabled: ${cmvhConfig.enabled}`);
+  console.log(`   Verify on-chain: ${cmvhConfig.verifyOnChain}`);
+  console.log(`   Contract: ${cmvhConfig.contractAddress}`);
+  console.log(`   Network: ${cmvhConfig.network}`);
+
+  if (!cmvhConfig.enabled || !cmvhConfig.verifyOnChain) {
+    console.error("On-chain verification is disabled in settings");
+    return;
+  }
+
+  const selectedEmail = emails.find((email) => email.uid === selectedEmailUid);
+  if (!selectedEmail) {
+    console.error("Cannot find selected email");
+    return;
+  }
+
+  // Set verifying state
+  appState.cmvhVerification = {
+    ...appState.cmvhVerification,
+    isVerifyingOnChain: true,
+  };
+
+  try {
+    // Extract clean email addresses
+    const extractEmail = (addr: string): string => {
+      const match = addr.match(/<(.+?)>/);
+      return match ? match[1] : addr.trim();
+    };
+
+    const emailContent = {
+      from: extractEmail(selectedEmail.from),
+      to: extractEmail(selectedEmail.to),
+      subject: selectedEmail.subject,
+      body: "", // Body not used in verification
+    };
+
+    console.log("🔗 Verifying CMVH signature on-chain...");
+    console.log(`   Network: ${cmvhConfig.network}`);
+    console.log(`   RPC: ${cmvhConfig.rpcUrl || "default"}`);
+
+    const result = await verifyOnChain(
+      appState.cmvhVerification.headers!, // We already checked it exists above
+      emailContent,
+      cmvhConfig
+    );
+
+    if (result.isValid) {
+      console.log("✅ On-chain verification PASSED");
+      appState.cmvhVerification = {
+        ...appState.cmvhVerification,
+        isOnChainVerified: true,
+        onChainVerifiedAt: Date.now(),
+        isVerifyingOnChain: false,
+      };
+    } else {
+      console.error("❌ On-chain verification FAILED:", result.error);
+      appState.cmvhVerification = {
+        ...appState.cmvhVerification,
+        isOnChainVerified: false,
+        isVerifyingOnChain: false,
+        error: result.error || "On-chain verification failed",
+      };
+    }
+  } catch (error) {
+    console.error("❌ On-chain verification error:", error);
+    appState.cmvhVerification = {
+      ...appState.cmvhVerification,
+      isOnChainVerified: false,
+      isVerifyingOnChain: false,
       error: String(error),
     };
   }
