@@ -185,21 +185,6 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
     }
 }
 
-/// Create Ethereum signed message hash
-/// "\x19Ethereum Signed Message:\n" + len(message) + message
-/// Note: Currently unused as we verify raw hash signatures for contract compatibility
-#[allow(dead_code)]
-fn ethereum_message_hash(message_hash: &[u8]) -> [u8; 32] {
-    let prefix = format!("\x19Ethereum Signed Message:\n{}", message_hash.len());
-    let mut hasher = Keccak256::new();
-    hasher.update(prefix.as_bytes());
-    hasher.update(message_hash);
-    let result = hasher.finalize();
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&result);
-    hash
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,12 +216,5 @@ mod tests {
 
         let hash = hash_email(&content);
         assert_eq!(hash.len(), 32); // keccak256 produces 32 bytes
-    }
-
-    #[test]
-    fn test_ethereum_message_hash() {
-        let message = b"test message";
-        let hash = ethereum_message_hash(message);
-        assert_eq!(hash.len(), 32);
     }
 }

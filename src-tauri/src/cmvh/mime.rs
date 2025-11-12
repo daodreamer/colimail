@@ -1,8 +1,5 @@
-#![allow(unused_imports)]
-
 use super::types::CMVHHeaders;
 use base64::{engine::general_purpose, Engine as _};
-use std::collections::HashMap;
 
 /// Validate header name (only allow alphanumeric and hyphen)
 fn validate_header_name(name: &str) -> Result<(), String> {

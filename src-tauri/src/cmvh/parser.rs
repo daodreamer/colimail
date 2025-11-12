@@ -174,7 +174,7 @@ X-CMVH-Address: 0x1234567890123456789012345678901234567890
 
     #[test]
     fn test_validate_invalid_version() {
-        let mut headers = CMVHHeaders {
+        let headers = CMVHHeaders {
             version: "2".to_string(),
             address: "0x1234567890123456789012345678901234567890".to_string(),
             chain: "Arbitrum".to_string(),

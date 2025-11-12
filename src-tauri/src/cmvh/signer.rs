@@ -18,21 +18,6 @@ pub fn hash_email(content: &EmailContent) -> Vec<u8> {
     hasher.finalize().to_vec()
 }
 
-/// Add Ethereum signed message prefix and hash
-/// EIP-191: "\x19Ethereum Signed Message:\n" + len(message) + message
-/// Note: Currently unused as we sign raw hashes for contract compatibility
-#[allow(dead_code)]
-pub fn eth_message_hash(hash: &[u8]) -> Vec<u8> {
-    let prefix = format!("\x19Ethereum Signed Message:\n{}", hash.len());
-    let mut prefixed = Vec::new();
-    prefixed.extend_from_slice(prefix.as_bytes());
-    prefixed.extend_from_slice(hash);
-
-    let mut hasher = Keccak256::new();
-    hasher.update(&prefixed);
-    hasher.finalize().to_vec()
-}
-
 /// Derive Ethereum address from secret key
 pub fn derive_address(secret_key: &SecretKey) -> Result<String, String> {
     let secp = Secp256k1::new();

@@ -34,20 +34,6 @@ pub struct AttachmentData {
     pub data: Vec<u8>,
 }
 
-#[derive(serde::Deserialize)]
-#[allow(dead_code)]
-pub struct ForwardEmailParams {
-    pub to: String,
-    pub original_subject: String,
-    pub original_from: String,
-    pub original_to: String,
-    pub original_date: String,
-    pub original_body: String,
-    pub additional_message: String,
-    pub cc: Option<String>,
-    pub attachments: Option<Vec<AttachmentData>>,
-}
-
 #[command]
 pub async fn send_email(
     config: AccountConfig,
