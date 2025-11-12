@@ -50,6 +50,10 @@ export interface CMVHConfig {
   rpcUrl: string;
   network: "arbitrum" | "arbitrum-sepolia";
   contractAddress: string;
+  // Signing configuration
+  enableSigning: boolean;
+  privateKey: string; // Hex-encoded private key (without 0x prefix)
+  derivedAddress: string; // Ethereum address derived from private key
 }
 
 // Default configuration
@@ -60,6 +64,9 @@ export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
   rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
   network: "arbitrum-sepolia",
   contractAddress: "0xf251c131d6b9f71992e2ba43023d3b52588dbd02", // Deployed contract
+  enableSigning: false,
+  privateKey: "",
+  derivedAddress: "",
 };
 
 // Network configurations

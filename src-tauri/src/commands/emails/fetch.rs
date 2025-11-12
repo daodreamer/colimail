@@ -477,3 +477,52 @@ pub async fn fetch_email_body_cached(
     );
     Ok(body)
 }
+
+/// Fetch raw email headers (for CMVH verification)
+#[command]
+pub async fn fetch_email_raw_headers(
+    config: AccountConfig,
+    uid: u32,
+    folder: Option<String>,
+) -> Result<String, String> {
+    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
+    println!("Fetching raw headers for UID {} in folder {}", uid, folder_name);
+
+    // Ensure we have a valid access token (refresh if needed)
+    let config = ensure_valid_token(config).await?;
+
+    tokio::task::spawn_blocking(move || -> Result<String, String> {
+        // Connect and login to IMAP
+        let mut imap_session = imap_helpers::connect_and_login(&config)?;
+
+        // Select folder
+        imap_session
+            .select(&folder_name)
+            .map_err(|e| format!("Cannot access folder '{}': {}", folder_name, e))?;
+
+        // Fetch raw headers using RFC822.HEADER
+        let messages = imap_session
+            .uid_fetch(uid.to_string(), "RFC822.HEADER")
+            .map_err(|e| format!("Failed to fetch headers: {}", e))?;
+
+        let message = messages
+            .iter()
+            .next()
+            .ok_or_else(|| format!("Email UID {} not found", uid))?;
+
+        let headers = message
+            .header()
+            .ok_or_else(|| "No headers found in message".to_string())?;
+
+        let headers_str = String::from_utf8_lossy(headers).to_string();
+
+        imap_session
+            .logout()
+            .map_err(|e| format!("Logout failed: {}", e))?;
+
+        println!("✅ Successfully fetched raw headers for UID {}", uid);
+        Ok(headers_str)
+    })
+    .await
+    .map_err(|e| format!("Task join error: {}", e))?
+}

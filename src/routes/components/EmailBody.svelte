@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { EmailHeader, AttachmentInfo } from "../lib/types";
+  import type { EmailHeader, AttachmentInfo, CMVHVerificationResult } from "../lib/types";
   import { formatFullLocalDateTime } from "../lib/utils";
   import AttachmentList from "./AttachmentList.svelte";
   import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
@@ -17,6 +17,7 @@
     isLoadingBody = false,
     isLoadingAttachments = false,
     error = null as string | null,
+    cmvhVerification = null as CMVHVerificationResult | null,
     onReply,
     onForward,
     onDelete,
@@ -29,6 +30,7 @@
     isLoadingBody?: boolean;
     isLoadingAttachments?: boolean;
     error?: string | null;
+    cmvhVerification?: CMVHVerificationResult | null;
     onReply: () => void;
     onForward: () => void;
     onDelete: () => void;
@@ -101,6 +103,45 @@
           <span>{formatFullLocalDateTime(email.timestamp)}</span>
         </div>
       </div>
+
+      <!-- CMVH Verification Badge -->
+      {#if cmvhVerification?.hasCMVH}
+        <div class="mt-4 rounded-lg border bg-card p-3">
+          <div class="flex items-center gap-2">
+            {#if cmvhVerification.isValid}
+              <div class="flex items-center gap-2 text-green-600 dark:text-green-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+                <span class="text-sm font-semibold">CMVH Verified</span>
+              </div>
+            {:else}
+              <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span class="text-sm font-semibold">CMVH Signature Invalid</span>
+              </div>
+            {/if}
+          </div>
+          {#if cmvhVerification.headers}
+            <div class="mt-2 text-xs text-muted-foreground space-y-1">
+              <div class="flex gap-2">
+                <span class="font-semibold">Signer:</span>
+                <span class="font-mono break-all">{cmvhVerification.headers.address}</span>
+              </div>
+              <div class="flex gap-2">
+                <span class="font-semibold">Chain:</span>
+                <span>{cmvhVerification.headers.chain}</span>
+              </div>
+              <div class="flex gap-2">
+                <span class="font-semibold">Timestamp:</span>
+                <span>{cmvhVerification.headers.timestamp}</span>
+              </div>
+            </div>
+          {/if}
+        </div>
+      {/if}
 
       <div class="mt-6 flex items-center gap-2">
         <ButtonGroup.Root>

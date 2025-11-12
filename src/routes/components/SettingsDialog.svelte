@@ -64,6 +64,8 @@
   // CMVH settings state
   let cmvhConfig = $state<CMVHConfig>(loadConfig());
   let showResetCMVHDialog = $state(false);
+  let showPrivateKey = $state(false);
+  let isDerivedAddressLoading = $state(false);
 
   // Encryption state
   interface EncryptionStatus {
@@ -304,7 +306,47 @@
   }
 
   // CMVH Settings Functions
+  async function deriveAddressFromKey() {
+    if (!cmvhConfig.privateKey) {
+      toast.error("Please enter a private key first");
+      return;
+    }
+
+    // Validate hex format
+    const hexPattern = /^[0-9a-fA-F]{64}$/;
+    if (!hexPattern.test(cmvhConfig.privateKey.replace(/^0x/, ''))) {
+      toast.error("Invalid private key format. Must be 64 hex characters (with or without 0x prefix)");
+      return;
+    }
+
+    isDerivedAddressLoading = true;
+    try {
+      // Remove 0x prefix if present
+      const cleanKey = cmvhConfig.privateKey.replace(/^0x/, '');
+      const address = await invoke<string>("derive_eth_address", { privateKey: cleanKey });
+      cmvhConfig.derivedAddress = address;
+      toast.success("Address derived successfully");
+    } catch (error) {
+      console.error("Failed to derive address:", error);
+      toast.error(`Failed to derive address: ${error}`);
+    } finally {
+      isDerivedAddressLoading = false;
+    }
+  }
+
   function saveCMVHSettings() {
+    // Validate signing configuration if enabled
+    if (cmvhConfig.enableSigning) {
+      if (!cmvhConfig.privateKey) {
+        toast.error("Please enter a private key to enable signing");
+        return;
+      }
+      if (!cmvhConfig.derivedAddress) {
+        toast.error("Please derive address from private key first");
+        return;
+      }
+    }
+
     saveConfig(cmvhConfig);
     toast.success("CMVH settings saved successfully");
   }
@@ -671,6 +713,95 @@
 
           {:else if currentPage === "CMVH Verification"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- Email Signing Settings -->
+              <div class="space-y-4">
+                <div>
+                  <h4 class="text-sm font-medium mb-1">Email Signature Creation</h4>
+                  <p class="text-xs text-muted-foreground">
+                    Sign outgoing emails with your private key to prove authenticity
+                  </p>
+                </div>
+
+                <div class="flex items-center justify-between">
+                  <div class="space-y-0.5">
+                    <Label for="cmvh-signing-enabled" class="text-sm">Enable CMVH Signing</Label>
+                    <p class="text-xs text-muted-foreground">
+                      Add blockchain-verifiable signatures to your outgoing emails
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    id="cmvh-signing-enabled"
+                    bind:checked={cmvhConfig.enableSigning}
+                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+
+                {#if cmvhConfig.enableSigning}
+                  <Separator />
+
+                  <div class="rounded-lg border bg-card p-4 space-y-4">
+                    <div class="space-y-2">
+                      <Label for="private-key" class="text-sm">
+                        Private Key
+                        <span class="text-destructive">*</span>
+                      </Label>
+                      <div class="flex gap-2">
+                        <input
+                          id="private-key"
+                          type={showPrivateKey ? "text" : "password"}
+                          bind:value={cmvhConfig.privateKey}
+                          placeholder="Enter your Ethereum private key (64 hex characters)"
+                          class="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onclick={() => showPrivateKey = !showPrivateKey}
+                          title={showPrivateKey ? "Hide private key" : "Show private key"}
+                        >
+                          {showPrivateKey ? "🙈" : "👁️"}
+                        </Button>
+                      </div>
+                      <p class="text-xs text-muted-foreground">
+                        64 hexadecimal characters (with or without 0x prefix)
+                      </p>
+                    </div>
+
+                    <div class="space-y-2">
+                      <Label for="derived-address" class="text-sm">Ethereum Address</Label>
+                      <div class="flex gap-2">
+                        <input
+                          id="derived-address"
+                          type="text"
+                          value={cmvhConfig.derivedAddress || "Click 'Derive Address' to generate"}
+                          readonly
+                          class="flex-1 h-10 rounded-md border border-input bg-muted px-3 py-2 text-sm font-mono"
+                        />
+                        <Button
+                          variant="default"
+                          onclick={deriveAddressFromKey}
+                          disabled={isDerivedAddressLoading || !cmvhConfig.privateKey}
+                        >
+                          {isDerivedAddressLoading ? "Deriving..." : "Derive Address"}
+                        </Button>
+                      </div>
+                      <p class="text-xs text-muted-foreground">
+                        Your Ethereum address derived from the private key
+                      </p>
+                    </div>
+
+                    <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3">
+                      <p class="text-xs text-amber-900 dark:text-amber-200">
+                        <strong>Security Warning:</strong> Your private key is stored locally in browser storage (localStorage). Never share your private key with anyone. Consider using a dedicated key for email signing, separate from your main wallet.
+                      </p>
+                    </div>
+                  </div>
+                {/if}
+              </div>
+
+              <Separator />
+
               <!-- General Settings -->
               <div class="space-y-4">
                 <div>

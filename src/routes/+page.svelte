@@ -577,6 +577,7 @@
         isLoadingBody={appState.isLoadingBody}
         isLoadingAttachments={appState.isLoadingAttachments}
         error={appState.error}
+        cmvhVerification={appState.cmvhVerification}
         onReply={handleReplyClick}
         onForward={handleForwardClick}
         onDelete={handleDeleteEmail}
@@ -594,6 +595,7 @@
     bind:subject={appState.composeSubject}
     bind:body={appState.composeBody}
     bind:attachments={appState.composeAttachments}
+    bind:enableCMVHSigning={appState.enableCMVHSigning}
     attachmentSizeLimit={appState.attachmentSizeLimit}
     totalAttachmentSize={appState.totalAttachmentSize}
     isSending={appState.isSending}

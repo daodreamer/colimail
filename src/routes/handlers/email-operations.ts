@@ -5,9 +5,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { AccountConfig, EmailHeader, AttachmentInfo } from "../lib/types";
+import type { AccountConfig, EmailHeader, AttachmentInfo, CMVHHeaders, CMVHVerificationResult } from "../lib/types";
 import { state as appState } from "../lib/state.svelte";
 import { isTrashFolder } from "../lib/utils";
+import { loadConfig } from "$lib/cmvh";
 
 /**
  * Handle email click - load and display email body
@@ -44,6 +45,9 @@ export async function handleEmailClick(
     if (selectedAccountId) {
       await loadAttachmentsForEmail(selectedAccountId, uid, selectedFolderName);
     }
+
+    // Check for CMVH verification if enabled
+    await verifyCMVHIfEnabled(selectedConfig, uid, selectedFolderName);
 
     // Auto-mark as read when opening email
     const selectedEmail = appState.emails.find((email) => email.uid === uid);
@@ -512,4 +516,86 @@ export function handlePageChange(page: number) {
   appState.selectedEmailUid = null;
   appState.emailBody = null;
   appState.attachments = [];
+}
+
+/**
+ * Verify CMVH signature if verification is enabled in settings
+ */
+async function verifyCMVHIfEnabled(
+  config: AccountConfig,
+  uid: number,
+  folder: string
+) {
+  // Reset CMVH verification state
+  appState.cmvhVerification = null;
+
+  const cmvhConfig = loadConfig();
+  if (!cmvhConfig.enabled) {
+    console.log("📧 CMVH verification disabled in settings");
+    return;
+  }
+
+  try {
+    // Check if email has CMVH headers
+    const rawHeaders = await invoke<string>("fetch_email_raw_headers", {
+      config,
+      uid,
+      folder,
+    });
+
+    const hasCMVH = await invoke<boolean>("has_cmvh_headers", {
+      rawHeaders,
+    });
+
+    if (!hasCMVH) {
+      console.log("📧 Email does not contain CMVH headers");
+      appState.cmvhVerification = {
+        hasCMVH: false,
+      };
+      return;
+    }
+
+    // Parse CMVH headers
+    const headers = await invoke<CMVHHeaders>("parse_email_cmvh_headers", {
+      rawHeaders,
+    });
+
+    // Get email content for verification
+    const selectedEmail = appState.emails.find((email) => email.uid === uid);
+    if (!selectedEmail) {
+      throw new Error("Could not find email");
+    }
+
+    // Extract clean email addresses (remove display names)
+    const extractEmail = (addr: string): string => {
+      const match = addr.match(/<(.+?)>/);
+      return match ? match[1] : addr.trim();
+    };
+
+    const emailContent = {
+      from: extractEmail(selectedEmail.from),
+      to: extractEmail(selectedEmail.to),
+      subject: selectedEmail.subject,
+      body: "", // Body is not used in CMVH verification
+    };
+
+    // Verify signature
+    const verificationResult = await invoke<{ is_valid: boolean }>("verify_cmvh_signature", {
+      headers,
+      content: emailContent,
+    });
+
+    appState.cmvhVerification = {
+      hasCMVH: true,
+      isValid: verificationResult.is_valid,
+      headers,
+      verifiedAt: Date.now(),
+    };
+  } catch (error) {
+    console.error("❌ CMVH verification failed:", error);
+    appState.cmvhVerification = {
+      hasCMVH: false,
+      error: String(error),
+    };
+  }
 }

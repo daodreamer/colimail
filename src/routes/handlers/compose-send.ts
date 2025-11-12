@@ -5,9 +5,10 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { toast } from "svelte-sonner";
-import type { AccountConfig, EmailHeader } from "../lib/types";
+import type { AccountConfig, EmailHeader, CMVHHeaders } from "../lib/types";
 import { state as appState } from "../lib/state.svelte";
 import { draftManager } from "../lib/draft-manager";
+import { loadConfig } from "$lib/cmvh";
 
 /**
  * Handle compose new email button click
@@ -192,6 +193,10 @@ export async function handleSendEmail(
     }
 
     let result: string;
+
+    // Check if CMVH signing is enabled for this email
+    const shouldSignWithCMVH = appState.enableCMVHSigning;
+
     if (appState.isReplyMode) {
       result = await invoke<string>("reply_email", {
         config: selectedConfig,
@@ -228,14 +233,61 @@ export async function handleSendEmail(
         appState.isSending = false;
         return;
       }
-      result = await invoke<string>("send_email", {
-        config: selectedConfig,
-        to: appState.composeTo,
-        subject: appState.composeSubject,
-        body: appState.composeBody,
-        cc: appState.composeCc || null,
-        attachments: attachmentsData,
-      });
+
+      // Send with or without CMVH signing based on user choice
+      if (shouldSignWithCMVH) {
+        // Load CMVH config to get private key
+        const cmvhConfig = loadConfig();
+
+        if (!cmvhConfig.privateKey || !cmvhConfig.derivedAddress) {
+          appState.error = "CMVH signing enabled but private key not configured. Please configure in Settings.";
+          appState.isSending = false;
+          return;
+        }
+
+        try {
+          // Step 1: Sign the email metadata (subject, from, to) - body is NOT signed to avoid HTML formatting issues
+          const cmvhHeaders = await invoke<CMVHHeaders>("sign_email_with_cmvh", {
+            privateKey: cmvhConfig.privateKey,
+            content: {
+              from: selectedConfig.email,
+              to: appState.composeTo,
+              subject: appState.composeSubject,
+              body: "", // Body is not used in signature
+            },
+          });
+
+          console.log("✅ Email signed with CMVH:", cmvhHeaders);
+
+          // Step 2: Send email with CMVH headers
+          result = await invoke<string>("send_email_with_cmvh", {
+            config: selectedConfig,
+            to: appState.composeTo,
+            subject: appState.composeSubject,
+            body: appState.composeBody,
+            cc: appState.composeCc || null,
+            attachments: attachmentsData,
+            cmvhHeaders: cmvhHeaders,
+          });
+
+          toast.success("Email signed with CMVH and sent successfully!");
+        } catch (signError) {
+          console.error("❌ Failed to sign email with CMVH:", signError);
+          appState.error = `Failed to sign email: ${signError}`;
+          appState.isSending = false;
+          return;
+        }
+      } else {
+        // Send without CMVH signing (regular email)
+        result = await invoke<string>("send_email", {
+          config: selectedConfig,
+          to: appState.composeTo,
+          subject: appState.composeSubject,
+          body: appState.composeBody,
+          cc: appState.composeCc || null,
+          attachments: attachmentsData,
+        });
+      }
     }
 
     // Delete draft after successful send
@@ -251,7 +303,10 @@ export async function handleSendEmail(
     appState.showComposeDialog = false;
     appState.resetComposeState();
 
-    toast.success("Email sent successfully!");
+    // Only show generic success toast if CMVH-specific toast wasn't already shown
+    if (!shouldSignWithCMVH) {
+      toast.success("Email sent successfully!");
+    }
   } catch (e) {
     appState.error = `Failed to send email: ${e}`;
   } finally {

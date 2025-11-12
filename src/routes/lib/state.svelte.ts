@@ -51,6 +51,8 @@ class AppState {
   currentDraftId = $state<number | null>(null); // Track the current draft being edited
   showSaveDraftDialog = $state<boolean>(false); // Show save draft confirmation dialog
   autoSaveTimerId = $state<number | null>(null); // Auto-save timer ID
+  enableCMVHSigning = $state<boolean>(false); // Enable CMVH signing for current email
+  cmvhVerification = $state<import("./types").CMVHVerificationResult | null>(null); // CMVH verification result for current email
 
   // Draft state
   drafts = $state<DraftListItem[]>([]);
@@ -80,6 +82,7 @@ class AppState {
     this.isForwardMode = false;
     this.isSending = false;
     this.currentDraftId = null;
+    this.enableCMVHSigning = false;
     this.error = null;
     // Clear auto-save timer
     if (this.autoSaveTimerId !== null) {

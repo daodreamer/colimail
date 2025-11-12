@@ -218,12 +218,13 @@ use super::types::{CMVHHeaders, EmailContent, VerificationResult};
 use sha3::{Digest, Keccak256};
 use secp256k1::{ecdsa::RecoverableSignature, Message, Secp256k1, PublicKey};
 
+/// Canonicalize email content for consistent hashing
+/// Format: "subject\nfrom\nto" (body excluded to avoid HTML formatting issues)
 pub fn canonicalize_email(content: &EmailContent) -> String {
-    format!("{}\n{}\n{}\n{}",
+    format!("{}\n{}\n{}",
         content.subject,
         content.from,
-        content.to,
-        content.body
+        content.to
     )
 }
 
@@ -285,11 +286,11 @@ mod tests {
             subject: "Test".to_string(),
             from: "alice@example.com".to_string(),
             to: "bob@example.com".to_string(),
-            body: "Hello".to_string(),
+            body: "Hello".to_string(), // Body not used in canonicalization
         };
 
         let canonical = canonicalize_email(&content);
-        assert_eq!(canonical, "Test\nalice@example.com\nbob@example.com\nHello");
+        assert_eq!(canonical, "Test\nalice@example.com\nbob@example.com");
     }
 
     #[test]

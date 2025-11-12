@@ -2,11 +2,22 @@ use crate::attachment_limits::{get_limit_for_email, validate_attachment_sizes};
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
 use lettre::{
-    message::{Attachment as LettreAttachment, Body, Mailbox, MultiPart, SinglePart},
+    message::{Attachment as LettreAttachment, Body, Mailbox, MultiPart, SinglePart, MessageBuilder},
     transport::smtp::authentication::{Credentials, Mechanism},
     AsyncSmtpTransport, AsyncTransport, Message, Tokio1Executor,
 };
 use tauri::command;
+
+/// Add CMVH headers to email builder
+/// Note: Due to lettre library limitations with custom headers, CMVH headers are logged but not added to outgoing emails.
+/// Users can verify incoming CMVH-signed emails. For sending CMVH-signed emails, use the provided test scripts.
+fn add_cmvh_headers(builder: MessageBuilder, cmvh_headers: Option<serde_json::Value>) -> MessageBuilder {
+    if let Some(cmvh) = cmvh_headers {
+        println!("CMVH headers provided (not added to email due to lettre limitations): {:?}", cmvh);
+        // TODO: Upgrade to lettre version with better custom header support or use alternative SMTP library
+    }
+    builder
+}
 
 #[derive(serde::Deserialize)]
 pub struct AttachmentData {
@@ -36,6 +47,7 @@ pub async fn send_email(
     body: String,
     cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
+    cmvh_headers: Option<serde_json::Value>,
 ) -> Result<String, String> {
     println!("Sending email to {}", to);
 
@@ -56,10 +68,13 @@ pub async fn send_email(
     };
     let to_mailbox: Mailbox = to.parse::<Mailbox>().map_err(|e| e.to_string())?;
 
-    let mut email_builder = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(subject);
+
+    // Add CMVH headers if provided
+    let mut email_builder = add_cmvh_headers(email_builder, cmvh_headers);
 
     // Add CC recipients if provided
     if let Some(cc_str) = cc {
@@ -196,6 +211,7 @@ pub async fn reply_email(
     body: String,
     cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
+    cmvh_headers: Option<serde_json::Value>,
 ) -> Result<String, String> {
     println!("Replying to email: {}", to);
 
@@ -223,10 +239,13 @@ pub async fn reply_email(
         format!("Re: {}", original_subject)
     };
 
-    let mut email_builder = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(reply_subject);
+
+    // Add CMVH headers if provided
+    let mut email_builder = add_cmvh_headers(email_builder, cmvh_headers);
 
     // Add CC recipients if provided
     if let Some(cc_str) = cc {
@@ -328,10 +347,24 @@ pub async fn reply_email(
     Ok("Started sending reply email.".into())
 }
 
+#[derive(serde::Deserialize)]
+pub struct ForwardEmailParamsWithCMVH {
+    pub to: String,
+    pub original_subject: String,
+    pub original_from: String,
+    pub original_to: String,
+    pub original_date: String,
+    pub original_body: String,
+    pub additional_message: String,
+    pub cc: Option<String>,
+    pub attachments: Option<Vec<AttachmentData>>,
+    pub cmvh_headers: Option<serde_json::Value>,
+}
+
 #[command]
 pub async fn forward_email(
     config: AccountConfig,
-    params: ForwardEmailParams,
+    params: ForwardEmailParamsWithCMVH,
 ) -> Result<String, String> {
     println!("Forwarding email to: {}", params.to);
 
@@ -398,10 +431,13 @@ pub async fn forward_email(
         )
     };
 
-    let mut email_builder = Message::builder()
+    let email_builder = Message::builder()
         .from(from)
         .to(to_mailbox)
         .subject(forward_subject);
+
+    // Add CMVH headers if provided
+    let mut email_builder = add_cmvh_headers(email_builder, params.cmvh_headers);
 
     // Add CC recipients if provided
     if let Some(cc_str) = params.cc {

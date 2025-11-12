@@ -133,16 +133,15 @@ async function main() {
   const TEST_PRIVATE_KEY: Hex = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
   const testAccount = privateKeyToAccount(TEST_PRIVATE_KEY);
 
-  // Test email
+  // Test email (body excluded from signature to avoid HTML formatting issues)
   const testEmail = {
     subject: "Test Email",
     from: "alice@example.com",
     to: "bob@example.com",
-    body: "Hello world"
   };
 
-  // Canonicalize and hash
-  const canonical = `${testEmail.subject}\n${testEmail.from}\n${testEmail.to}\n${testEmail.body}`;
+  // Canonicalize and hash (only metadata)
+  const canonical = `${testEmail.subject}\n${testEmail.from}\n${testEmail.to}`;
   const emailHash = keccak256(new TextEncoder().encode(canonical));
 
   // Sign

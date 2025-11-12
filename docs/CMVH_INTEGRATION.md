@@ -94,12 +94,12 @@ When you receive an email with CMVH headers:
 ```typescript
 import { verifyEmail } from "$lib/cmvh";
 
-// Verify email with CMVH headers
+// Verify email with CMVH headers (only metadata is verified)
 const verificationState = await verifyEmail(rawHeaders, {
   subject: "Hello World",
   from: "alice@example.com",
   to: "bob@example.com",
-  body: "Email content...",
+  body: "", // Body is not used in verification
 });
 
 console.log(verificationState.status); // "verified-local" | "invalid" | "error" | "idle"
@@ -154,9 +154,9 @@ X-CMVH-ProofURL: ipfs://... (optional)
 
 ### Signature Verification Process
 
-1. **Canonicalization**: Email content is normalized to:
+1. **Canonicalization**: Email metadata is normalized to (body excluded to avoid HTML formatting issues):
    ```
-   {subject}\n{from}\n{to}\n{body}
+   {subject}\n{from}\n{to}
    ```
 
 2. **Hashing**: Content is hashed using keccak256
@@ -183,7 +183,6 @@ interface ICMVHVerifier {
     string calldata subject,
     string calldata from,
     string calldata to,
-    string calldata body,
     bytes calldata signature
   ) external view returns (bool isValid);
 }

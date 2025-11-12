@@ -7,6 +7,7 @@
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import * as ButtonGroup from "$lib/components/ui/button-group";
+  import { loadConfig } from "$lib/cmvh";
 
   // Props
   let {
@@ -22,6 +23,7 @@
     isSending = false,
     isDraft = false,
     error = null as string | null,
+    enableCMVHSigning = $bindable(false),
     onSend,
     onCancel,
     onAttachmentAdd,
@@ -33,17 +35,22 @@
     cc?: string;
     subject?: string;
     body?: string;
-    attachments?: File[];
+    attachments?: File[]
+;
     attachmentSizeLimit?: number;
     totalAttachmentSize?: number;
     isSending?: boolean;
     isDraft?: boolean;
     error?: string | null;
+    enableCMVHSigning?: boolean;
     onSend: () => void;
     onCancel: () => void;
     onAttachmentAdd: (event: Event) => void;
     onAttachmentRemove: (index: number) => void;
   } = $props();
+
+  // Load CMVH config to check if signing is available
+  const cmvhConfig = $derived(loadConfig());
 
   // Resizable dialog state
   let dialogElement = $state<HTMLDivElement | null>(null);
@@ -263,6 +270,34 @@
           </div>
         {/if}
       </div>
+
+      <!-- CMVH Signing Toggle -->
+      {#if cmvhConfig.enableSigning && cmvhConfig.privateKey && cmvhConfig.derivedAddress}
+        <div class="space-y-2 pt-2">
+          <div class="flex items-center space-x-3 rounded-md border bg-muted/40 p-3">
+            <input
+              type="checkbox"
+              id="enable-cmvh-signing"
+              bind:checked={enableCMVHSigning}
+              disabled={isSending}
+              class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+            />
+            <Label for="enable-cmvh-signing" class="text-sm font-normal flex-1">
+              Sign this email with CMVH (blockchain verification)
+            </Label>
+            {#if enableCMVHSigning}
+              <Badge variant="secondary" class="text-xs">
+                🔐 Signing enabled
+              </Badge>
+            {/if}
+          </div>
+          {#if enableCMVHSigning}
+            <p class="text-xs text-muted-foreground pl-3">
+              Signing address: <span class="font-mono">{cmvhConfig.derivedAddress}</span>
+            </p>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <DialogFooter class="gap-2">

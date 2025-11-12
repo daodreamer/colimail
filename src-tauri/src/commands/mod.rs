@@ -10,6 +10,7 @@ pub mod logs;
 pub mod notifications;
 pub mod oauth2;
 pub mod send;
+pub mod send_cmvh;
 pub mod test_connection;
 pub mod utils; // Public so idle_manager can access ensure_valid_token
 
@@ -21,11 +22,11 @@ pub use auth::{
 pub use detect_display_name::detect_display_name_from_sent;
 pub use drafts::{delete_draft, list_drafts, load_draft, save_draft};
 pub use emails::{
-    delete_email, download_attachment, fetch_email_body, fetch_email_body_cached, fetch_emails,
-    get_last_sync_time, get_sync_interval, load_attachments_info, load_emails_from_cache,
-    mark_email_as_flagged, mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread,
-    move_email_to_trash, save_attachment_to_file, set_sync_interval, should_sync, sync_email_flags,
-    sync_emails, sync_specific_email_flags,
+    delete_email, download_attachment, fetch_email_body, fetch_email_body_cached,
+    fetch_email_raw_headers, fetch_emails, get_last_sync_time, get_sync_interval,
+    load_attachments_info, load_emails_from_cache, mark_email_as_flagged, mark_email_as_read,
+    mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash, save_attachment_to_file,
+    set_sync_interval, should_sync, sync_email_flags, sync_emails, sync_specific_email_flags,
 };
 pub use encryption_manager::{
     change_master_password, disable_encryption, enable_encryption, get_encryption_status,
@@ -45,7 +46,9 @@ pub use notifications::{
 };
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
+pub use send_cmvh::send_email_with_cmvh;
 pub use test_connection::test_connection;
 pub use cmvh::{
-    has_cmvh_headers, hash_email_content, parse_email_cmvh_headers, verify_cmvh_signature,
+    derive_eth_address, has_cmvh_headers, hash_email_content, parse_email_cmvh_headers,
+    sign_email_with_cmvh, verify_cmvh_signature,
 };

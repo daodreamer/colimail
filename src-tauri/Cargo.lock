@@ -658,6 +658,7 @@ dependencies = [
  "oauth2",
  "once_cell",
  "rand 0.8.5",
+ "regex",
  "reqwest",
  "secp256k1",
  "serde",

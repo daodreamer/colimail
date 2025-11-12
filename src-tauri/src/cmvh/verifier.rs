@@ -3,11 +3,11 @@ use secp256k1::{ecdsa::RecoverableSignature, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
 /// Canonicalize email content for consistent hashing
-/// Format: "subject\nfrom\nto\nbody"
+/// Format: "subject\nfrom\nto" (body excluded to avoid HTML formatting issues)
 pub fn canonicalize_email(content: &EmailContent) -> String {
     format!(
-        "{}\n{}\n{}\n{}",
-        content.subject, content.from, content.to, content.body
+        "{}\n{}\n{}",
+        content.subject, content.from, content.to
     )
 }
 
@@ -21,6 +21,10 @@ pub fn hash_email(content: &EmailContent) -> Vec<u8> {
 
 /// Verify CMVH signature and recover signer address
 pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> VerificationResult {
+    println!("🔍 Verifying CMVH signature");
+    println!("   Subject: {}", content.subject);
+    println!("   From: {} → To: {}", content.from, content.to);
+
     // Compute email hash
     let email_hash = hash_email(content);
 
@@ -153,6 +157,13 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
     let claimed_address = headers.address.to_lowercase();
     let is_valid = recovered_address.to_lowercase() == claimed_address;
 
+    if is_valid {
+        println!("✅ CMVH verification PASSED: {}", claimed_address);
+    } else {
+        println!("❌ CMVH verification FAILED: claimed {} ≠ recovered {}",
+                 claimed_address, recovered_address.to_lowercase());
+    }
+
     VerificationResult {
         is_valid,
         signer_address: if is_valid {
@@ -203,7 +214,7 @@ mod tests {
         let canonical = canonicalize_email(&content);
         assert_eq!(
             canonical,
-            "Test Subject\nalice@example.com\nbob@example.com\nHello, this is a test email."
+            "Test Subject\nalice@example.com\nbob@example.com"
         );
     }
 

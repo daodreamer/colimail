@@ -84,3 +84,24 @@ export interface DraftListItem {
   created_at: number;
   updated_at: number;
 }
+
+// CMVH-related types (matching Rust backend)
+export interface CMVHHeaders {
+  version: string;
+  address: string;
+  chain: string;
+  timestamp: string;
+  hash_algo: string;
+  signature: string;
+  ens?: string;
+  reward?: string;
+  proof_url?: string;
+}
+
+export interface CMVHVerificationResult {
+  hasCMVH: boolean;
+  isValid?: boolean;
+  headers?: CMVHHeaders;
+  error?: string;
+  verifiedAt?: number;
+}
