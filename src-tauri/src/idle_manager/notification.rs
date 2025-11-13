@@ -2,8 +2,22 @@
 // This module handles desktop notifications
 
 use crate::db;
+use crate::encryption::{decrypt, is_encryption_unlocked};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
+
+/// Check if encryption is enabled in database settings
+async fn is_encryption_enabled() -> Result<bool, String> {
+    let pool = db::pool();
+    let result = sqlx::query_as::<_, (String,)>(
+        "SELECT value FROM settings WHERE key = 'encryption_enabled'",
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to check encryption status: {}", e))?;
+
+    Ok(result.map(|(value,)| value == "true").unwrap_or(false))
+}
 
 /// Check notification and sound settings
 async fn check_notification_settings() -> (bool, bool) {
@@ -69,18 +83,32 @@ pub async fn send_notification(
 
     if notification_enabled {
         if let Ok(Some((subject, from))) = latest_email {
+            // Decrypt subject if encryption is enabled and unlocked
+            let encryption_enabled = is_encryption_enabled().await.unwrap_or(false);
+            let decrypted_subject = if encryption_enabled && is_encryption_unlocked() {
+                decrypt(&subject).unwrap_or_else(|e| {
+                    tracing::warn!(
+                        "Failed to decrypt subject for notification: {}. Using placeholder.",
+                        e
+                    );
+                    "[Encrypted Subject]".to_string()
+                })
+            } else {
+                subject
+            };
+
             let title = if count == 1 {
                 "New Email".to_string()
             } else {
                 format!("{} New Emails", count)
             };
 
-            let body = format!("From: {}\nSubject: {}", from, subject);
+            let body = format!("From: {}\nSubject: {}", from, decrypted_subject);
 
             tracing::info!(
                 title = %title,
                 from = %from,
-                subject = %subject,
+                subject = %decrypted_subject,
                 "Sending notification"
             );
 

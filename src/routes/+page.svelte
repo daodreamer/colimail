@@ -61,45 +61,13 @@
 
     (async () => {
       try {
-        // Check encryption status first
-        const encryptionStatus = await invoke<{enabled: boolean, unlocked: boolean}>("get_encryption_status");
-
-        if (!encryptionStatus.enabled) {
-          // First launch - force user to set master password
-          showSetMasterPasswordDialog = true;
-          return; // Don't load anything until password is set
-        } else if (!encryptionStatus.unlocked) {
-          // Encryption enabled but locked - need to unlock
-          showUnlockEncryptionDialog = true;
-          return; // Don't load anything until unlocked
-        }
-
-        // Encryption is enabled and unlocked, proceed normally
-        appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
-        appState.syncInterval = await invoke<number>("get_sync_interval");
-
-        // Auto-select first account if available and none is selected
-        if (appState.accounts.length > 0 && !appState.selectedAccountId) {
-          await handleAccountClick(appState.accounts[0].id);
-        }
-
-        startAutoSyncTimer();
-
-        // Start IDLE connections for all accounts
-        for (const account of appState.accounts) {
-          try {
-            await invoke("start_idle", {
-              accountId: account.id,
-              folderName: "INBOX",
-              config: account,
-            });
-          } catch (e) {
-            console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
-          }
-        }
+        // Set up event listeners FIRST (before encryption check)
+        // This ensures listeners are active even if encryption is locked
+        console.log("📡 Setting up event listeners...");
 
         // Listen for IDLE push notifications
         unlisten = await listen("idle-event", handleIdleEvent);
+        console.log("✅ IDLE event listener registered");
 
         // Listen for notification sound event
         unlistenSound = await listen("play-notification-sound", () => {
@@ -135,6 +103,43 @@
         timeUpdateTimer = setInterval(() => {
           appState.currentTime = Math.floor(Date.now() / 1000);
         }, 60000);
+
+        // Now check encryption status
+        const encryptionStatus = await invoke<{enabled: boolean, unlocked: boolean}>("get_encryption_status");
+
+        if (!encryptionStatus.enabled) {
+          // First launch - force user to set master password
+          showSetMasterPasswordDialog = true;
+          return; // Don't load anything until password is set
+        } else if (!encryptionStatus.unlocked) {
+          // Encryption enabled but locked - need to unlock
+          showUnlockEncryptionDialog = true;
+          return; // Don't load anything until unlocked
+        }
+
+        // Encryption is enabled and unlocked, proceed normally
+        appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+        appState.syncInterval = await invoke<number>("get_sync_interval");
+
+        // Auto-select first account if available and none is selected
+        if (appState.accounts.length > 0 && !appState.selectedAccountId) {
+          await handleAccountClick(appState.accounts[0].id);
+        }
+
+        startAutoSyncTimer();
+
+        // Start IDLE connections for all accounts
+        for (const account of appState.accounts) {
+          try {
+            await invoke("start_idle", {
+              accountId: account.id,
+              folderName: "INBOX",
+              config: account,
+            });
+          } catch (e) {
+            console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
+          }
+        }
       } catch (e) {
         appState.error = `Failed to load accounts: ${e}`;
       }

@@ -218,6 +218,8 @@ export async function confirmDeleteDraft(
  */
 export async function handleShowDrafts(loadDrafts: () => Promise<void>) {
   appState.showDraftsFolder = true;
+  // Clear selected folder to prevent other folders from showing as selected
+  appState.selectedFolderName = "";
   await loadDrafts();
 }
 
