@@ -93,6 +93,7 @@ pub async fn init() -> Result<(), sqlx::Error> {
             date TEXT NOT NULL,
             timestamp INTEGER NOT NULL,
             body TEXT,
+            raw_headers TEXT,
             has_attachments INTEGER DEFAULT 0,
             flags TEXT,
             seen INTEGER DEFAULT 0,
@@ -126,6 +127,16 @@ pub async fn init() -> Result<(), sqlx::Error> {
 
     // Migration: Add flagged column to emails table for starred/flagged status (for existing tables)
     let _ = sqlx::query("ALTER TABLE emails ADD COLUMN flagged INTEGER DEFAULT 0")
+        .execute(&pool)
+        .await;
+
+    // Migration: Add synced_at column to emails table (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN synced_at INTEGER")
+        .execute(&pool)
+        .await;
+
+    // Migration: Add raw_headers column to emails table for CMVH verification caching (for existing tables)
+    let _ = sqlx::query("ALTER TABLE emails ADD COLUMN raw_headers TEXT")
         .execute(&pool)
         .await;
 

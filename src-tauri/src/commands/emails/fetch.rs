@@ -2,7 +2,8 @@
 // This module handles retrieving email headers and bodies
 
 use crate::commands::emails::cache::{
-    load_email_body_from_cache, save_attachments_to_cache, save_email_body_to_cache,
+    load_email_body_from_cache, load_raw_headers_from_cache, save_attachments_to_cache,
+    save_email_body_to_cache, save_raw_headers_to_cache,
 };
 use crate::commands::emails::codec::{
     check_for_attachments, decode_bytes_to_string, decode_header, parse_email_date_with_fallback,
@@ -478,30 +479,47 @@ pub async fn fetch_email_body_cached(
     Ok(body)
 }
 
-/// Fetch raw email headers (for CMVH verification)
+/// Fetch raw email headers (for CMVH verification) with caching
 #[command]
 pub async fn fetch_email_raw_headers(
     config: AccountConfig,
     uid: u32,
     folder: Option<String>,
 ) -> Result<String, String> {
-    let folder_name = folder.unwrap_or_else(|| "INBOX".to_string());
-    println!(
-        "Fetching raw headers for UID {} in folder {}",
-        uid, folder_name
+    let account_id = config.id.ok_or("Account ID is required")?;
+    let folder_name = folder.clone().unwrap_or_else(|| "INBOX".to_string());
+
+    tracing::debug!(
+        "🔍 fetch_email_raw_headers called: account_id={}, uid={}, folder={}",
+        account_id,
+        uid,
+        folder_name
+    );
+
+    // Try to load from cache first
+    if let Some(cached_headers) = load_raw_headers_from_cache(account_id, &folder_name, uid).await?
+    {
+        tracing::debug!("✅ Loaded raw headers from cache for UID {}", uid);
+        return Ok(cached_headers);
+    }
+
+    tracing::debug!(
+        "📥 Cache miss - fetching raw headers from server for UID {}",
+        uid
     );
 
     // Ensure we have a valid access token (refresh if needed)
     let config = ensure_valid_token(config).await?;
 
-    tokio::task::spawn_blocking(move || -> Result<String, String> {
+    let folder_name_clone = folder_name.clone();
+    let headers_str = tokio::task::spawn_blocking(move || -> Result<String, String> {
         // Connect and login to IMAP
         let mut imap_session = imap_helpers::connect_and_login(&config)?;
 
         // Select folder
         imap_session
-            .select(&folder_name)
-            .map_err(|e| format!("Cannot access folder '{}': {}", folder_name, e))?;
+            .select(&folder_name_clone)
+            .map_err(|e| format!("Cannot access folder '{}': {}", folder_name_clone, e))?;
 
         // Fetch raw headers using RFC822.HEADER
         let messages = imap_session
@@ -523,9 +541,14 @@ pub async fn fetch_email_raw_headers(
             .logout()
             .map_err(|e| format!("Logout failed: {}", e))?;
 
-        println!("✅ Successfully fetched raw headers for UID {}", uid);
+        tracing::debug!("✅ Successfully fetched raw headers for UID {}", uid);
         Ok(headers_str)
     })
     .await
-    .map_err(|e| format!("Task join error: {}", e))?
+    .map_err(|e| format!("Task join error: {}", e))??;
+
+    // Save to cache
+    save_raw_headers_to_cache(account_id, &folder_name, uid, &headers_str).await?;
+
+    Ok(headers_str)
 }

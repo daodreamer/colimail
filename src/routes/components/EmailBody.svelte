@@ -8,6 +8,7 @@
   import { Separator } from "$lib/components/ui/separator";
   import { Skeleton } from "$lib/components/ui/skeleton";
   import * as ButtonGroup from "$lib/components/ui/button-group";
+  import { openUrl } from '@tauri-apps/plugin-opener';
 
   // Props
   let {
@@ -39,6 +40,32 @@
     onToggleRead: () => void;
     onVerifyOnChain?: () => void;
   } = $props();
+
+  // Handle iframe link clicks
+  function setupLinkHandlers(iframe: HTMLIFrameElement) {
+    try {
+      const doc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (doc) {
+        // Intercept all link clicks in the iframe
+        doc.addEventListener('click', (e) => {
+          const target = e.target as HTMLElement;
+          const link = target.closest('a');
+
+          if (link && link.href) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Open the link in the default browser
+            openUrl(link.href).catch((err: unknown) => {
+              console.error('Failed to open link:', err);
+            });
+          }
+        }, true);
+      }
+    } catch (err) {
+      console.warn('Cannot setup link handlers for iframe:', err);
+    }
+  }
 </script>
 
 <main class="flex flex-1 flex-col overflow-hidden">
@@ -235,6 +262,9 @@
             } catch (err) {
               console.warn('Cannot access iframe content for auto-resize:', err);
             }
+
+            // Setup link click handlers to open in default browser
+            setupLinkHandlers(iframe);
           }}
         ></iframe>
       </div>

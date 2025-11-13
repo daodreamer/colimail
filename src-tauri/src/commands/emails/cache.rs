@@ -244,6 +244,87 @@ pub async fn load_email_body_from_cache(
     }
 }
 
+/// Save raw email headers to cache
+pub async fn save_raw_headers_to_cache(
+    account_id: i32,
+    folder_name: &str,
+    uid: u32,
+    raw_headers: &str,
+) -> Result<(), String> {
+    let pool = db::pool();
+
+    // Check if encryption is enabled
+    let encryption_enabled = is_encryption_enabled().await?;
+
+    // Encrypt headers if encryption is enabled and unlocked
+    let headers_to_store = if encryption_enabled && is_encryption_unlocked() {
+        encrypt(raw_headers).map_err(|e| format!("Failed to encrypt headers: {}", e))?
+    } else {
+        raw_headers.to_string()
+    };
+
+    sqlx::query(
+        "UPDATE emails SET raw_headers = ? WHERE account_id = ? AND folder_name = ? AND uid = ?",
+    )
+    .bind(&headers_to_store)
+    .bind(account_id)
+    .bind(folder_name)
+    .bind(uid as i64)
+    .execute(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to save raw headers to cache: {}", e))?;
+
+    tracing::debug!(
+        "✅ Saved raw headers to cache for UID {} (encrypted: {})",
+        uid,
+        encryption_enabled && is_encryption_unlocked()
+    );
+    Ok(())
+}
+
+/// Load raw email headers from cache
+pub async fn load_raw_headers_from_cache(
+    account_id: i32,
+    folder_name: &str,
+    uid: u32,
+) -> Result<Option<String>, String> {
+    let pool = db::pool();
+
+    let result = sqlx::query_as::<_, (Option<String>,)>(
+        "SELECT raw_headers FROM emails WHERE account_id = ? AND folder_name = ? AND uid = ?",
+    )
+    .bind(account_id)
+    .bind(folder_name)
+    .bind(uid as i64)
+    .fetch_optional(pool.as_ref())
+    .await
+    .map_err(|e| format!("Failed to load raw headers from cache: {}", e))?;
+
+    // Check if encryption is enabled
+    let encryption_enabled = is_encryption_enabled().await?;
+
+    // Decrypt headers if encryption is enabled and unlocked
+    if let Some((Some(headers),)) = result {
+        if encryption_enabled && is_encryption_unlocked() {
+            match decrypt(&headers) {
+                Ok(decrypted_headers) => Ok(Some(decrypted_headers)),
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to decrypt headers for UID {} (might be during re-encryption): {}. Will fetch from server.",
+                        uid,
+                        e
+                    );
+                    Ok(None)
+                }
+            }
+        } else {
+            Ok(Some(headers))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
 /// Save attachments to database
 pub async fn save_attachments_to_cache(
     email_id: i64,

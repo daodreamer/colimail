@@ -488,20 +488,11 @@
 
   // Sync and IDLE handlers
   async function handleManualRefresh() {
-    await SyncIdle.handleManualRefresh(
-      appState.accounts,
-      appState.selectedAccountId,
-      appState.selectedFolderName
-    );
+    await SyncIdle.handleManualRefresh();
   }
 
   async function handleIdleEvent(event: { payload: any }) {
-    await SyncIdle.handleIdleEvent(
-      event,
-      appState.accounts,
-      appState.selectedAccountId,
-      appState.selectedFolderName
-    );
+    await SyncIdle.handleIdleEvent(event);
   }
 </script>
 
