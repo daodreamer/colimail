@@ -1,11 +1,11 @@
-use super::types::{CMVHHeaders, EmailContent};
+use super::types::{CMVHError, CMVHHeaders, CMVHResult, EmailContent};
 use hex;
 use secp256k1::{Message, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Derive Ethereum address from secret key
-pub fn derive_address(secret_key: &SecretKey) -> Result<String, String> {
+pub fn derive_address(secret_key: &SecretKey) -> CMVHResult<String> {
     let secp = Secp256k1::new();
     let public_key = secret_key.public_key(&secp);
 
@@ -23,7 +23,7 @@ pub fn derive_address(secret_key: &SecretKey) -> Result<String, String> {
 }
 
 /// Sign email content with CMVH headers
-pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHHeaders, String> {
+pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> CMVHResult<CMVHHeaders> {
     println!("📝 Signing email with CMVH");
     println!("   Subject: {}", content.subject);
     println!("   From: {} → To: {}", content.from, content.to);
@@ -33,10 +33,14 @@ pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHH
         .strip_prefix("0x")
         .unwrap_or(private_key_hex);
     let private_key_bytes =
-        hex::decode(private_key_hex).map_err(|e| format!("Invalid private key hex: {}", e))?;
+        hex::decode(private_key_hex).map_err(|e| CMVHError::InvalidPrivateKey {
+            message: format!("Invalid hex encoding: {}", e),
+        })?;
 
-    let secret_key = SecretKey::from_slice(&private_key_bytes)
-        .map_err(|e| format!("Invalid private key: {}", e))?;
+    let secret_key =
+        SecretKey::from_slice(&private_key_bytes).map_err(|e| CMVHError::InvalidPrivateKey {
+            message: format!("Invalid key data: {}", e),
+        })?;
 
     // Derive Ethereum address
     let address = derive_address(&secret_key)?;
@@ -47,8 +51,10 @@ pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHH
     // Sign the message hash directly (without EIP-191 prefix)
     // The contract's ECDSA.tryRecover expects signatures of raw hashes
     let secp = Secp256k1::new();
-    let message = Message::from_digest_slice(&email_hash)
-        .map_err(|e| format!("Failed to create message: {}", e))?;
+    let message =
+        Message::from_digest_slice(&email_hash).map_err(|e| CMVHError::SigningFailed {
+            message: format!("Failed to create message from hash: {}", e),
+        })?;
 
     let signature = secp.sign_ecdsa_recoverable(&message, &secret_key);
     let (recovery_id, signature_bytes) = signature.serialize_compact();
@@ -63,7 +69,9 @@ pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHH
     // Get current timestamp
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| format!("Failed to get timestamp: {}", e))?
+        .map_err(|e| CMVHError::SigningFailed {
+            message: format!("Failed to get system timestamp: {}", e),
+        })?
         .as_secs();
 
     // Create CMVH headers

@@ -58,3 +58,92 @@ pub struct VerificationResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+/// CMVH Error types for fine-grained error handling
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "PascalCase")]
+pub enum CMVHError {
+    /// Invalid private key format or value
+    InvalidPrivateKey { message: String },
+
+    /// Signing operation failed
+    SigningFailed { message: String },
+
+    /// Failed to connect to SMTP server
+    #[serde(rename = "SMTPConnectionFailed")]
+    SMTPConnectionFailed {
+        server: String,
+        port: u16,
+        message: String,
+    },
+
+    /// SMTP authentication failed
+    #[serde(rename = "SMTPAuthFailed")]
+    SMTPAuthFailed { message: String },
+
+    /// Network operation timed out
+    NetworkTimeout { duration_secs: u64 },
+
+    /// Rate limited by server
+    RateLimited { retry_after_secs: u64 },
+
+    /// Invalid email address format
+    InvalidEmailAddress { address: String, message: String },
+
+    /// Email building failed
+    EmailBuildFailed { message: String },
+
+    /// Invalid attachment
+    InvalidAttachment { filename: String, message: String },
+
+    /// Authentication token error
+    TokenError { message: String },
+
+    /// Generic error for uncategorized cases
+    Unknown { message: String },
+}
+
+impl std::fmt::Display for CMVHError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CMVHError::InvalidPrivateKey { message } => {
+                write!(f, "Invalid private key: {}", message)
+            }
+            CMVHError::SigningFailed { message } => write!(f, "Signing failed: {}", message),
+            CMVHError::SMTPConnectionFailed {
+                server,
+                port,
+                message,
+            } => write!(
+                f,
+                "SMTP connection failed ({}:{}): {}",
+                server, port, message
+            ),
+            CMVHError::SMTPAuthFailed { message } => {
+                write!(f, "SMTP authentication failed: {}", message)
+            }
+            CMVHError::NetworkTimeout { duration_secs } => {
+                write!(f, "Network timeout after {} seconds", duration_secs)
+            }
+            CMVHError::RateLimited { retry_after_secs } => {
+                write!(f, "Rate limited, retry after {} seconds", retry_after_secs)
+            }
+            CMVHError::InvalidEmailAddress { address, message } => {
+                write!(f, "Invalid email address '{}': {}", address, message)
+            }
+            CMVHError::EmailBuildFailed { message } => {
+                write!(f, "Failed to build email: {}", message)
+            }
+            CMVHError::InvalidAttachment { filename, message } => {
+                write!(f, "Invalid attachment '{}': {}", filename, message)
+            }
+            CMVHError::TokenError { message } => write!(f, "Token error: {}", message),
+            CMVHError::Unknown { message } => write!(f, "Unknown error: {}", message),
+        }
+    }
+}
+
+impl std::error::Error for CMVHError {}
+
+/// Result type for CMVH operations
+pub type CMVHResult<T> = Result<T, CMVHError>;

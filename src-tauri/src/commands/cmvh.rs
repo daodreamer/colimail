@@ -42,7 +42,7 @@ pub async fn sign_email_with_cmvh(
     private_key: String,
     content: EmailContent,
 ) -> Result<CMVHHeaders, String> {
-    sign_email(&private_key, &content)
+    sign_email(&private_key, &content).map_err(|e| e.to_string())
 }
 
 /// Derive Ethereum address from private key
@@ -57,5 +57,5 @@ pub async fn derive_eth_address(private_key: String) -> Result<String, String> {
     let secret_key = SecretKey::from_slice(&private_key_bytes)
         .map_err(|e| format!("Invalid private key: {}", e))?;
 
-    derive_address(&secret_key)
+    derive_address(&secret_key).map_err(|e| e.to_string())
 }

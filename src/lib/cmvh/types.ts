@@ -42,6 +42,121 @@ export interface VerificationState {
   error?: string;
 }
 
+// CMVH Error types for fine-grained error handling
+// These match the Rust CMVHError enum variants
+export type CMVHError =
+  | {
+      type: "InvalidPrivateKey";
+      message: string;
+    }
+  | {
+      type: "SigningFailed";
+      message: string;
+    }
+  | {
+      type: "SMTPConnectionFailed";
+      server: string;
+      port: number;
+      message: string;
+    }
+  | {
+      type: "SMTPAuthFailed";
+      message: string;
+    }
+  | {
+      type: "NetworkTimeout";
+      duration_secs: number;
+    }
+  | {
+      type: "RateLimited";
+      retry_after_secs: number;
+    }
+  | {
+      type: "InvalidEmailAddress";
+      address: string;
+      message: string;
+    }
+  | {
+      type: "EmailBuildFailed";
+      message: string;
+    }
+  | {
+      type: "InvalidAttachment";
+      filename: string;
+      message: string;
+    }
+  | {
+      type: "TokenError";
+      message: string;
+    }
+  | {
+      type: "Unknown";
+      message: string;
+    };
+
+/**
+ * Type guard to check if an error is a CMVHError
+ */
+export function isCMVHError(error: unknown): error is CMVHError {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "type" in error &&
+    typeof (error as any).type === "string"
+  );
+}
+
+/**
+ * Get user-friendly error message from CMVHError
+ */
+export function getCMVHErrorMessage(error: CMVHError): string {
+  switch (error.type) {
+    case "InvalidPrivateKey":
+      return `Invalid private key: ${error.message}`;
+    case "SigningFailed":
+      return `Failed to sign email: ${error.message}`;
+    case "SMTPConnectionFailed":
+      return `Failed to connect to SMTP server ${error.server}:${error.port} - ${error.message}`;
+    case "SMTPAuthFailed":
+      return `SMTP authentication failed: ${error.message}`;
+    case "NetworkTimeout":
+      return `Network timeout after ${error.duration_secs} seconds`;
+    case "RateLimited":
+      return `Rate limited. Please retry after ${error.retry_after_secs} seconds`;
+    case "InvalidEmailAddress":
+      return `Invalid email address "${error.address}": ${error.message}`;
+    case "EmailBuildFailed":
+      return `Failed to build email: ${error.message}`;
+    case "InvalidAttachment":
+      return `Invalid attachment "${error.filename}": ${error.message}`;
+    case "TokenError":
+      return `Authentication token error: ${error.message}`;
+    case "Unknown":
+      return `Error: ${error.message}`;
+  }
+}
+
+/**
+ * Determine if error is retriable
+ */
+export function isRetriableError(error: CMVHError): boolean {
+  return error.type === "NetworkTimeout" || error.type === "RateLimited";
+}
+
+/**
+ * Get retry delay in seconds for retriable errors
+ */
+export function getRetryDelay(error: CMVHError): number | null {
+  switch (error.type) {
+    case "NetworkTimeout":
+      return 5; // Retry after 5 seconds
+    case "RateLimited":
+      return error.retry_after_secs;
+    default:
+      return null;
+  }
+}
+
 // CMVH Configuration
 export interface CMVHConfig {
   version?: number; // Config version for migration

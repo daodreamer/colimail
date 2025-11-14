@@ -1,5 +1,5 @@
 use crate::attachment_limits::validate_attachment_sizes;
-use crate::cmvh::{build_raw_email_with_cmvh, CMVHHeaders};
+use crate::cmvh::{build_raw_email_with_cmvh, CMVHError, CMVHHeaders, CMVHResult};
 use crate::commands::send::AttachmentData;
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
@@ -36,7 +36,7 @@ async fn send_raw_email_smtp(
     from: &str,
     to_addresses: Vec<String>,
     raw_email: &[u8],
-) -> Result<(), String> {
+) -> CMVHResult<()> {
     // Determine TLS strategy based on port
     let use_implicit_tls = smtp_port == 465;
 
@@ -44,12 +44,21 @@ async fn send_raw_email_smtp(
     let mut transport_builder = if use_implicit_tls {
         // Port 465: Implicit TLS (SMTPS)
         AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_server)
-            .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
+            .map_err(|e| CMVHError::SMTPConnectionFailed {
+                server: smtp_server.to_string(),
+                port: smtp_port,
+                message: format!("Failed to create SMTP transport: {}", e),
+            })?
             .port(smtp_port)
     } else {
         // Other ports: STARTTLS
-        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_server)
-            .map_err(|e| format!("Failed to create SMTP transport: {}", e))?
+        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_server).map_err(|e| {
+            CMVHError::SMTPConnectionFailed {
+                server: smtp_server.to_string(),
+                port: smtp_port,
+                message: format!("Failed to create SMTP transport: {}", e),
+            }
+        })?
     };
 
     // Set credentials and authentication mechanism
@@ -69,14 +78,36 @@ async fn send_raw_email_smtp(
     // Use the transport's test_connection to establish connection
     match transport.test_connection().await {
         Ok(true) => println!("✅ SMTP connection established"),
-        Ok(false) => return Err("SMTP connection test failed".to_string()),
-        Err(e) => return Err(format!("Failed to connect to SMTP server: {}", e)),
+        Ok(false) => {
+            return Err(CMVHError::SMTPConnectionFailed {
+                server: smtp_server.to_string(),
+                port: smtp_port,
+                message: "Connection test failed".to_string(),
+            })
+        }
+        Err(e) => {
+            // Check if it's an authentication error
+            let err_msg = e.to_string();
+            if err_msg.contains("authentication") || err_msg.contains("535") {
+                return Err(CMVHError::SMTPAuthFailed {
+                    message: err_msg.clone(),
+                });
+            }
+            return Err(CMVHError::SMTPConnectionFailed {
+                server: smtp_server.to_string(),
+                port: smtp_port,
+                message: err_msg,
+            });
+        }
     }
 
     // Extract sender email
     let sender_email = extract_email_addresses(from)
         .first()
-        .ok_or("Invalid sender address")?
+        .ok_or(CMVHError::InvalidEmailAddress {
+            address: from.to_string(),
+            message: "No valid email address found".to_string(),
+        })?
         .clone();
 
     println!(
@@ -85,28 +116,52 @@ async fn send_raw_email_smtp(
     );
 
     // Parse email addresses into Address objects
-    let from_address: Address = sender_email
-        .parse()
-        .map_err(|e| format!("Invalid sender address: {}", e))?;
+    let from_address: Address =
+        sender_email
+            .parse()
+            .map_err(|e| CMVHError::InvalidEmailAddress {
+                address: sender_email.clone(),
+                message: format!("Parse error: {}", e),
+            })?;
 
     let to_addrs: Vec<Address> = to_addresses
         .iter()
         .map(|addr| {
-            addr.parse()
-                .map_err(|e| format!("Invalid recipient address {}: {}", addr, e))
+            addr.parse().map_err(|e| CMVHError::InvalidEmailAddress {
+                address: addr.clone(),
+                message: format!("Parse error: {}", e),
+            })
         })
-        .collect::<Result<Vec<_>, String>>()?;
+        .collect::<CMVHResult<Vec<_>>>()?;
 
     // Build envelope
     use lettre::address::Envelope;
-    let envelope = Envelope::new(Some(from_address), to_addrs)
-        .map_err(|e| format!("Failed to build envelope: {}", e))?;
+    let envelope =
+        Envelope::new(Some(from_address), to_addrs).map_err(|e| CMVHError::EmailBuildFailed {
+            message: format!("Failed to build envelope: {}", e),
+        })?;
 
     // Send the raw email using send_raw
     transport
         .send_raw(&envelope, raw_email)
         .await
-        .map_err(|e| format!("Failed to send email via SMTP: {}", e))?;
+        .map_err(|e| {
+            let err_msg = e.to_string();
+            // Check for rate limiting
+            if err_msg.contains("rate limit") || err_msg.contains("429") {
+                CMVHError::RateLimited {
+                    retry_after_secs: 60, // Default retry after 60 seconds
+                }
+            } else if err_msg.contains("timeout") {
+                CMVHError::NetworkTimeout {
+                    duration_secs: 30, // Default timeout duration
+                }
+            } else {
+                CMVHError::Unknown {
+                    message: format!("Failed to send email via SMTP: {}", err_msg),
+                }
+            }
+        })?;
 
     println!("✅ Email sent successfully via SMTP");
 
@@ -122,16 +177,23 @@ pub async fn send_email_with_cmvh(
     cc: Option<String>,
     attachments: Option<Vec<AttachmentData>>,
     cmvh_headers: CMVHHeaders,
-) -> Result<String, String> {
+) -> CMVHResult<String> {
     println!("Sending CMVH-signed email to {}", to);
 
     // Ensure we have a valid access token (refresh if needed)
-    let config = ensure_valid_token(config).await?;
+    let config = ensure_valid_token(config)
+        .await
+        .map_err(|e| CMVHError::TokenError { message: e })?;
 
     // Validate attachment sizes if attachments are present
     if let Some(ref attachment_list) = attachments {
         if !attachment_list.is_empty() {
-            validate_attachment_sizes(&config.email, attachment_list)?;
+            validate_attachment_sizes(&config.email, attachment_list).map_err(|e| {
+                CMVHError::InvalidAttachment {
+                    filename: "multiple".to_string(),
+                    message: e,
+                }
+            })?;
         }
     }
 
@@ -151,7 +213,8 @@ pub async fn send_email_with_cmvh(
         &body,
         &cmvh_headers,
         attachments_data.as_deref(),
-    )?;
+    )
+    .map_err(|e| CMVHError::EmailBuildFailed { message: e })?;
 
     println!(
         "✅ Built raw email with CMVH headers ({} bytes)",
@@ -172,19 +235,17 @@ pub async fn send_email_with_cmvh(
     // Prepare credentials and authentication type
     let (credentials, use_oauth2) = match config.auth_type {
         Some(AuthType::OAuth2) => {
-            let access_token = config
-                .access_token
-                .clone()
-                .ok_or("Access token is required for OAuth2 authentication")?;
+            let access_token = config.access_token.clone().ok_or(CMVHError::TokenError {
+                message: "Access token is required for OAuth2 authentication".to_string(),
+            })?;
 
             println!("🔐 Using OAuth2 authentication (XOAUTH2)");
             (Credentials::new(config.email.clone(), access_token), true)
         }
         _ => {
-            let password = config
-                .password
-                .clone()
-                .ok_or("Password is required for basic authentication")?;
+            let password = config.password.clone().ok_or(CMVHError::SMTPAuthFailed {
+                message: "Password is required for basic authentication".to_string(),
+            })?;
 
             println!("🔐 Using basic authentication");
             (Credentials::new(config.email.clone(), password), false)
