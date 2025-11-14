@@ -2,12 +2,13 @@
   import { invoke } from "@tauri-apps/api/core";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
-  import { revealItemInDir } from "@tauri-apps/plugin-opener";
+  import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
   import { toast } from "svelte-sonner";
   import * as Breadcrumb from "$lib/components/ui/breadcrumb";
   import { Button } from "$lib/components/ui/button";
   import * as Dialog from "$lib/components/ui/dialog";
   import * as AlertDialog from "$lib/components/ui/alert-dialog";
+  import * as Alert from "$lib/components/ui/alert";
   import * as Sidebar from "$lib/components/ui/sidebar";
   import { Label } from "$lib/components/ui/label";
   import { Separator } from "$lib/components/ui/separator";
@@ -20,6 +21,7 @@
   import ShieldIcon from "lucide-svelte/icons/shield";
   import RotateCcwIcon from "lucide-svelte/icons/rotate-ccw";
   import SaveIcon from "lucide-svelte/icons/save";
+  import XIcon from "lucide-svelte/icons/x";
   import { state as appState } from "../lib/state.svelte";
   import {
     loadConfig,
@@ -364,6 +366,15 @@
     } catch (error) {
       console.error("Failed to reset CMVH settings:", error);
       toast.error(`Failed to reset settings: ${error}`);
+    }
+  }
+
+  async function dismissOnboarding() {
+    try {
+      cmvhConfig.hasSeenOnboarding = true;
+      await saveConfig(cmvhConfig);
+    } catch (error) {
+      console.error("Failed to save onboarding status:", error);
     }
   }
 </script>
@@ -723,6 +734,56 @@
 
           {:else if currentPage === "CMVH Verification"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- Onboarding Guide -->
+              {#if !cmvhConfig.hasSeenOnboarding}
+                <Alert.Root class="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30">
+                  <div class="flex items-start gap-3">
+                    <InfoIcon class="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
+                    <div class="flex-1 space-y-2">
+                      <Alert.Title class="text-base font-semibold text-blue-900 dark:text-blue-100">
+                        What is CMVH?
+                      </Alert.Title>
+                      <Alert.Description class="text-sm text-blue-800 dark:text-blue-200 space-y-3">
+                        <p>
+                          CMVH (ColiMail Verification Header) uses blockchain cryptography to enhance email security and authenticity:
+                        </p>
+                        <ul class="list-disc pl-5 space-y-1">
+                          <li>Prove your identity without revealing passwords</li>
+                          <li>Prevent email spoofing and tampering</li>
+                          <li>Enable verifiable on-chain reputation</li>
+                          <li>Maintain privacy while ensuring authenticity</li>
+                        </ul>
+                        <div class="flex items-center gap-3 pt-2">
+                          <Button
+                            variant="link"
+                            class="h-auto p-0 text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+                            onclick={() => openUrl('https://docs.colimail.net/cmvh')}
+                          >
+                            Learn more →
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+                            onclick={dismissOnboarding}
+                          >
+                            Got it, don't show again
+                          </Button>
+                        </div>
+                      </Alert.Description>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-6 w-6 text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-100"
+                      onclick={dismissOnboarding}
+                    >
+                      <XIcon class="h-4 w-4" />
+                    </Button>
+                  </div>
+                </Alert.Root>
+              {/if}
+
               <!-- Email Signing Settings -->
               <div class="space-y-4">
                 <div>

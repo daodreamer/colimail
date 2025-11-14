@@ -170,6 +170,8 @@ export interface CMVHConfig {
   enableSigning: boolean;
   privateKey: string; // Hex-encoded private key (without 0x prefix)
   derivedAddress: string; // Ethereum address derived from private key
+  // Onboarding
+  hasSeenOnboarding?: boolean; // Whether user has seen the onboarding guide
 }
 
 // Configuration version for migration
@@ -187,6 +189,7 @@ export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
   enableSigning: false,
   privateKey: "",
   derivedAddress: "",
+  hasSeenOnboarding: false,
 };
 
 // Network configurations
