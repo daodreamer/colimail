@@ -5,6 +5,7 @@ mod cmvh;
 mod commands;
 mod db;
 mod encryption;
+mod ens;
 mod idle_manager;
 mod logger;
 mod models;
@@ -12,25 +13,26 @@ mod oauth2_config;
 mod security;
 
 use commands::{
-    change_master_password, check_folder_capabilities, cleanup_cmvh_cache, clear_cmvh_cache,
-    complete_oauth2_flow, create_local_folder, create_remote_folder, delete_account,
-    delete_app_user, delete_draft, delete_email, delete_local_folder, delete_remote_folder,
-    delete_secure_storage, derive_eth_address, detect_display_name_from_sent, disable_encryption,
-    download_attachment, enable_encryption, export_logs_as_zip, fetch_email_body,
-    fetch_email_body_cached, fetch_email_raw_headers, fetch_emails, fetch_folders, forward_email,
-    get_app_user, get_attachment_size_limit, get_cmvh_cache, get_cmvh_cache_stats,
-    get_current_log_file, get_encryption_status, get_last_sync_time, get_log_directory,
+    change_master_password, check_folder_capabilities, cleanup_cmvh_cache, cleanup_ens_cache,
+    clear_cmvh_cache, clear_ens_cache, complete_oauth2_flow, create_local_folder,
+    create_remote_folder, delete_account, delete_app_user, delete_draft, delete_email,
+    delete_local_folder, delete_remote_folder, delete_secure_storage, derive_eth_address,
+    detect_display_name_from_sent, disable_encryption, download_attachment, enable_encryption,
+    export_logs_as_zip, fetch_email_body, fetch_email_body_cached, fetch_email_raw_headers,
+    fetch_emails, fetch_folders, forward_email, get_app_user, get_attachment_size_limit,
+    get_cmvh_cache, get_cmvh_cache_stats, get_current_log_file, get_encryption_status,
+    get_ens_cache, get_ens_cache_stats, get_last_sync_time, get_log_directory,
     get_minimize_to_tray, get_notification_enabled, get_secure_storage, get_sound_enabled,
     get_sync_interval, has_cmvh_headers, hash_email_content, list_drafts, list_log_files,
     listen_for_oauth_callback, load_account_configs, load_attachments_info, load_draft,
     load_emails_from_cache, load_folders, lock_encryption_command, mark_email_as_flagged,
     mark_email_as_read, mark_email_as_unflagged, mark_email_as_unread, move_email_to_trash,
     parse_email_cmvh_headers, read_log_file, read_recent_logs, reply_email, save_account_config,
-    save_attachment_to_file, save_cmvh_cache, save_draft, send_email, send_email_smtp,
-    send_email_with_cmvh, set_minimize_to_tray, set_notification_enabled, set_secure_storage,
-    set_sound_enabled, set_sync_interval, should_sync, sign_email_cmvh, sign_email_with_cmvh,
-    start_oauth2_flow, sync_app_user, sync_email_flags, sync_emails, sync_folders,
-    sync_specific_email_flags, test_connection, unlock_encryption_with_password,
+    save_attachment_to_file, save_cmvh_cache, save_draft, save_ens_cache, send_email,
+    send_email_smtp, send_email_with_cmvh, set_minimize_to_tray, set_notification_enabled,
+    set_secure_storage, set_sound_enabled, set_sync_interval, should_sync, sign_email_cmvh,
+    sign_email_with_cmvh, start_oauth2_flow, sync_app_user, sync_email_flags, sync_emails,
+    sync_folders, sync_specific_email_flags, test_connection, unlock_encryption_with_password,
     verify_cmvh_signature,
 };
 use idle_manager::{IdleCommand, IdleManager};
@@ -550,7 +552,13 @@ async fn main() {
             save_cmvh_cache,
             cleanup_cmvh_cache,
             clear_cmvh_cache,
-            get_cmvh_cache_stats
+            get_cmvh_cache_stats,
+            // ENS cache commands
+            get_ens_cache,
+            save_ens_cache,
+            cleanup_ens_cache,
+            clear_ens_cache,
+            get_ens_cache_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

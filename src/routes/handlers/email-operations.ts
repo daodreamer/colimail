@@ -588,8 +588,21 @@ async function verifyCMVHIfEnabled(
       content: emailContent,
     });
 
+    // Resolve ENS name asynchronously (non-blocking)
+    const { resolveENSWithCache } = await import("$lib/ens");
+    const ensNamePromise = resolveENSWithCache(headers.address);
+
     // Check if this email has already been verified on-chain (from cache)
     const onChainCached = await getCachedVerification(headers, emailContent);
+
+    // Wait for ENS resolution to complete
+    const ensName = await ensNamePromise;
+
+    // Update headers with resolved ENS name
+    const headersWithENS = {
+      ...headers,
+      ens: ensName || undefined,
+    };
 
     if (onChainCached) {
       // Found on-chain verification in cache - show blue badge immediately
@@ -597,7 +610,7 @@ async function verifyCMVHIfEnabled(
       appState.cmvhVerification = {
         hasCMVH: true,
         isValid: verificationResult.is_valid,
-        headers,
+        headers: headersWithENS,
         verifiedAt: Date.now(),
         isOnChainVerified: onChainCached.isValid,
         onChainVerifiedAt: onChainCached.timestamp,
@@ -608,7 +621,7 @@ async function verifyCMVHIfEnabled(
       appState.cmvhVerification = {
         hasCMVH: true,
         isValid: verificationResult.is_valid,
-        headers,
+        headers: headersWithENS,
         verifiedAt: Date.now(),
       };
     }

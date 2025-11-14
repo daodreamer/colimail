@@ -318,6 +318,26 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create ENS name cache table for reverse resolution results
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ens_cache (
+            address TEXT PRIMARY KEY,
+            ens_name TEXT,
+            resolved_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create index for ENS cache expiration queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_ens_expires
+        ON ens_cache(expires_at)",
+    )
+    .execute(&pool)
+    .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");

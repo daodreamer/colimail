@@ -5,6 +5,7 @@ pub mod detect_display_name;
 pub mod drafts;
 pub mod emails;
 pub mod encryption_manager;
+pub mod ens;
 pub mod folders;
 pub mod logs;
 pub mod notifications;
@@ -36,6 +37,9 @@ pub use emails::{
 pub use encryption_manager::{
     change_master_password, disable_encryption, enable_encryption, get_encryption_status,
     lock_encryption_command, unlock_encryption_with_password,
+};
+pub use ens::{
+    cleanup_ens_cache, clear_ens_cache, get_ens_cache, get_ens_cache_stats, save_ens_cache,
 };
 pub use folders::{
     check_folder_capabilities, create_local_folder, create_remote_folder, delete_local_folder,
