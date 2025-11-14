@@ -26,7 +26,7 @@ pub async fn verify_cmvh_signature(
 /// Hash email content (for debugging/testing)
 #[command]
 pub async fn hash_email_content(content: EmailContent) -> Result<String, String> {
-    let hash = crate::cmvh::hash_email(&content);
+    let hash = content.hash_keccak256();
     Ok(format!("0x{}", hex::encode(hash)))
 }
 

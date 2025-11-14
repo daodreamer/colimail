@@ -2,28 +2,14 @@ use super::types::{CMVHHeaders, EmailContent, VerificationResult};
 use secp256k1::{ecdsa::RecoverableSignature, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-/// Canonicalize email content for consistent hashing
-/// Format: "subject\nfrom\nto" (body excluded to avoid HTML formatting issues)
-pub fn canonicalize_email(content: &EmailContent) -> String {
-    format!("{}\n{}\n{}", content.subject, content.from, content.to)
-}
-
-/// Hash email content using keccak256
-pub fn hash_email(content: &EmailContent) -> Vec<u8> {
-    let canonical = canonicalize_email(content);
-    let mut hasher = Keccak256::new();
-    hasher.update(canonical.as_bytes());
-    hasher.finalize().to_vec()
-}
-
 /// Verify CMVH signature and recover signer address
 pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> VerificationResult {
     println!("🔍 Verifying CMVH signature");
     println!("   Subject: {}", content.subject);
     println!("   From: {} → To: {}", content.from, content.to);
 
-    // Compute email hash
-    let email_hash = hash_email(content);
+    // Compute email hash using EmailContent method
+    let email_hash = content.hash_keccak256();
 
     // Parse signature hex string
     let signature_hex = headers.signature.trim_start_matches("0x");
@@ -198,7 +184,7 @@ mod tests {
             body: "Hello, this is a test email.".to_string(),
         };
 
-        let canonical = canonicalize_email(&content);
+        let canonical = content.canonicalize();
         assert_eq!(
             canonical,
             "Test Subject\nalice@example.com\nbob@example.com"
@@ -214,7 +200,7 @@ mod tests {
             body: "Hello".to_string(),
         };
 
-        let hash = hash_email(&content);
+        let hash = content.hash_keccak256();
         assert_eq!(hash.len(), 32); // keccak256 produces 32 bytes
     }
 }

@@ -26,6 +26,23 @@ pub struct EmailContent {
     pub body: String,
 }
 
+impl EmailContent {
+    /// Canonical representation for CMVH signing/verification
+    /// Format: "subject\nfrom\nto" (body excluded to avoid HTML formatting issues)
+    /// This must be consistent across signer and verifier to ensure signatures match
+    pub fn canonicalize(&self) -> String {
+        format!("{}\n{}\n{}", self.subject, self.from, self.to)
+    }
+
+    /// Compute keccak256 hash of canonicalized email content
+    pub fn hash_keccak256(&self) -> Vec<u8> {
+        use sha3::{Digest, Keccak256};
+        let mut hasher = Keccak256::new();
+        hasher.update(self.canonicalize().as_bytes());
+        hasher.finalize().to_vec()
+    }
+}
+
 /// Result of signature verification
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VerificationResult {

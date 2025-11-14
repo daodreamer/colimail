@@ -4,20 +4,6 @@ use secp256k1::{Message, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Canonicalize email content for signing (must match JavaScript implementation)
-/// NOTE: Only sign metadata (subject, from, to), not body to avoid HTML formatting issues
-pub fn canonicalize_email(content: &EmailContent) -> String {
-    format!("{}\n{}\n{}", content.subject, content.from, content.to)
-}
-
-/// Compute keccak256 hash of email content
-pub fn hash_email(content: &EmailContent) -> Vec<u8> {
-    let canonical = canonicalize_email(content);
-    let mut hasher = Keccak256::new();
-    hasher.update(canonical.as_bytes());
-    hasher.finalize().to_vec()
-}
-
 /// Derive Ethereum address from secret key
 pub fn derive_address(secret_key: &SecretKey) -> Result<String, String> {
     let secp = Secp256k1::new();
@@ -55,8 +41,8 @@ pub fn sign_email(private_key_hex: &str, content: &EmailContent) -> Result<CMVHH
     // Derive Ethereum address
     let address = derive_address(&secret_key)?;
 
-    // Hash email content
-    let email_hash = hash_email(content);
+    // Hash email content using EmailContent method
+    let email_hash = content.hash_keccak256();
 
     // Sign the message hash directly (without EIP-191 prefix)
     // The contract's ECDSA.tryRecover expects signatures of raw hashes
@@ -107,7 +93,7 @@ mod tests {
             body: "Hello, world!".to_string(),
         };
 
-        let canonical = canonicalize_email(&content);
+        let canonical = content.canonicalize();
         assert_eq!(
             canonical,
             "Test Subject\nalice@example.com\nbob@example.com"
@@ -123,7 +109,7 @@ mod tests {
             body: "Hello".to_string(),
         };
 
-        let hash = hash_email(&content);
+        let hash = content.hash_keccak256();
         assert_eq!(hash.len(), 32); // keccak256 produces 32 bytes
     }
 
