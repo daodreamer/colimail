@@ -180,12 +180,7 @@ pub async fn send_email_with_cmvh(
     attachments: Option<Vec<AttachmentData>>,
     cmvh_headers: CMVHHeaders,
 ) -> CMVHResult<String> {
-    println!("Sending CMVH-signed email to {}", to);
-
-    // Ensure we have a valid access token (refresh if needed)
-    let config = ensure_valid_token(config)
-        .await
-        .map_err(|e| CMVHError::TokenError { message: e })?;
+    println!("📧 Sending CMVH-signed email to {}", to);
 
     // Validate attachment sizes if attachments are present
     if let Some(ref attachment_list) = attachments {
@@ -229,48 +224,9 @@ pub async fn send_email_with_cmvh(
         &cmvh_headers.signature[..20.min(cmvh_headers.signature.len())]
     );
 
-    // Log first 500 chars of raw email for debugging
-    let preview = String::from_utf8_lossy(&raw_email);
-    let preview_len = 500.min(preview.len());
-    println!("📝 Email preview:\n{}", &preview[..preview_len]);
-
-    // Prepare credentials and authentication type
-    let (credentials, use_oauth2) = match config.auth_type {
-        Some(AuthType::OAuth2) => {
-            let access_token = config.access_token.clone().ok_or(CMVHError::TokenError {
-                message: "Access token is required for OAuth2 authentication".to_string(),
-            })?;
-
-            println!("🔐 Using OAuth2 authentication (XOAUTH2)");
-            (Credentials::new(config.email.clone(), access_token), true)
-        }
-        _ => {
-            let password = config.password.clone().ok_or(CMVHError::SMTPAuthFailed {
-                message: "Password is required for basic authentication".to_string(),
-            })?;
-
-            println!("🔐 Using basic authentication");
-            (Credentials::new(config.email.clone(), password), false)
-        }
-    };
-
-    // Extract recipient addresses
-    let mut to_addresses = extract_email_addresses(&to);
-    if let Some(ref cc_str) = cc {
-        to_addresses.extend(extract_email_addresses(cc_str));
-    }
-
-    // Send the raw email via SMTP
-    send_raw_email_smtp(
-        &config.smtp_server,
-        config.smtp_port,
-        credentials,
-        use_oauth2,
-        &config.email,
-        to_addresses,
-        &raw_email,
-    )
-    .await?;
+    // Delegate to the specialized send_email_smtp command
+    // This ensures we use the separated, testable logic
+    send_email_smtp(config, raw_email, to, cc).await?;
 
     Ok(format!(
         "Email sent successfully with CMVH signature ({}...)",
