@@ -13,7 +13,7 @@ pub use sync_flags::{sync_email_flags, sync_specific_email_flags};
 pub use sync_state::{get_last_sync_time, should_sync};
 
 use crate::commands::emails::cache::load_emails_from_cache;
-use crate::commands::emails::fetch_bodystructure;
+use crate::commands::emails::fetch::bodystructure;
 use crate::models::{AccountConfig, EmailHeader};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
@@ -73,7 +73,7 @@ pub async fn sync_emails(
     let cancel_token = Arc::new(AtomicBool::new(false));
 
     tokio::spawn(async move {
-        if let Err(e) = fetch_bodystructure::fetch_bodystructure_background(
+        if let Err(e) = bodystructure::fetch_bodystructure_background(
             account_id_i64,
             folder_name_clone,
             cancel_token,

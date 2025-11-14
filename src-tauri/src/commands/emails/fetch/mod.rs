@@ -5,9 +5,11 @@
 // - list.rs: Fetch email list/headers
 // - body.rs: Fetch email body and attachments
 // - headers.rs: Fetch raw headers (for CMVH verification)
+// - bodystructure.rs: Background BODYSTRUCTURE fetching for attachment detection
 
 // Sub-modules organized by responsibility
 mod body;
+pub mod bodystructure;
 mod headers;
 mod list;
 

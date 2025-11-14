@@ -6,7 +6,6 @@ pub mod cache;
 pub mod codec;
 pub mod delete;
 pub mod fetch;
-pub mod fetch_bodystructure;
 pub mod flags;
 pub mod imap_helpers;
 pub mod sync;
