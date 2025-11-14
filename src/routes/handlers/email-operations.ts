@@ -10,6 +10,8 @@ import { state as appState } from "../lib/state.svelte";
 import { isTrashFolder } from "../lib/utils";
 import { loadConfig } from "$lib/cmvh";
 import { verifyOnChain } from "$lib/cmvh/blockchain";
+import { getCachedVerification, cacheVerification } from "$lib/cmvh/cache";
+import type { EmailContent } from "$lib/cmvh/cache";
 
 /**
  * Handle email click - load and display email body
@@ -639,26 +641,47 @@ export async function handleVerifyOnChain(
     return;
   }
 
-  // Set verifying state
+  // Extract clean email addresses
+  const extractEmail = (addr: string): string => {
+    const match = addr.match(/<(.+?)>/);
+    return match ? match[1] : addr.trim();
+  };
+
+  const emailContent: EmailContent = {
+    from: extractEmail(selectedEmail.from),
+    to: extractEmail(selectedEmail.to),
+    subject: selectedEmail.subject,
+    body: "", // Body not used in verification
+  };
+
+  // 1. Check cache first
+  const cached = getCachedVerification(
+    appState.cmvhVerification.headers!,
+    emailContent
+  );
+
+  if (cached) {
+    // Use cached result - instant response
+    console.log("⚡ Using cached on-chain verification result");
+    appState.cmvhVerification = {
+      ...appState.cmvhVerification,
+      isOnChainVerified: cached.isValid,
+      onChainVerifiedAt: cached.timestamp,
+      isVerifyingOnChain: false,
+      fromCache: true,
+      error: cached.error,
+    };
+    return;
+  }
+
+  // 2. Not cached - perform verification
   appState.cmvhVerification = {
     ...appState.cmvhVerification,
     isVerifyingOnChain: true,
+    fromCache: false,
   };
 
   try {
-    // Extract clean email addresses
-    const extractEmail = (addr: string): string => {
-      const match = addr.match(/<(.+?)>/);
-      return match ? match[1] : addr.trim();
-    };
-
-    const emailContent = {
-      from: extractEmail(selectedEmail.from),
-      to: extractEmail(selectedEmail.to),
-      subject: selectedEmail.subject,
-      body: "", // Body not used in verification
-    };
-
     console.log("🔗 Verifying CMVH signature on-chain...");
     console.log(`   Network: ${cmvhConfig.network}`);
     console.log(`   RPC: ${cmvhConfig.rpcUrl || "default"}`);
@@ -669,6 +692,13 @@ export async function handleVerifyOnChain(
       cmvhConfig
     );
 
+    // 3. Cache the result
+    cacheVerification(appState.cmvhVerification.headers!, emailContent, {
+      isValid: result.isValid,
+      error: result.error,
+      timestamp: Date.now(),
+    });
+
     if (result.isValid) {
       console.log("✅ On-chain verification PASSED");
       appState.cmvhVerification = {
@@ -676,6 +706,7 @@ export async function handleVerifyOnChain(
         isOnChainVerified: true,
         onChainVerifiedAt: Date.now(),
         isVerifyingOnChain: false,
+        fromCache: false,
       };
     } else {
       console.error("❌ On-chain verification FAILED:", result.error);
@@ -683,15 +714,25 @@ export async function handleVerifyOnChain(
         ...appState.cmvhVerification,
         isOnChainVerified: false,
         isVerifyingOnChain: false,
+        fromCache: false,
         error: result.error || "On-chain verification failed",
       };
     }
   } catch (error) {
     console.error("❌ On-chain verification error:", error);
+
+    // Cache the error result to avoid repeated failures
+    cacheVerification(appState.cmvhVerification.headers!, emailContent, {
+      isValid: false,
+      error: String(error),
+      timestamp: Date.now(),
+    });
+
     appState.cmvhVerification = {
       ...appState.cmvhVerification,
       isOnChainVerified: false,
       isVerifyingOnChain: false,
+      fromCache: false,
       error: String(error),
     };
   }

@@ -107,4 +107,5 @@ export interface CMVHVerificationResult {
   isOnChainVerified?: boolean;
   onChainVerifiedAt?: number;
   isVerifyingOnChain?: boolean;
+  fromCache?: boolean; // Indicates if on-chain verification result was loaded from cache
 }
