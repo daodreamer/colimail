@@ -582,18 +582,36 @@ async function verifyCMVHIfEnabled(
       body: "", // Body is not used in CMVH verification
     };
 
-    // Verify signature
+    // Verify signature locally first
     const verificationResult = await invoke<{ is_valid: boolean }>("verify_cmvh_signature", {
       headers,
       content: emailContent,
     });
 
-    appState.cmvhVerification = {
-      hasCMVH: true,
-      isValid: verificationResult.is_valid,
-      headers,
-      verifiedAt: Date.now(),
-    };
+    // Check if this email has already been verified on-chain (from cache)
+    const onChainCached = await getCachedVerification(headers, emailContent);
+
+    if (onChainCached) {
+      // Found on-chain verification in cache - show blue badge immediately
+      console.log("💾 Found on-chain verification in cache - auto-loading");
+      appState.cmvhVerification = {
+        hasCMVH: true,
+        isValid: verificationResult.is_valid,
+        headers,
+        verifiedAt: Date.now(),
+        isOnChainVerified: onChainCached.isValid,
+        onChainVerifiedAt: onChainCached.timestamp,
+        fromCache: true,
+      };
+    } else {
+      // No on-chain verification yet - show green badge (local only)
+      appState.cmvhVerification = {
+        hasCMVH: true,
+        isValid: verificationResult.is_valid,
+        headers,
+        verifiedAt: Date.now(),
+      };
+    }
   } catch (error) {
     console.error("❌ CMVH verification failed:", error);
     appState.cmvhVerification = {
