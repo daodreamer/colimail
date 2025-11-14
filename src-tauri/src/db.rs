@@ -287,6 +287,37 @@ pub async fn init() -> Result<(), sqlx::Error> {
         .execute(&pool)
         .await;
 
+    // Create CMVH verification cache table for on-chain verification results
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS cmvh_verification_cache (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            signature TEXT NOT NULL,
+            email_hash TEXT NOT NULL,
+            is_valid INTEGER NOT NULL,
+            error TEXT,
+            verified_at INTEGER NOT NULL,
+            expires_at INTEGER NOT NULL,
+            UNIQUE(signature, email_hash)
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create indexes for CMVH cache queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_cmvh_signature
+        ON cmvh_verification_cache(signature)",
+    )
+    .execute(&pool)
+    .await?;
+
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_cmvh_expires
+        ON cmvh_verification_cache(expires_at)",
+    )
+    .execute(&pool)
+    .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");

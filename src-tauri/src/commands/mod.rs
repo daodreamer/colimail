@@ -20,7 +20,8 @@ pub use auth::{
     sync_app_user,
 };
 pub use cmvh::{
-    derive_eth_address, has_cmvh_headers, hash_email_content, parse_email_cmvh_headers,
+    cleanup_cmvh_cache, clear_cmvh_cache, derive_eth_address, get_cmvh_cache, get_cmvh_cache_stats,
+    has_cmvh_headers, hash_email_content, parse_email_cmvh_headers, save_cmvh_cache,
     sign_email_with_cmvh, verify_cmvh_signature,
 };
 pub use detect_display_name::detect_display_name_from_sent;

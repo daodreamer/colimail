@@ -1,8 +1,18 @@
 /**
  * CMVH Verification Cache
- * Caches on-chain verification results to avoid redundant RPC calls
+ * Dual-layer caching: Memory (L1) + SQLite (L2) for optimal performance
+ *
+ * Architecture:
+ * - L1 (Memory): Instant access, session-scoped
+ * - L2 (SQLite): Persistent across restarts, 90-day TTL
+ *
+ * Flow:
+ * 1. Check L1 memory cache (fastest)
+ * 2. If miss, check L2 SQLite cache (fast, persistent)
+ * 3. If miss, perform RPC call and cache in both layers
  */
 
+import { invoke } from "@tauri-apps/api/core";
 import type { CMVHHeaders } from "./types";
 
 export interface EmailContent {
@@ -18,6 +28,17 @@ export interface OnChainVerificationResult {
   timestamp?: number;
 }
 
+// Rust CMVHVerificationCache type (from backend)
+interface RustCMVHCache {
+  id: number;
+  signature: string;
+  email_hash: string;
+  is_valid: boolean;
+  error: string | null;
+  verified_at: number;
+  expires_at: number;
+}
+
 interface CMVHVerificationCache {
   emailHash: string; // Email content hash (unique identifier)
   result: OnChainVerificationResult;
@@ -25,11 +46,11 @@ interface CMVHVerificationCache {
   expiresAt: number;
 }
 
-// Cache TTL: 24 hours (signatures don't change once created)
-const CACHE_TTL = 24 * 60 * 60 * 1000;
+// L1 Memory cache TTL: 1 hour (lightweight, session-scoped)
+const MEMORY_CACHE_TTL = 60 * 60 * 1000;
 
-// In-memory cache store
-const cacheStore = new Map<string, CMVHVerificationCache>();
+// L1 (Memory) cache store - fastest access
+const memoryCache = new Map<string, CMVHVerificationCache>();
 
 /**
  * Simple hash function for string data
@@ -57,67 +78,131 @@ function getCacheKey(headers: CMVHHeaders, content: EmailContent): string {
 }
 
 /**
- * Get cached verification result
- * Returns null if not cached or expired
+ * Get cached verification result (dual-layer)
+ * Returns null if not found in either cache
  */
-export function getCachedVerification(
+export async function getCachedVerification(
   headers: CMVHHeaders,
   content: EmailContent
-): OnChainVerificationResult | null {
+): Promise<OnChainVerificationResult | null> {
   const key = getCacheKey(headers, content);
-  const cached = cacheStore.get(key);
+  const emailHash = hashEmailContent(content);
 
-  if (!cached) {
-    return null;
+  // 1. Check L1 (Memory) cache first - fastest
+  const memCached = memoryCache.get(key);
+  if (memCached && Date.now() <= memCached.expiresAt) {
+    console.log(
+      `⚡ L1 cache hit (${Math.round((Date.now() - memCached.timestamp) / 1000)}s ago)`
+    );
+    return memCached.result;
   }
 
-  // Check if expired
-  if (Date.now() > cached.expiresAt) {
-    cacheStore.delete(key);
-    console.log(`🗑️ Expired CMVH verification cache for ${key.substring(0, 16)}...`);
-    return null;
+  // 2. L1 miss - check L2 (SQLite) cache
+  try {
+    const sqliteCached = await invoke<RustCMVHCache | null>("get_cmvh_cache", {
+      signature: headers.signature,
+      emailHash,
+    });
+
+    if (sqliteCached) {
+      console.log(
+        `💾 L2 cache hit (${Math.round((Date.now() - sqliteCached.verified_at * 1000) / 1000)}s ago)`
+      );
+
+      // Promote to L1 cache for faster subsequent access
+      const result: OnChainVerificationResult = {
+        isValid: sqliteCached.is_valid,
+        error: sqliteCached.error || undefined,
+        timestamp: sqliteCached.verified_at * 1000,
+      };
+
+      memoryCache.set(key, {
+        emailHash,
+        result,
+        timestamp: Date.now(),
+        expiresAt: Date.now() + MEMORY_CACHE_TTL,
+      });
+
+      return result;
+    }
+  } catch (error) {
+    console.error("❌ Failed to check L2 cache:", error);
+    // Continue - will return null and trigger RPC call
   }
 
-  console.log(`✅ Using cached CMVH verification result (cached ${Math.round((Date.now() - cached.timestamp) / 1000)}s ago)`);
-  return cached.result;
+  // 3. Both caches missed
+  return null;
 }
 
 /**
- * Cache verification result
+ * Hash email content for cache key
  */
-export function cacheVerification(
+function hashEmailContent(content: EmailContent): string {
+  const data = `${content.subject}:${content.from}:${content.to}`;
+  return hashString(data);
+}
+
+/**
+ * Cache verification result (dual-layer)
+ * Saves to both memory and SQLite for optimal performance
+ */
+export async function cacheVerification(
   headers: CMVHHeaders,
   content: EmailContent,
   result: OnChainVerificationResult
-): void {
+): Promise<void> {
   const key = getCacheKey(headers, content);
-  const contentData = `${content.subject}:${content.from}:${content.to}`;
-  const emailHash = hashString(contentData);
+  const emailHash = hashEmailContent(content);
 
-  cacheStore.set(key, {
+  // 1. Save to L1 (Memory) cache - immediate access
+  memoryCache.set(key, {
     emailHash,
     result,
     timestamp: Date.now(),
-    expiresAt: Date.now() + CACHE_TTL,
+    expiresAt: Date.now() + MEMORY_CACHE_TTL,
   });
 
-  console.log(`💾 Cached CMVH verification for signature ${headers.signature.substring(0, 16)}...`);
-  console.log(`   Cache size: ${cacheStore.size} entries`);
+  // 2. Save to L2 (SQLite) cache - persistent across restarts
+  try {
+    await invoke("save_cmvh_cache", {
+      signature: headers.signature,
+      emailHash,
+      isValid: result.isValid,
+      error: result.error || null,
+    });
+
+    console.log(
+      `💾 Cached CMVH verification (L1 + L2) for signature ${headers.signature.substring(0, 16)}...`
+    );
+    console.log(`   L1 size: ${memoryCache.size} entries`);
+  } catch (error) {
+    console.error("❌ Failed to save to L2 cache:", error);
+    // L1 cache still works, so this is not fatal
+  }
 }
 
 /**
- * Clear expired cache entries
+ * Clear expired cache entries (both layers)
  * Called periodically to prevent memory bloat
  */
-export function cleanupCache(): number {
+export async function cleanupCache(): Promise<number> {
   const now = Date.now();
   let removed = 0;
 
-  for (const [key, entry] of cacheStore.entries()) {
+  // Cleanup L1 (Memory) cache
+  for (const [key, entry] of memoryCache.entries()) {
     if (now > entry.expiresAt) {
-      cacheStore.delete(key);
+      memoryCache.delete(key);
       removed++;
     }
+  }
+
+  // Cleanup L2 (SQLite) cache
+  try {
+    const sqliteRemoved = await invoke<number>("cleanup_cmvh_cache");
+    removed += sqliteRemoved;
+  } catch (error) {
+    console.error("❌ Failed to cleanup L2 cache:", error);
   }
 
   if (removed > 0) {
@@ -128,35 +213,63 @@ export function cleanupCache(): number {
 }
 
 /**
- * Clear all cache entries
+ * Clear all cache entries (both layers)
  * Useful for testing or when user changes settings
  */
-export function clearAllCache(): void {
-  const size = cacheStore.size;
-  cacheStore.clear();
-  console.log(`🗑️ Cleared all ${size} CMVH cache entries`);
+export async function clearAllCache(): Promise<void> {
+  const memSize = memoryCache.size;
+  memoryCache.clear();
+
+  try {
+    const sqliteRemoved = await invoke<number>("clear_cmvh_cache");
+    console.log(
+      `🗑️ Cleared all CMVH cache entries (L1: ${memSize}, L2: ${sqliteRemoved})`
+    );
+  } catch (error) {
+    console.error("❌ Failed to clear L2 cache:", error);
+    console.log(`🗑️ Cleared L1 cache (${memSize} entries)`);
+  }
 }
 
 /**
- * Get cache statistics
+ * Get cache statistics (both layers)
  */
-export function getCacheStats() {
+export async function getCacheStats() {
   const now = Date.now();
-  let validEntries = 0;
-  let expiredEntries = 0;
+  let memValid = 0;
+  let memExpired = 0;
 
-  for (const entry of cacheStore.values()) {
+  // L1 (Memory) stats
+  for (const entry of memoryCache.values()) {
     if (now > entry.expiresAt) {
-      expiredEntries++;
+      memExpired++;
     } else {
-      validEntries++;
+      memValid++;
     }
   }
 
+  // L2 (SQLite) stats
+  let sqliteStats = { total: 0, valid: 0, expired: 0 };
+  try {
+    sqliteStats = await invoke<{ total: number; valid: number; expired: number }>(
+      "get_cmvh_cache_stats"
+    );
+  } catch (error) {
+    console.error("❌ Failed to get L2 cache stats:", error);
+  }
+
   return {
-    total: cacheStore.size,
-    valid: validEntries,
-    expired: expiredEntries,
+    l1: {
+      total: memoryCache.size,
+      valid: memValid,
+      expired: memExpired,
+    },
+    l2: sqliteStats,
+    combined: {
+      total: memoryCache.size + sqliteStats.total,
+      valid: memValid + sqliteStats.valid,
+      expired: memExpired + sqliteStats.expired,
+    },
   };
 }
 

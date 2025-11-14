@@ -1,6 +1,8 @@
 use crate::cmvh::{
-    derive_address, parse_cmvh_headers, sign_email, validate_cmvh_headers, verify_signature,
-    CMVHHeaders, EmailContent, VerificationResult,
+    cache_verification, cleanup_expired_cache, clear_all_cache, derive_address, get_cache_stats,
+    get_cached_verification, parse_cmvh_headers, sign_email, validate_cmvh_headers,
+    verify_signature, CMVHHeaders, CMVHVerificationCache, CacheStats, EmailContent,
+    VerificationResult,
 };
 use tauri::command;
 
@@ -58,4 +60,46 @@ pub async fn derive_eth_address(private_key: String) -> Result<String, String> {
         .map_err(|e| format!("Invalid private key: {}", e))?;
 
     derive_address(&secret_key).map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// CMVH Verification Cache Commands (SQLite Persistence)
+// ============================================================================
+
+/// Get cached CMVH verification result from SQLite
+#[command]
+pub async fn get_cmvh_cache(
+    signature: String,
+    email_hash: String,
+) -> Result<Option<CMVHVerificationCache>, String> {
+    get_cached_verification(&signature, &email_hash).await
+}
+
+/// Save CMVH verification result to SQLite cache
+#[command]
+pub async fn save_cmvh_cache(
+    signature: String,
+    email_hash: String,
+    is_valid: bool,
+    error: Option<String>,
+) -> Result<(), String> {
+    cache_verification(&signature, &email_hash, is_valid, error.as_deref()).await
+}
+
+/// Cleanup expired CMVH cache entries
+#[command]
+pub async fn cleanup_cmvh_cache() -> Result<u64, String> {
+    cleanup_expired_cache().await
+}
+
+/// Clear all CMVH cache entries
+#[command]
+pub async fn clear_cmvh_cache() -> Result<u64, String> {
+    clear_all_cache().await
+}
+
+/// Get CMVH cache statistics
+#[command]
+pub async fn get_cmvh_cache_stats() -> Result<CacheStats, String> {
+    get_cache_stats().await
 }

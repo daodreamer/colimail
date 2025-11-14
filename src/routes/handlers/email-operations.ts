@@ -655,7 +655,7 @@ export async function handleVerifyOnChain(
   };
 
   // 1. Check cache first
-  const cached = getCachedVerification(
+  const cached = await getCachedVerification(
     appState.cmvhVerification.headers!,
     emailContent
   );
@@ -693,7 +693,7 @@ export async function handleVerifyOnChain(
     );
 
     // 3. Cache the result
-    cacheVerification(appState.cmvhVerification.headers!, emailContent, {
+    await cacheVerification(appState.cmvhVerification.headers!, emailContent, {
       isValid: result.isValid,
       error: result.error,
       timestamp: Date.now(),
@@ -722,7 +722,7 @@ export async function handleVerifyOnChain(
     console.error("❌ On-chain verification error:", error);
 
     // Cache the error result to avoid repeated failures
-    cacheVerification(appState.cmvhVerification.headers!, emailContent, {
+    await cacheVerification(appState.cmvhVerification.headers!, emailContent, {
       isValid: false,
       error: String(error),
       timestamp: Date.now(),
