@@ -1,5 +1,6 @@
 use super::types::CMVHHeaders;
 use base64::{engine::general_purpose, Engine as _};
+use quoted_printable::encode_to_str;
 
 /// Validate header name (only allow alphanumeric and hyphen)
 fn validate_header_name(name: &str) -> Result<(), String> {
@@ -115,7 +116,7 @@ pub fn build_raw_email_with_cmvh(
             email.push_str("Content-Type: text/html; charset=utf-8\r\n");
             email.push_str("Content-Transfer-Encoding: quoted-printable\r\n");
             email.push_str("\r\n");
-            email.push_str(&encode_quoted_printable(body_html));
+            email.push_str(&encode_to_str(body_html));
             email.push_str("\r\n\r\n");
 
             // Attachments
@@ -138,47 +139,17 @@ pub fn build_raw_email_with_cmvh(
             email.push_str("Content-Type: text/html; charset=utf-8\r\n");
             email.push_str("Content-Transfer-Encoding: quoted-printable\r\n");
             email.push_str("\r\n");
-            email.push_str(&encode_quoted_printable(body_html));
+            email.push_str(&encode_to_str(body_html));
         }
     } else {
         // No attachments
         email.push_str("Content-Type: text/html; charset=utf-8\r\n");
         email.push_str("Content-Transfer-Encoding: quoted-printable\r\n");
         email.push_str("\r\n");
-        email.push_str(&encode_quoted_printable(body_html));
+        email.push_str(&encode_to_str(body_html));
     }
 
     Ok(email.into_bytes())
-}
-
-/// Simple quoted-printable encoding (basic implementation)
-fn encode_quoted_printable(text: &str) -> String {
-    let mut result = String::new();
-    let mut line_length = 0;
-
-    for byte in text.bytes() {
-        if byte == b'\n' {
-            result.push_str("\r\n");
-            line_length = 0;
-        } else if byte == b'\r' {
-            // Skip standalone CR
-            continue;
-        } else if (32..=126).contains(&byte) && byte != b'=' {
-            result.push(byte as char);
-            line_length += 1;
-        } else {
-            result.push_str(&format!("={:02X}", byte));
-            line_length += 3;
-        }
-
-        // RFC 2045: Lines should not exceed 76 characters
-        if line_length >= 75 {
-            result.push_str("=\r\n");
-            line_length = 0;
-        }
-    }
-
-    result
 }
 
 #[cfg(test)]
@@ -231,10 +202,17 @@ mod tests {
 
     #[test]
     fn test_encode_quoted_printable() {
+        // Test the RFC 2045 compliant quoted-printable encoding
         let text = "Hello World!";
-        let encoded = encode_quoted_printable(text);
+        let encoded = encode_to_str(text);
         assert!(encoded.contains("Hello"));
         assert!(encoded.contains("World!"));
+
+        // Test edge cases: trailing whitespace should be encoded
+        let text_with_trailing_space = "Hello World  ";
+        let encoded = encode_to_str(text_with_trailing_space);
+        // Trailing spaces should be encoded as =20
+        assert!(encoded.ends_with("=20=20") || encoded.contains("=20"));
     }
 
     #[test]
