@@ -80,14 +80,15 @@ export const NETWORK_CONFIG = {
     chainId: 421614,
     name: "Arbitrum Sepolia",
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-    contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Updated to pure functions
+    contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Verified: CMVHVerifier (pure functions)
     explorerUrl: "https://sepolia.arbiscan.io",
+    // Contract verified at: https://sepolia.arbiscan.io/address/0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a
   },
   arbitrum: {
     chainId: 42161,
     name: "Arbitrum One",
     rpcUrl: "https://arb1.arbitrum.io/rpc",
-    contractAddress: "", // TODO: Deploy to mainnet
+    contractAddress: "", // Not deployed yet - use arbitrum-sepolia for testing
     explorerUrl: "https://arbiscan.io",
   },
 } as const;
