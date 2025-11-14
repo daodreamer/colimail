@@ -1,5 +1,7 @@
 use crate::attachment_limits::validate_attachment_sizes;
-use crate::cmvh::{build_raw_email_with_cmvh, CMVHError, CMVHHeaders, CMVHResult};
+use crate::cmvh::{
+    build_raw_email_with_cmvh, sign_email, CMVHError, CMVHHeaders, CMVHResult, EmailContent,
+};
 use crate::commands::send::AttachmentData;
 use crate::commands::utils::ensure_valid_token;
 use crate::models::{AccountConfig, AuthType};
@@ -274,4 +276,87 @@ pub async fn send_email_with_cmvh(
         "Email sent successfully with CMVH signature ({}...)",
         &cmvh_headers.signature[..16.min(cmvh_headers.signature.len())]
     ))
+}
+
+/// Sign email content with CMVH headers (separated responsibility)
+/// This command only handles signing, making it reusable for drafts, previews, etc.
+#[command]
+pub async fn sign_email_cmvh(
+    content: EmailContent,
+    private_key: String,
+) -> CMVHResult<CMVHHeaders> {
+    println!("📝 Signing email with CMVH");
+    println!("   Subject: {}", content.subject);
+    println!("   From: {} → To: {}", content.from, content.to);
+
+    // Sign the email content
+    let headers = sign_email(&private_key, &content)?;
+
+    println!("✅ Email signed successfully");
+    println!("   Address: {}", headers.address);
+    println!(
+        "   Signature: {}...",
+        &headers.signature[..16.min(headers.signature.len())]
+    );
+
+    Ok(headers)
+}
+
+/// Send raw email via SMTP (separated responsibility)
+/// This command only handles SMTP sending, making it testable and reusable
+#[command]
+pub async fn send_email_smtp(
+    config: AccountConfig,
+    raw_email: Vec<u8>,
+    to: String,
+    cc: Option<String>,
+) -> CMVHResult<String> {
+    println!("📧 Sending email via SMTP");
+    println!("   Server: {}:{}", config.smtp_server, config.smtp_port);
+    println!("   Size: {} bytes", raw_email.len());
+
+    // Ensure we have a valid access token (refresh if needed)
+    let config = ensure_valid_token(config)
+        .await
+        .map_err(|e| CMVHError::TokenError { message: e })?;
+
+    // Prepare credentials and authentication type
+    let (credentials, use_oauth2) = match config.auth_type {
+        Some(AuthType::OAuth2) => {
+            let access_token = config.access_token.clone().ok_or(CMVHError::TokenError {
+                message: "Access token is required for OAuth2 authentication".to_string(),
+            })?;
+
+            println!("🔐 Using OAuth2 authentication (XOAUTH2)");
+            (Credentials::new(config.email.clone(), access_token), true)
+        }
+        _ => {
+            let password = config.password.clone().ok_or(CMVHError::SMTPAuthFailed {
+                message: "Password is required for basic authentication".to_string(),
+            })?;
+
+            println!("🔐 Using basic authentication");
+            (Credentials::new(config.email.clone(), password), false)
+        }
+    };
+
+    // Extract recipient addresses
+    let mut to_addresses = extract_email_addresses(&to);
+    if let Some(ref cc_str) = cc {
+        to_addresses.extend(extract_email_addresses(cc_str));
+    }
+
+    // Send the raw email via SMTP
+    send_raw_email_smtp(
+        &config.smtp_server,
+        config.smtp_port,
+        credentials,
+        use_oauth2,
+        &config.email,
+        to_addresses,
+        &raw_email,
+    )
+    .await?;
+
+    Ok("Email sent successfully".to_string())
 }
