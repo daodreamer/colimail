@@ -155,30 +155,70 @@ export async function validateContractDeployment(config: CMVHConfig): Promise<{
 
     console.log(`✅ Contract bytecode found (${bytecode.length} bytes)`);
 
-    // 2. Test contract functionality with a simple call
-    // Use hashEmail function as it's a pure function that should always work
-    const testHash = await client.readContract({
+    // 2. Test contract metadata (UUPS proxy should return contract info)
+    const metadata = await client.readContract({
       address: contractAddress,
       abi: [
         {
-          name: "hashEmail",
+          name: "getMetadata",
+          type: "function",
+          stateMutability: "pure",
+          inputs: [],
+          outputs: [
+            { name: "contractName", type: "string" },
+            { name: "contractVersion", type: "string" },
+          ],
+        },
+      ],
+      functionName: "getMetadata",
+      args: [],
+    });
+
+    console.log(`✅ Contract metadata: ${metadata[0]} v${metadata[1]}`);
+
+    // 3. Test EIP-712 struct hash function (new in v2.0.0)
+    const testTimestamp = BigInt(Math.floor(Date.now() / 1000));
+    const testStructHash = await client.readContract({
+      address: contractAddress,
+      abi: [
+        {
+          name: "getEmailStructHash",
           type: "function",
           stateMutability: "pure",
           inputs: [
             { name: "subject", type: "string" },
             { name: "from", type: "string" },
             { name: "to", type: "string" },
+            { name: "timestamp", type: "uint256" },
           ],
-          outputs: [{ name: "hash", type: "bytes32" }],
+          outputs: [{ name: "structHash", type: "bytes32" }],
         },
       ],
-      functionName: "hashEmail",
-      args: ["test", "test@example.com", "test@example.com"],
+      functionName: "getEmailStructHash",
+      args: ["test", "test@example.com", "test@example.com", testTimestamp],
     });
 
-    console.log(`✅ Contract function call successful (hash: ${testHash})`);
+    console.log(`✅ Contract EIP-712 struct hash function accessible (hash: ${testStructHash})`);
 
-    // 3. Test signature verification with dummy data
+    // 4. Test domain separator (EIP-712 compliance)
+    const domainSeparator = await client.readContract({
+      address: contractAddress,
+      abi: [
+        {
+          name: "getDomainSeparator",
+          type: "function",
+          stateMutability: "view",
+          inputs: [],
+          outputs: [{ name: "", type: "bytes32" }],
+        },
+      ],
+      functionName: "getDomainSeparator",
+      args: [],
+    });
+
+    console.log(`✅ Contract domain separator: ${domainSeparator}`);
+
+    // 5. Test signature verification with dummy data
     const dummyHash = "0x0000000000000000000000000000000000000000000000000000000000000000" as Hex;
     const dummySig = "0x" + "00".repeat(65) as Hex;
     const dummyAddress = "0x0000000000000000000000000000000000000000" as Address;
@@ -189,7 +229,7 @@ export async function validateContractDeployment(config: CMVHConfig): Promise<{
         {
           name: "verifySignature",
           type: "function",
-          stateMutability: "pure",
+          stateMutability: "nonpayable",
           inputs: [
             { name: "signer", type: "address" },
             { name: "emailHash", type: "bytes32" },

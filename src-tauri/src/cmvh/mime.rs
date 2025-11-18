@@ -183,11 +183,11 @@ mod tests {
     #[test]
     fn test_build_cmvh_header_lines() {
         let headers = CMVHHeaders {
-            version: "1".to_string(),
+            version: "2".to_string(),
             address: "0x1234567890123456789012345678901234567890".to_string(),
             chain: "Arbitrum".to_string(),
             timestamp: "1234567890".to_string(),
-            hash_algo: "keccak256".to_string(),
+            hash_algo: "eip712".to_string(),
             signature: "0xabcd".to_string(),
             ens: None,
             reward: None,
@@ -196,8 +196,9 @@ mod tests {
 
         let lines = build_cmvh_header_lines(&headers).unwrap();
         assert_eq!(lines.len(), 6);
-        assert!(lines[0].starts_with("X-CMVH-Version: 1"));
+        assert!(lines[0].starts_with("X-CMVH-Version: 2"));
         assert!(lines[1].contains("0x1234567890"));
+        assert!(lines[4].starts_with("X-CMVH-HashAlgo: eip712"));
     }
 
     #[test]
@@ -218,11 +219,11 @@ mod tests {
     #[test]
     fn test_build_raw_email_simple() {
         let headers = CMVHHeaders {
-            version: "1".to_string(),
+            version: "2".to_string(),
             address: "0x1234".to_string(),
             chain: "Arbitrum".to_string(),
             timestamp: "123".to_string(),
-            hash_algo: "keccak256".to_string(),
+            hash_algo: "eip712".to_string(),
             signature: "0xabcd".to_string(),
             ens: None,
             reward: None,
@@ -244,7 +245,8 @@ mod tests {
         assert!(email_str.contains("From: alice@example.com"));
         assert!(email_str.contains("To: bob@example.com"));
         assert!(email_str.contains("Subject: Test Subject"));
-        assert!(email_str.contains("X-CMVH-Version: 1"));
+        assert!(email_str.contains("X-CMVH-Version: 2"));
+        assert!(email_str.contains("X-CMVH-HashAlgo: eip712"));
         assert!(email_str.contains("X-CMVH-Address: 0x1234"));
         assert!(email_str.contains("X-CMVH-Signature: 0xabcd"));
         assert!(email_str.contains("Hello World"));

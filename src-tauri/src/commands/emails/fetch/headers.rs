@@ -67,8 +67,18 @@ pub async fn fetch_email_raw_headers(
             "No message found for UID".to_string()
         })?;
 
-        let raw_headers = message.body().unwrap_or_default();
+        // Use header() instead of body() for BODY[HEADER] fetch
+        let raw_headers = message.header().ok_or_else(|| {
+            eprintln!("❌ No header data found for UID {}", uid);
+            "No header data found".to_string()
+        })?;
+
         let headers_str = String::from_utf8_lossy(raw_headers).to_string();
+        println!(
+            "✅ Fetched raw headers for UID {}, length: {}",
+            uid,
+            headers_str.len()
+        );
 
         let _ = imap_session.logout();
         Ok(headers_str)

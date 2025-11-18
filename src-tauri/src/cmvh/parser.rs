@@ -69,16 +69,22 @@ pub fn parse_cmvh_headers(raw_headers: &str) -> Result<CMVHHeaders, String> {
     })
 }
 
-/// Validate CMVH headers format
+/// Validate CMVH headers format (EIP-712 v2)
 pub fn validate_cmvh_headers(headers: &CMVHHeaders) -> Result<(), String> {
-    // Validate version
-    if headers.version != "1" {
-        return Err(format!("Unsupported CMVH version: {}", headers.version));
+    // Validate version (only v2 supported)
+    if headers.version != "2" {
+        return Err(format!(
+            "Unsupported CMVH version: {} (only v2 with EIP-712 is supported)",
+            headers.version
+        ));
     }
 
-    // Validate hash algorithm
-    if headers.hash_algo.to_lowercase() != "keccak256" {
-        return Err(format!("Unsupported hash algorithm: {}", headers.hash_algo));
+    // Validate hash algorithm (must be eip712)
+    if headers.hash_algo.to_lowercase() != "eip712" {
+        return Err(format!(
+            "Unsupported hash algorithm: {} (only eip712 is supported)",
+            headers.hash_algo
+        ));
     }
 
     // Validate address format (0x + 40 hex chars)
@@ -121,11 +127,11 @@ mod tests {
 From: alice@example.com
 To: bob@example.com
 Subject: Test Email
-X-CMVH-Version: 1
+X-CMVH-Version: 2
 X-CMVH-Address: 0x1234567890123456789012345678901234567890
 X-CMVH-Chain: Arbitrum
 X-CMVH-Timestamp: 1730733600
-X-CMVH-HashAlgo: keccak256
+X-CMVH-HashAlgo: eip712
 X-CMVH-Signature: 0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
 X-CMVH-ENS: alice.eth
         "#;
@@ -138,7 +144,8 @@ X-CMVH-ENS: alice.eth
         );
 
         let headers = result.unwrap();
-        assert_eq!(headers.version, "1");
+        assert_eq!(headers.version, "2");
+        assert_eq!(headers.hash_algo, "eip712");
         assert_eq!(headers.chain, "Arbitrum");
         assert_eq!(headers.ens, Some("alice.eth".to_string()));
     }
@@ -146,7 +153,7 @@ X-CMVH-ENS: alice.eth
     #[test]
     fn test_parse_missing_required_header() {
         let raw = r#"
-X-CMVH-Version: 1
+X-CMVH-Version: 2
 X-CMVH-Address: 0x1234567890123456789012345678901234567890
         "#;
 
@@ -157,11 +164,11 @@ X-CMVH-Address: 0x1234567890123456789012345678901234567890
     #[test]
     fn test_validate_valid_headers() {
         let headers = CMVHHeaders {
-            version: "1".to_string(),
+            version: "2".to_string(),
             address: "0x1234567890123456789012345678901234567890".to_string(),
             chain: "Arbitrum".to_string(),
             timestamp: "1730733600".to_string(),
-            hash_algo: "keccak256".to_string(),
+            hash_algo: "eip712".to_string(),
             signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
             ens: None,
             reward: None,
@@ -175,11 +182,11 @@ X-CMVH-Address: 0x1234567890123456789012345678901234567890
     #[test]
     fn test_validate_invalid_version() {
         let headers = CMVHHeaders {
-            version: "2".to_string(),
+            version: "1".to_string(), // v1 is no longer supported
             address: "0x1234567890123456789012345678901234567890".to_string(),
             chain: "Arbitrum".to_string(),
             timestamp: "1730733600".to_string(),
-            hash_algo: "keccak256".to_string(),
+            hash_algo: "eip712".to_string(),
             signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
             ens: None,
             reward: None,
@@ -192,13 +199,32 @@ X-CMVH-Address: 0x1234567890123456789012345678901234567890
     }
 
     #[test]
+    fn test_validate_invalid_hash_algo() {
+        let headers = CMVHHeaders {
+            version: "2".to_string(),
+            address: "0x1234567890123456789012345678901234567890".to_string(),
+            chain: "Arbitrum".to_string(),
+            timestamp: "1730733600".to_string(),
+            hash_algo: "keccak256".to_string(), // Old hash algo not supported
+            signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
+            ens: None,
+            reward: None,
+            proof_url: None,
+        };
+
+        let result = validate_cmvh_headers(&headers);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Unsupported hash algorithm"));
+    }
+
+    #[test]
     fn test_validate_invalid_address_format() {
         let headers = CMVHHeaders {
-            version: "1".to_string(),
+            version: "2".to_string(),
             address: "0x123".to_string(), // Too short
             chain: "Arbitrum".to_string(),
             timestamp: "1730733600".to_string(),
-            hash_algo: "keccak256".to_string(),
+            hash_algo: "eip712".to_string(),
             signature: "0x1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890".to_string(),
             ens: None,
             reward: None,

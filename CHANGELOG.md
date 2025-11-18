@@ -47,6 +47,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Improved email encoding and dependency cleanup
 
 #### Changed
+- **🔄 CMVH Contract Upgrade to UUPS Proxy v2.0.0 with Full EIP-712 Support**
+
+  **Smart Contract Updates:**
+  - Updated contract address to `0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03` (UUPS Proxy on Arbitrum Sepolia)
+  - Upgraded to EIP-712 structured data signing standard with timestamp support
+  - Enhanced replay attack protection through timestamp inclusion in signed data
+  - Added new contract functions:
+    - `getEmailStructHash(subject, from, to, timestamp)` - Compute EIP-712 struct hash
+    - `getDomainSeparator()` - Get EIP-712 domain separator
+    - `getMetadata()` - Return contract name and version
+    - `batchVerifySignatures()` - Verify multiple signatures in one call
+
+  **Frontend Updates (TypeScript):**
+  - Updated contract ABI with all new EIP-712 functions
+  - Modified `verifyOnChain` to pass timestamp parameter
+  - Enhanced verification logging with struct hash and domain separator
+  - Split ABI definitions for better type safety with viem
+  - Configuration version bumped to v3 for automatic migration
+  - Improved contract validation to test UUPS proxy metadata and EIP-712 compliance
+
+  **Backend Updates (Rust):**
+  - **Signing (`signer.rs`):**
+    - Implemented full EIP-712 signing with domain separator
+    - Added `get_domain_separator()` function matching contract implementation
+    - Signatures now include timestamp in EIP-712 struct hash
+    - Updated CMVH version to "2" and hash_algo to "eip712"
+    - Added detailed debug logging for struct hash, domain separator, and digest
+    - Removed legacy signing code
+
+  - **Verification (`verifier.rs`):**
+    - Full EIP-712 verification implementation
+    - Implemented `get_domain_separator()` for verification matching
+    - Proper timestamp parsing and validation
+    - Enhanced logging with struct hash, domain separator, and digest
+    - Removed legacy verification code
+
+  - **Data Types (`types.rs`):**
+    - Implemented `hash_eip712_struct(timestamp)` method to `EmailContent`
+    - Uses EIP-712 encoding: `keccak256(abi.encode(EMAIL_TYPEHASH, ...))`
+    - Removed legacy `canonicalize()` and `hash_keccak256()` methods
+
+  - **Parser (`parser.rs`):**
+    - Updated validation to require CMVH version "2" and hash_algo "eip712"
+    - Removed support for legacy v1 signatures
+
+  - **MIME Builder (`mime.rs`):**
+    - Updated test cases to use EIP-712 v2 format
+    - All email building functions now support CMVH v2 headers
+
+  - **Commands (`commands/cmvh.rs`):**
+    - Updated `hash_email_content` to use EIP-712 struct hash
+    - All commands now use EIP-712 standard
+
+  - **Tests:**
+    - Updated all 16 CMVH tests to verify EIP-712 functionality
+    - Added `test_eip712_struct_hash()` and `test_domain_separator()`
+    - Removed legacy test cases
+
+  **Breaking Changes:**
+  - **All legacy code removed** - only EIP-712 is supported
+  - CMVH signatures now require timestamp (included automatically)
+  - Contract interface changed: `verifyEmail` now requires `timestamp` parameter
+  - Signature format upgraded from simple keccak256 to EIP-712 structured data
+  - Old v1 signatures are no longer supported
+
+  **Migration:**
+  - Configuration auto-migrates from v2 to v3 on first load
+  - New contract address applied automatically
+  - All existing signatures must be regenerated with EIP-712
+
 - **🏗️ Code Architecture Improvements**
   - Refactored `fetch.rs` (554 lines) into modular structure:
     - `fetch/list.rs`: Email list/headers fetching
@@ -64,11 +134,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Progressive enhancement (show address first, ENS when available)
 
 #### Fixed
+- **CMVH header detection bug** - Fixed `fetch_email_raw_headers` returning empty headers
+  - Root cause: Used `message.body()` instead of `message.header()` for `BODY[HEADER]` IMAP fetch
+  - Impact: CMVH headers were not detected when receiving signed emails
+  - Solution: Updated `fetch/headers.rs:71` to use correct IMAP API method `message.header()`
+  - All received CMVH v2 emails now properly detected and verified
 - **CMVH cache loading issue** - Fixed verification state not persisting across sessions
 - **On-chain verification UX** - Blue badge now auto-loads from cache instead of requiring manual click
 
 #### Technical Details
-- **Smart Contract**: Deployed pure function CMVH verifier on Arbitrum Sepolia (`0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a`)
+- **Smart Contract**: CMVH UUPS Proxy v2.0.0 deployed on Arbitrum Sepolia (`0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03`)
+  - Legacy contract (v1): `0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a` (deprecated)
 - **ENS Resolution**: Using viem's official `getEnsName()` API on Ethereum mainnet
 - **Database**: Added `cmvh_verification_cache` and `ens_cache` tables
 - **Security**: Ethereum private key storage in secure keyring

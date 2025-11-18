@@ -25,10 +25,16 @@ pub async fn verify_cmvh_signature(
     Ok(verify_signature(&headers, &content))
 }
 
-/// Hash email content (for debugging/testing)
+/// Hash email content with EIP-712 (for debugging/testing)
 #[command]
 pub async fn hash_email_content(content: EmailContent) -> Result<String, String> {
-    let hash = content.hash_keccak256();
+    // Use current timestamp for testing
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|e| format!("Failed to get timestamp: {}", e))?
+        .as_secs();
+
+    let hash = content.hash_eip712_struct(timestamp);
     Ok(format!("0x{}", hex::encode(hash)))
 }
 

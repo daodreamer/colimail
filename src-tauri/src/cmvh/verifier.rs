@@ -2,14 +2,97 @@ use super::types::{CMVHHeaders, EmailContent, VerificationResult};
 use secp256k1::{ecdsa::RecoverableSignature, Message, Secp256k1};
 use sha3::{Digest, Keccak256};
 
-/// Verify CMVH signature and recover signer address
+/// Get EIP-712 domain separator for CMVH contract
+fn get_domain_separator(chain_id: u64, contract_address: &str) -> Vec<u8> {
+    use sha3::{Digest, Keccak256};
+
+    // DOMAIN_TYPEHASH = keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")
+    let domain_typehash: [u8; 32] = [
+        0x8b, 0x73, 0xc3, 0xc6, 0x9b, 0xb8, 0xfe, 0x3d, 0x51, 0x2e, 0xcc, 0x4c, 0xf7, 0x59, 0xcc,
+        0x79, 0x23, 0x9f, 0x7b, 0x17, 0x9b, 0x0f, 0xfa, 0xca, 0xa9, 0xa7, 0x5d, 0x52, 0x2b, 0x39,
+        0x40, 0x0f,
+    ];
+
+    let name_hash = {
+        let mut hasher = Keccak256::new();
+        hasher.update(b"CMVHVerifier");
+        hasher.finalize()
+    };
+
+    let version_hash = {
+        let mut hasher = Keccak256::new();
+        hasher.update(b"2.0.0");
+        hasher.finalize()
+    };
+
+    // Parse contract address
+    let addr_hex = contract_address.trim_start_matches("0x");
+    let addr_bytes = hex::decode(addr_hex).expect("Invalid contract address");
+
+    // Encode domain separator
+    let mut encoded = Vec::with_capacity(32 * 4 + 20);
+    encoded.extend_from_slice(&domain_typehash);
+    encoded.extend_from_slice(&name_hash);
+    encoded.extend_from_slice(&version_hash);
+
+    let mut chain_id_bytes = [0u8; 32];
+    chain_id_bytes[24..32].copy_from_slice(&chain_id.to_be_bytes());
+    encoded.extend_from_slice(&chain_id_bytes);
+
+    let mut addr_padded = [0u8; 32];
+    addr_padded[12..32].copy_from_slice(&addr_bytes);
+    encoded.extend_from_slice(&addr_padded);
+
+    let mut hasher = Keccak256::new();
+    hasher.update(&encoded);
+    hasher.finalize().to_vec()
+}
+
+/// Verify CMVH signature and recover signer address (EIP-712)
 pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> VerificationResult {
-    println!("🔍 Verifying CMVH signature");
+    println!("🔍 Verifying CMVH signature (EIP-712)");
+    println!("   Version: {}", headers.version);
     println!("   Subject: {}", content.subject);
     println!("   From: {} → To: {}", content.from, content.to);
 
-    // Compute email hash using EmailContent method
-    let email_hash = content.hash_keccak256();
+    // Parse timestamp
+    let timestamp = match headers.timestamp.parse::<u64>() {
+        Ok(ts) => ts,
+        Err(e) => {
+            return VerificationResult {
+                is_valid: false,
+                signer_address: None,
+                ens_name: None,
+                timestamp: None,
+                chain: None,
+                error: Some(format!("Invalid timestamp: {}", e)),
+            }
+        }
+    };
+
+    println!("   Timestamp: {} ({})", timestamp, headers.timestamp);
+
+    // Compute EIP-712 struct hash
+    let struct_hash = content.hash_eip712_struct(timestamp);
+
+    // Get domain separator (Arbitrum Sepolia, CMVH contract)
+    let chain_id = 421614u64;
+    let contract_address = "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03";
+    let domain_separator = get_domain_separator(chain_id, contract_address);
+
+    // Construct EIP-712 digest: keccak256("\x19\x01" || domainSeparator || structHash)
+    let mut digest_input = Vec::with_capacity(2 + 32 + 32);
+    digest_input.extend_from_slice(&[0x19, 0x01]);
+    digest_input.extend_from_slice(&domain_separator);
+    digest_input.extend_from_slice(&struct_hash);
+
+    let mut hasher = Keccak256::new();
+    hasher.update(&digest_input);
+    let message_hash = hasher.finalize().to_vec();
+
+    println!("   Struct hash: 0x{}", hex::encode(&struct_hash));
+    println!("   Domain separator: 0x{}", hex::encode(&domain_separator));
+    println!("   Digest: 0x{}", hex::encode(&message_hash));
 
     // Parse signature hex string
     let signature_hex = headers.signature.trim_start_matches("0x");
@@ -94,9 +177,8 @@ pub fn verify_signature(headers: &CMVHHeaders, content: &EmailContent) -> Verifi
         }
     };
 
-    // Create message from email hash directly (without EIP-191 prefix)
-    // Must match the signing process which signs the raw hash
-    let message = match Message::from_digest_slice(&email_hash) {
+    // Create message from the computed hash
+    let message = match Message::from_digest_slice(&message_hash) {
         Ok(msg) => msg,
         Err(e) => {
             return VerificationResult {
@@ -176,31 +258,33 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_canonicalize_email() {
+    fn test_eip712_struct_hash() {
         let content = EmailContent {
-            subject: "Test Subject".to_string(),
+            subject: "Test Email".to_string(),
             from: "alice@example.com".to_string(),
             to: "bob@example.com".to_string(),
-            body: "Hello, this is a test email.".to_string(),
+            body: "Test body".to_string(),
         };
 
-        let canonical = content.canonicalize();
-        assert_eq!(
-            canonical,
-            "Test Subject\nalice@example.com\nbob@example.com"
-        );
+        let timestamp = 1700000000u64;
+        let hash = content.hash_eip712_struct(timestamp);
+        assert_eq!(hash.len(), 32); // keccak256 produces 32 bytes
+
+        // Verify consistency - same input should produce same hash
+        let hash2 = content.hash_eip712_struct(timestamp);
+        assert_eq!(hash, hash2);
     }
 
     #[test]
-    fn test_hash_email() {
-        let content = EmailContent {
-            subject: "Test".to_string(),
-            from: "alice@example.com".to_string(),
-            to: "bob@example.com".to_string(),
-            body: "Hello".to_string(),
-        };
+    fn test_domain_separator() {
+        let chain_id = 421614u64;
+        let contract_address = "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03";
 
-        let hash = content.hash_keccak256();
-        assert_eq!(hash.len(), 32); // keccak256 produces 32 bytes
+        let separator = get_domain_separator(chain_id, contract_address);
+        assert_eq!(separator.len(), 32); // keccak256 produces 32 bytes
+
+        // Verify consistency
+        let separator2 = get_domain_separator(chain_id, contract_address);
+        assert_eq!(separator, separator2);
     }
 }

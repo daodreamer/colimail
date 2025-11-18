@@ -5,49 +5,57 @@ import { arbitrum, arbitrumSepolia } from "viem/chains";
 import type { CMVHHeaders, EmailContent, CMVHConfig } from "./types";
 import { NETWORK_CONFIG } from "./types";
 
-// CMVHVerifier contract ABI (only the functions we need)
-const CMVH_VERIFIER_ABI = [
-  {
-    name: "verifySignature",
-    type: "function",
-    stateMutability: "pure",
-    inputs: [
-      { name: "signer", type: "address" },
-      { name: "emailHash", type: "bytes32" },
-      { name: "signature", type: "bytes" },
-    ],
-    outputs: [{ name: "isValid", type: "bool" }],
-  },
+// CMVHVerifier contract ABI (UUPS Proxy v2.0.0 with EIP-712 and timestamp)
+// Split into individual ABIs for better type safety with viem
+const VERIFY_EMAIL_ABI = [
   {
     name: "verifyEmail",
     type: "function",
-    stateMutability: "pure",
+    stateMutability: "nonpayable",
     inputs: [
       { name: "signer", type: "address" },
       { name: "subject", type: "string" },
       { name: "from", type: "string" },
       { name: "to", type: "string" },
+      { name: "timestamp", type: "uint256" },
       { name: "signature", type: "bytes" },
     ],
     outputs: [{ name: "isValid", type: "bool" }],
   },
+] as const;
+
+const GET_EMAIL_STRUCT_HASH_ABI = [
   {
-    name: "hashEmail",
+    name: "getEmailStructHash",
     type: "function",
     stateMutability: "pure",
     inputs: [
       { name: "subject", type: "string" },
       { name: "from", type: "string" },
       { name: "to", type: "string" },
+      { name: "timestamp", type: "uint256" },
     ],
-    outputs: [{ name: "hash", type: "bytes32" }],
+    outputs: [{ name: "structHash", type: "bytes32" }],
   },
+] as const;
+
+const GET_DOMAIN_SEPARATOR_ABI = [
+  {
+    name: "getDomainSeparator",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "bytes32" }],
+  },
+] as const;
+
+const RECOVER_SIGNER_ABI = [
   {
     name: "recoverSigner",
     type: "function",
     stateMutability: "pure",
     inputs: [
-      { name: "emailHash", type: "bytes32" },
+      { name: "digest", type: "bytes32" },
       { name: "signature", type: "bytes" },
     ],
     outputs: [{ name: "signer", type: "address" }],
@@ -68,7 +76,7 @@ export function createCMVHClient(config: CMVHConfig) {
 }
 
 /**
- * Verify signature on-chain
+ * Verify signature on-chain (with EIP-712 and timestamp support)
  */
 export async function verifyOnChain(
   headers: CMVHHeaders,
@@ -80,44 +88,58 @@ export async function verifyOnChain(
     const networkConfig = NETWORK_CONFIG[config.network];
     const contractAddress = (config.contractAddress || networkConfig.contractAddress) as Address;
 
+    // Parse timestamp from headers (Unix timestamp in seconds)
+    const timestamp = BigInt(headers.timestamp);
+
     console.log("📋 On-chain verification parameters:");
     console.log(`   Contract: ${contractAddress}`);
     console.log(`   Signer: ${headers.address}`);
     console.log(`   Subject: "${content.subject}"`);
     console.log(`   From: "${content.from}"`);
     console.log(`   To: "${content.to}"`);
+    console.log(`   Timestamp: ${headers.timestamp} (${new Date(Number(timestamp) * 1000).toISOString()})`);
     console.log(`   Signature length: ${headers.signature.length} chars (expected: 132 for 0x + 65 bytes)`);
     console.log(`   Signature: ${headers.signature}`);
 
-    // Test: Call contract's hashEmail function to see what hash it computes
-    const contractEmailHash = await client.readContract({
+    // Test: Call contract's getEmailStructHash to compute EIP-712 struct hash
+    const contractStructHash = await client.readContract({
       address: contractAddress,
-      abi: CMVH_VERIFIER_ABI,
-      functionName: "hashEmail",
-      args: [content.subject, content.from, content.to],
+      abi: GET_EMAIL_STRUCT_HASH_ABI,
+      functionName: "getEmailStructHash",
+      args: [content.subject, content.from, content.to, timestamp],
     });
-    console.log(`📊 Contract computed hash: ${contractEmailHash}`);
+    console.log(`📊 Contract computed EIP-712 struct hash: ${contractStructHash}`);
 
-    // Test: Try to recover signer from signature
+    // Test: Get domain separator
+    const domainSeparator = await client.readContract({
+      address: contractAddress,
+      abi: GET_DOMAIN_SEPARATOR_ABI,
+      functionName: "getDomainSeparator",
+      args: [],
+    });
+    console.log(`📊 Contract domain separator: ${domainSeparator}`);
+
+    // Test: Try to recover signer from signature using digest
     const recoveredSigner = await client.readContract({
       address: contractAddress,
-      abi: CMVH_VERIFIER_ABI,
+      abi: RECOVER_SIGNER_ABI,
       functionName: "recoverSigner",
-      args: [contractEmailHash as `0x${string}`, headers.signature as Hex],
+      args: [contractStructHash as `0x${string}`, headers.signature as Hex],
     });
     console.log(`🔍 Contract recovered signer: ${recoveredSigner}`);
     console.log(`🔍 Expected signer: ${headers.address}`);
 
-    // Call contract verifyEmail function (body excluded from signature)
+    // Call contract verifyEmail function with timestamp (EIP-712 compliance)
     const isValid = await client.readContract({
       address: contractAddress,
-      abi: CMVH_VERIFIER_ABI,
+      abi: VERIFY_EMAIL_ABI,
       functionName: "verifyEmail",
       args: [
         headers.address as Address,
         content.subject,
         content.from,
         content.to,
+        timestamp,
         headers.signature as Hex,
       ],
     });

@@ -175,7 +175,7 @@ export interface CMVHConfig {
 }
 
 // Configuration version for migration
-export const CMVH_CONFIG_VERSION = 2; // Updated for pure functions contract
+export const CMVH_CONFIG_VERSION = 3; // Updated for UUPS proxy with EIP-712 and timestamp
 
 // Default configuration
 export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
@@ -185,7 +185,7 @@ export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
   verifyOnChain: false,
   rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
   network: "arbitrum-sepolia",
-  contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Deployed contract (pure functions)
+  contractAddress: "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03", // UUPS Proxy v2.0.0 with EIP-712
   enableSigning: false,
   privateKey: "",
   derivedAddress: "",
@@ -198,9 +198,9 @@ export const NETWORK_CONFIG = {
     chainId: 421614,
     name: "Arbitrum Sepolia",
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
-    contractAddress: "0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a", // Verified: CMVHVerifier (pure functions)
+    contractAddress: "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03", // UUPS Proxy: CMVHVerifier v2.0.0 (EIP-712 + timestamp)
     explorerUrl: "https://sepolia.arbiscan.io",
-    // Contract verified at: https://sepolia.arbiscan.io/address/0xc4BAD26e321A8D0FE3bA3337Fc3846c25506308a
+    // UUPS Proxy deployed at: 0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03
   },
   arbitrum: {
     chainId: 42161,
