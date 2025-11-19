@@ -1,8 +1,7 @@
-interface Window {
-    ethereum?: {
-        isMetaMask?: boolean;
-        request: (args: { method: string; params?: any[] }) => Promise<any>;
-        on: (eventName: string, handler: (...args: any[]) => void) => void;
-        removeListener: (eventName: string, handler: (...args: any[]) => void) => void;
-    };
+interface WalletSession {
+    address: string;
+    chain_id: number;
+    connection_method: "walletconnect"; // Only WalletConnect supported for security
+    last_active_timestamp: number;
+    wc_session_topic?: string;
 }

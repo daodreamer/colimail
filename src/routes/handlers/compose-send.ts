@@ -13,6 +13,23 @@ import { RewardService } from "$lib/cmvh/reward-service";
 import { walletStore } from "$lib/stores/wallet.svelte";
 
 /**
+ * Reward transaction data prepared for user confirmation
+ */
+export interface PendingRewardTransaction {
+  recipientAddress: string;
+  recipientEmail: string;
+  amount: string;
+  emailSubject: string;
+  emailContent: {
+    subject: string;
+    from: string;
+    to: string;
+    body: string;
+  };
+  expirySeconds: number;
+}
+
+/**
  * Handle compose new email button click
  */
 export async function handleComposeClick(
@@ -148,7 +165,49 @@ export async function updateAttachmentSizeLimit(
 }
 
 /**
+ * Execute reward transaction after user confirmation
+ */
+export async function executeRewardTransaction(
+  pendingReward: PendingRewardTransaction
+): Promise<void> {
+  try {
+    toast.loading("Attaching reward to blockchain...");
+
+    const cmvhConfig = loadConfig();
+    const rewardService = new RewardService(cmvhConfig);
+
+    const txHash = await rewardService.createReward(
+      pendingReward.recipientAddress,
+      pendingReward.amount,
+      pendingReward.emailContent,
+      pendingReward.expirySeconds
+    );
+
+    // Update wallet session activity after successful transaction
+    await invoke("update_wallet_session_activity");
+
+    toast.dismiss();
+    toast.success(`Reward attached! Transaction: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`, {
+      duration: 6000,
+    });
+
+    console.log("✅ Reward created:", {
+      txHash,
+      recipient: pendingReward.recipientAddress,
+      amount: pendingReward.amount,
+      emailSubject: pendingReward.emailSubject,
+    });
+  } catch (error) {
+    toast.dismiss();
+    console.error("❌ Failed to attach reward:", error);
+    toast.error(`Failed to attach reward: ${error}`);
+    throw error;
+  }
+}
+
+/**
  * Handle send email button click
+ * Returns pending reward transaction if user wants to attach a reward, otherwise null
  */
 export async function handleSendEmail(
   selectedAccountId: number | null,
@@ -157,21 +216,21 @@ export async function handleSendEmail(
   emails: EmailHeader[],
   emailBody: string | null,
   loadDrafts: () => Promise<void>
-) {
+): Promise<PendingRewardTransaction | null> {
   if (!selectedAccountId) {
     appState.error = "Please select an account first.";
-    return;
+    return null;
   }
 
   if (!appState.composeTo || !appState.composeSubject) {
     appState.error = "Please fill in recipient and subject fields.";
-    return;
+    return null;
   }
 
   const selectedConfig = accounts.find((acc) => acc.id === selectedAccountId);
   if (!selectedConfig) {
     appState.error = "Could not find selected account configuration.";
-    return;
+    return null;
   }
 
   appState.isSending = true;
@@ -213,7 +272,7 @@ export async function handleSendEmail(
       if (!selectedEmail) {
         appState.error = "Could not find selected email.";
         appState.isSending = false;
-        return;
+        return null;
       }
       result = await invoke<string>("forward_email", {
         config: selectedConfig,
@@ -233,7 +292,7 @@ export async function handleSendEmail(
       if (!appState.composeBody) {
         appState.error = "Please fill in the message body.";
         appState.isSending = false;
-        return;
+        return null;
       }
 
       // First send the email, then attach reward if needed
@@ -247,7 +306,7 @@ export async function handleSendEmail(
         if (!cmvhConfig.privateKey || !cmvhConfig.derivedAddress) {
           appState.error = "CMVH signing enabled but private key not configured. Please configure in Settings.";
           appState.isSending = false;
-          return;
+          return null;
         }
 
         try {
@@ -280,7 +339,7 @@ export async function handleSendEmail(
           console.error("❌ Failed to sign email with CMVH:", signError);
           appState.error = `Failed to sign email: ${signError}`;
           appState.isSending = false;
-          return;
+          return null;
         }
       } else {
         // Send without CMVH signing (regular email)
@@ -295,54 +354,30 @@ export async function handleSendEmail(
       }
     }
 
-    // Handle Reward Attachment - AFTER email is successfully sent
+    // Prepare Reward Transaction Data - AFTER email is successfully sent
+    // Return the pending transaction for user confirmation
+    let pendingReward: PendingRewardTransaction | null = null;
+
     if (appState.attachReward && !appState.isReplyMode && !appState.isForwardMode) {
       if (!walletStore.isConnected) {
         toast.warning("Email sent, but reward not attached: wallet not connected.");
       } else if (!appState.rewardRecipient || !appState.rewardRecipient.startsWith("0x") || appState.rewardRecipient.length !== 42) {
         toast.warning("Email sent, but reward not attached: invalid recipient address.");
       } else {
-        try {
-          toast.loading("Attaching reward to blockchain...");
-
-          const cmvhConfig = loadConfig();
-          const rewardService = new RewardService(cmvhConfig);
-
-          // Extract the recipient address
-          const recipientAddress = appState.rewardRecipient;
-
-          // Create email content object for hashing
-          const emailContent = {
+        // Prepare transaction data for confirmation dialog
+        pendingReward = {
+          recipientAddress: appState.rewardRecipient,
+          recipientEmail: appState.composeTo,
+          amount: appState.rewardAmount,
+          emailSubject: appState.composeSubject,
+          emailContent: {
             subject: appState.composeSubject,
             from: selectedConfig.email,
             to: appState.composeTo,
             body: appState.composeBody,
-          };
-
-          // Create reward with 30 days expiry (default)
-          const txHash = await rewardService.createReward(
-            recipientAddress,
-            appState.rewardAmount,
-            emailContent,
-            30 * 24 * 60 * 60 // 30 days in seconds
-          );
-
-          toast.dismiss();
-          toast.success(`Reward attached! Transaction: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`, {
-            duration: 6000,
-          });
-
-          console.log("✅ Reward created:", {
-            txHash,
-            recipient: recipientAddress,
-            amount: appState.rewardAmount,
-            emailSubject: appState.composeSubject,
-          });
-        } catch (rewardError) {
-          toast.dismiss();
-          console.error("❌ Failed to attach reward:", rewardError);
-          toast.error(`Email sent, but failed to attach reward: ${rewardError}`);
-        }
+          },
+          expirySeconds: 30 * 24 * 60 * 60, // 30 days in seconds
+        };
       }
     }
 
@@ -366,11 +401,15 @@ export async function handleSendEmail(
     } else if (shouldSignWithCMVH && !appState.attachReward) {
       // CMVH toast was already shown
     } else if (!shouldSignWithCMVH && appState.attachReward) {
-      // Reward toast will be shown
+      // Reward confirmation will be shown - show email sent toast
       toast.success("Email sent successfully!");
     }
+
+    // Return pending reward transaction for confirmation dialog
+    return pendingReward;
   } catch (e) {
     appState.error = `Failed to send email: ${e}`;
+    return null;
   } finally {
     appState.isSending = false;
   }

@@ -368,22 +368,49 @@
         {#if appState.attachReward}
           <div class="pl-4 pr-4 pb-2 space-y-3 border-l-2 border-muted ml-3">
             {#if !walletStore.isConnected}
-              <div
-                class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-900 dark:text-amber-200"
-              >
-                <p class="mb-2">Wallet not connected.</p>
+              <div class="space-y-3">
+                <div
+                  class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-2 text-xs text-amber-900 dark:text-amber-200"
+                >
+                  Connect your mobile wallet via WalletConnect to attach rewards
+                </div>
+
                 <Button
                   size="sm"
                   variant="outline"
                   onclick={() => walletStore.connect()}
                   disabled={walletStore.isConnecting}
+                  class="w-full"
                 >
-                  {walletStore.isConnecting
-                    ? "Connecting..."
-                    : "Connect Wallet"}
+                  📱 Connect WalletConnect
                 </Button>
+
+                {#if walletStore.walletConnectUri}
+                  <div
+                    class="rounded-lg border-2 border-dashed border-primary/50 bg-white dark:bg-muted p-3"
+                  >
+                    <p class="text-xs font-medium mb-2 text-center">
+                      Scan with mobile wallet
+                    </p>
+                    <div class="flex justify-center">
+                      <img
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+                          walletStore.walletConnectUri,
+                        )}`}
+                        alt="WalletConnect QR Code"
+                        width="180"
+                        height="180"
+                        class="rounded"
+                      />
+                    </div>
+                    <p class="text-xs text-muted-foreground mt-2 text-center">
+                      Open MetaMask, Trust Wallet, or any compatible wallet
+                    </p>
+                  </div>
+                {/if}
+
                 {#if walletStore.error}
-                  <p class="text-xs text-destructive mt-1">
+                  <p class="text-xs text-destructive">
                     {walletStore.error}
                   </p>
                 {/if}

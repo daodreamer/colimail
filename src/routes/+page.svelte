@@ -19,11 +19,15 @@
   import ManageAccountDialog from "./components/ManageAccountDialog.svelte";
   import SetMasterPasswordDialog from "./components/SetMasterPasswordDialog.svelte";
   import UnlockEncryptionDialog from "./components/UnlockEncryptionDialog.svelte";
+  import WalletSessionConfirmDialog from "./components/WalletSessionConfirmDialog.svelte";
+  import RewardTransactionConfirmDialog from "./components/RewardTransactionConfirmDialog.svelte";
 
   // Types and utilities
   import type { AccountConfig } from "./lib/types";
   import { state as appState } from "./lib/state.svelte";
   import { draftManager } from "./lib/draft-manager";
+  import { walletStore } from "$lib/stores/wallet.svelte";
+  import { walletConnectStore } from "$lib/stores/walletconnect.svelte";
 
   // Handler modules
   import * as EmailOps from "./handlers/email-operations";
@@ -41,6 +45,14 @@
   let showSetMasterPasswordDialog = $state(false);
   let showUnlockEncryptionDialog = $state(false);
 
+  // Wallet session confirm dialog state
+  let showWalletSessionConfirm = $state(false);
+  let pendingWalletSession = $state<WalletSession | null>(null);
+
+  // Reward transaction confirm dialog state
+  let showRewardTransactionConfirm = $state(false);
+  let pendingRewardTransaction = $state<ComposeSend.PendingRewardTransaction | null>(null);
+
   // Confirm delete draft dialog state
   let showConfirmDeleteDraft = $state(false);
   let draftToDelete: number | null = null;
@@ -51,6 +63,69 @@
 
   // Auto-sync timer reference
   let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
+
+  // Extract app loading logic into separate function
+  async function loadApp() {
+    appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
+    appState.syncInterval = await invoke<number>("get_sync_interval");
+
+    // Auto-select first account if available and none is selected
+    if (appState.accounts.length > 0 && !appState.selectedAccountId) {
+      await handleAccountClick(appState.accounts[0].id);
+    }
+
+    startAutoSyncTimer();
+
+    // Start IDLE connections for all accounts
+    for (const account of appState.accounts) {
+      try {
+        await invoke("start_idle", {
+          accountId: account.id,
+          folderName: "INBOX",
+          config: account,
+        });
+      } catch (e) {
+        console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
+      }
+    }
+  }
+
+  // Handle wallet session confirmation
+  async function handleWalletSessionConfirm() {
+    if (!pendingWalletSession) return;
+
+    try {
+      // Restore WalletConnect session
+      await walletConnectStore.restoreSession();
+
+      showWalletSessionConfirm = false;
+      pendingWalletSession = null;
+
+      // Load app after confirming wallet session
+      await loadApp();
+    } catch (error) {
+      console.error("Failed to restore wallet session:", error);
+      // Clear invalid session
+      await invoke("delete_wallet_session");
+      showWalletSessionConfirm = false;
+      await loadApp();
+    }
+  }
+
+  // Handle wallet session rejection
+  async function handleWalletSessionReject() {
+    try {
+      await invoke("delete_wallet_session");
+    } catch (error) {
+      console.error("Failed to delete wallet session:", error);
+    }
+
+    showWalletSessionConfirm = false;
+    pendingWalletSession = null;
+
+    // Load app after rejecting wallet session
+    await loadApp();
+  }
 
   // Lifecycle: Initialize app
   onMount(() => {
@@ -117,29 +192,18 @@
           return; // Don't load anything until unlocked
         }
 
+        // Check for saved wallet session (after encryption is unlocked)
+        const savedSession = await invoke<WalletSession | null>("get_wallet_session");
+        if (savedSession) {
+          console.log("🔐 Found saved wallet session:", savedSession);
+          pendingWalletSession = savedSession;
+          showWalletSessionConfirm = true;
+          // Wait for user confirmation before loading app
+          return;
+        }
+
         // Encryption is enabled and unlocked, proceed normally
-        appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
-        appState.syncInterval = await invoke<number>("get_sync_interval");
-
-        // Auto-select first account if available and none is selected
-        if (appState.accounts.length > 0 && !appState.selectedAccountId) {
-          await handleAccountClick(appState.accounts[0].id);
-        }
-
-        startAutoSyncTimer();
-
-        // Start IDLE connections for all accounts
-        for (const account of appState.accounts) {
-          try {
-            await invoke("start_idle", {
-              accountId: account.id,
-              folderName: "INBOX",
-              config: account,
-            });
-          } catch (e) {
-            console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
-          }
-        }
+        await loadApp();
       } catch (e) {
         appState.error = `Failed to load accounts: ${e}`;
       }
@@ -481,7 +545,7 @@
   }
 
   async function handleSendEmail() {
-    await ComposeSend.handleSendEmail(
+    const pendingReward = await ComposeSend.handleSendEmail(
       appState.selectedAccountId,
       appState.selectedEmailUid,
       appState.accounts,
@@ -489,6 +553,32 @@
       appState.emailBody,
       loadDrafts
     );
+
+    // If there's a pending reward transaction, show confirmation dialog
+    if (pendingReward) {
+      pendingRewardTransaction = pendingReward;
+      showRewardTransactionConfirm = true;
+    }
+  }
+
+  // Handle reward transaction confirmation
+  async function handleRewardTransactionConfirm() {
+    if (!pendingRewardTransaction) return;
+
+    try {
+      await ComposeSend.executeRewardTransaction(pendingRewardTransaction);
+      showRewardTransactionConfirm = false;
+      pendingRewardTransaction = null;
+    } catch (error) {
+      console.error("Failed to execute reward transaction:", error);
+      // Dialog will remain open, user can try again or cancel
+    }
+  }
+
+  // Handle reward transaction cancellation
+  function handleRewardTransactionCancel() {
+    showRewardTransactionConfirm = false;
+    pendingRewardTransaction = null;
   }
 
   // Sync and IDLE handlers
@@ -653,5 +743,22 @@
   <UnlockEncryptionDialog
     bind:open={showUnlockEncryptionDialog}
     onunlock={initializeApp}
+  />
+
+  <WalletSessionConfirmDialog
+    bind:open={showWalletSessionConfirm}
+    session={pendingWalletSession}
+    onConfirm={handleWalletSessionConfirm}
+    onReject={handleWalletSessionReject}
+  />
+
+  <RewardTransactionConfirmDialog
+    bind:open={showRewardTransactionConfirm}
+    amount={pendingRewardTransaction?.amount || "0"}
+    recipientAddress={pendingRewardTransaction?.recipientAddress || ""}
+    recipientEmail={pendingRewardTransaction?.recipientEmail || ""}
+    emailSubject={pendingRewardTransaction?.emailSubject || ""}
+    onConfirm={handleRewardTransactionConfirm}
+    onCancel={handleRewardTransactionCancel}
   />
 </Sidebar.Provider>

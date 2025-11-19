@@ -48,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Rewards dashboard in settings for managing sent/received rewards
   - Support for reward cancellation and status tracking
 
+- **🔐 Wallet Security Management**
+  - Three-layer security system for wallet connections
+  - Layer 1: Startup confirmation dialog for saved wallet sessions
+  - Layer 2: Configurable session timeout (1 hour to 30 days, default 24 hours)
+  - Layer 3: Transaction confirmation before sending rewards
+  - OS-level secure storage (Windows Credential Manager/macOS Keychain/Linux Secret Service)
+  - **WalletConnect only** - Browser wallet extensions removed for enhanced security
+  - QR code-based mobile wallet connection (supports MetaMask, Trust Wallet, Rainbow, etc.)
+  - Auto-expiration of inactive wallet sessions
+  - Wallet timeout settings in Settings → Notifications page
+
 - **📧 Email Features**
   - Decrypted subject display in notifications
   - Clear folder selection feedback

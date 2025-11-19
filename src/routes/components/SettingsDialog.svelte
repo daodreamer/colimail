@@ -63,6 +63,7 @@
 
   // Settings state
   let syncInterval = $state<number>(300);
+  let walletSessionTimeout = $state<number>(86400); // Default: 24 hours
   let notificationEnabled = $state<boolean>(true);
   let soundEnabled = $state<boolean>(true);
   let minimizeToTray = $state<boolean>(true);
@@ -116,6 +117,7 @@
   async function loadSettings() {
     try {
       syncInterval = await invoke<number>("get_sync_interval");
+      walletSessionTimeout = await invoke<number>("get_wallet_session_timeout");
       notificationEnabled = await invoke<boolean>("get_notification_enabled");
       soundEnabled = await invoke<boolean>("get_sound_enabled");
       minimizeToTray = await invoke<boolean>("get_minimize_to_tray");
@@ -258,6 +260,7 @@
     isSaving = true;
     try {
       await invoke("set_sync_interval", { interval: syncInterval });
+      await invoke("set_wallet_session_timeout", { timeoutSeconds: walletSessionTimeout });
       await invoke("set_notification_enabled", {
         enabled: notificationEnabled,
       });
@@ -278,6 +281,15 @@
     if (interval < 60) return `${interval} seconds`;
     if (interval < 3600) return `${Math.floor(interval / 60)} minutes`;
     return `${Math.floor(interval / 3600)} hours`;
+  }
+
+  function getWalletTimeoutDescription(seconds: number): string {
+    if (seconds === 0) return "Never expire";
+    if (seconds === 3600) return "1 hour";
+    if (seconds === 86400) return "1 day (24 hours)";
+    if (seconds === 604800) return "1 week (7 days)";
+    if (seconds === 2592000) return "1 month (30 days)";
+    return `${seconds} seconds`;
   }
 
   function handleNavClick(pageName: string) {
@@ -589,6 +601,33 @@
                     Current: <strong
                       >{getIntervalDescription(syncInterval)}</strong
                     >
+                  </p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <!-- Wallet Security -->
+              <div class="space-y-3">
+                <h4 class="text-sm font-medium mb-3">Wallet Security</h4>
+                <div class="space-y-2">
+                  <Label for="wallet-timeout">Wallet connection timeout</Label>
+                  <select
+                    id="wallet-timeout"
+                    bind:value={walletSessionTimeout}
+                    class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  >
+                    <option value={3600}>1 hour</option>
+                    <option value={86400}>1 day (24 hours) - Recommended</option>
+                    <option value={604800}>1 week (7 days)</option>
+                    <option value={2592000}>1 month (30 days)</option>
+                    <option value={0}>Never expire (not recommended)</option>
+                  </select>
+                  <p class="text-xs text-muted-foreground">
+                    Current: <strong>{getWalletTimeoutDescription(walletSessionTimeout)}</strong>
+                  </p>
+                  <p class="text-xs text-amber-600">
+                    🔐 Wallet session will expire after this period. You'll need to reconnect for security.
                   </p>
                 </div>
               </div>
