@@ -162,3 +162,23 @@ pub struct DraftListItem {
     pub created_at: i64,
     pub updated_at: i64,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum RewardStatus {
+    Available,
+    Claimed,
+    Cancelled,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RewardCacheItem {
+    pub reward_id: String,
+    pub email_hash: String,
+    pub amount: String,
+    pub sender: String,
+    pub recipient: String,
+    pub status: RewardStatus,
+    pub timestamp: i64,
+    pub updated_at: i64,
+}

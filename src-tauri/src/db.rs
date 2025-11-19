@@ -338,6 +338,30 @@ pub async fn init() -> Result<(), sqlx::Error> {
     .execute(&pool)
     .await?;
 
+    // Create reward cache table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS reward_cache (
+            reward_id TEXT PRIMARY KEY,
+            email_hash TEXT UNIQUE NOT NULL,
+            amount TEXT NOT NULL,
+            sender TEXT NOT NULL,
+            recipient TEXT NOT NULL,
+            status TEXT NOT NULL,
+            timestamp INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL
+        )",
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create index for reward cache queries
+    sqlx::query(
+        "CREATE INDEX IF NOT EXISTS idx_reward_email_hash
+        ON reward_cache(email_hash)",
+    )
+    .execute(&pool)
+    .await?;
+
     // Store pool globally
     POOL.set(Arc::new(pool))
         .expect("Database pool already initialized");

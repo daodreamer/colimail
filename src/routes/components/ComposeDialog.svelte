@@ -1,13 +1,21 @@
 <script lang="ts">
   import { formatFileSize } from "../lib/utils";
   import RichTextEditor from "./RichTextEditor.svelte";
-  import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "$lib/components/ui/dialog";
+  import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogFooter,
+  } from "$lib/components/ui/dialog";
   import { Button } from "$lib/components/ui/button";
   import { Input } from "$lib/components/ui/input";
   import { Label } from "$lib/components/ui/label";
   import { Badge } from "$lib/components/ui/badge";
   import * as ButtonGroup from "$lib/components/ui/button-group";
   import { loadConfig } from "$lib/cmvh";
+  import { walletStore } from "$lib/stores/wallet.svelte";
+  import { state as appState } from "../lib/state.svelte";
 
   // Props
   let {
@@ -35,8 +43,7 @@
     cc?: string;
     subject?: string;
     body?: string;
-    attachments?: File[]
-;
+    attachments?: File[];
     attachmentSizeLimit?: number;
     totalAttachmentSize?: number;
     isSending?: boolean;
@@ -55,7 +62,7 @@
   // Resizable dialog state
   let dialogElement = $state<HTMLDivElement | null>(null);
   let isResizing = $state(false);
-  let resizeDirection = $state<'se' | 'e' | 's' | null>(null);
+  let resizeDirection = $state<"se" | "e" | "s" | null>(null);
   let dialogWidth = $state(672); // 42rem = 672px (tailwind max-w-2xl)
   let dialogHeight = $state(600); // reasonable default height
   let startX = $state(0);
@@ -83,7 +90,7 @@
     return { maxWidth, maxHeight, minWidth, minHeight };
   }
 
-  function startResize(event: MouseEvent, direction: 'se' | 'e' | 's') {
+  function startResize(event: MouseEvent, direction: "se" | "e" | "s") {
     event.preventDefault();
     event.stopPropagation();
 
@@ -94,26 +101,38 @@
     startWidth = dialogWidth;
     startHeight = dialogHeight;
 
-    document.addEventListener('mousemove', handleResize);
-    document.addEventListener('mouseup', stopResize);
-    document.body.style.cursor = direction === 'se' ? 'nwse-resize' : direction === 'e' ? 'ew-resize' : 'ns-resize';
-    document.body.style.userSelect = 'none';
+    document.addEventListener("mousemove", handleResize);
+    document.addEventListener("mouseup", stopResize);
+    document.body.style.cursor =
+      direction === "se"
+        ? "nwse-resize"
+        : direction === "e"
+          ? "ew-resize"
+          : "ns-resize";
+    document.body.style.userSelect = "none";
   }
 
   function handleResize(event: MouseEvent) {
     if (!isResizing || !resizeDirection) return;
 
-    const { maxWidth, maxHeight, minWidth, minHeight } = getViewportConstraints();
+    const { maxWidth, maxHeight, minWidth, minHeight } =
+      getViewportConstraints();
     const deltaX = event.clientX - startX;
     const deltaY = event.clientY - startY;
 
-    if (resizeDirection === 'se' || resizeDirection === 'e') {
-      const newWidth = Math.max(minWidth, Math.min(maxWidth, startWidth + deltaX));
+    if (resizeDirection === "se" || resizeDirection === "e") {
+      const newWidth = Math.max(
+        minWidth,
+        Math.min(maxWidth, startWidth + deltaX),
+      );
       dialogWidth = newWidth;
     }
 
-    if (resizeDirection === 'se' || resizeDirection === 's') {
-      const newHeight = Math.max(minHeight, Math.min(maxHeight, startHeight + deltaY));
+    if (resizeDirection === "se" || resizeDirection === "s") {
+      const newHeight = Math.max(
+        minHeight,
+        Math.min(maxHeight, startHeight + deltaY),
+      );
       dialogHeight = newHeight;
     }
   }
@@ -121,10 +140,10 @@
   function stopResize() {
     isResizing = false;
     resizeDirection = null;
-    document.removeEventListener('mousemove', handleResize);
-    document.removeEventListener('mouseup', stopResize);
-    document.body.style.cursor = '';
-    document.body.style.userSelect = '';
+    document.removeEventListener("mousemove", handleResize);
+    document.removeEventListener("mouseup", stopResize);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
   }
 
   function getModalTitle(): string {
@@ -143,7 +162,12 @@
   }
 </script>
 
-<Dialog open={show} onOpenChange={(open) => { if (!open) onCancel(); }}>
+<Dialog
+  open={show}
+  onOpenChange={(open) => {
+    if (!open) onCancel();
+  }}
+>
   <DialogContent
     bind:ref={dialogElement}
     class="flex flex-col resize-dialog !max-w-none !max-h-none !translate-x-0 !translate-y-0"
@@ -165,26 +189,28 @@
       role="button"
       tabindex="-1"
       aria-label="Resize horizontally"
-      onmousedown={(e) => startResize(e, 'e')}
+      onmousedown={(e) => startResize(e, "e")}
     ></div>
     <div
       class="resize-handle resize-handle-s"
       role="button"
       tabindex="-1"
       aria-label="Resize vertically"
-      onmousedown={(e) => startResize(e, 's')}
+      onmousedown={(e) => startResize(e, "s")}
     ></div>
     <div
       class="resize-handle resize-handle-se"
       role="button"
       tabindex="-1"
       aria-label="Resize diagonally"
-      onmousedown={(e) => startResize(e, 'se')}
+      onmousedown={(e) => startResize(e, "se")}
     ></div>
 
     <div class="flex-1 space-y-4 overflow-y-auto px-1">
       {#if error}
-        <div class="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive">
+        <div
+          class="rounded-md border border-destructive bg-destructive/10 p-3 text-sm text-destructive"
+        >
           {error}
         </div>
       {/if}
@@ -249,9 +275,13 @@
         {#if attachments.length > 0}
           <div class="space-y-2 pt-2">
             {#each attachments as file, index (file.name + file.size + index)}
-              <div class="flex items-center gap-2 rounded-md border bg-muted/40 p-2">
+              <div
+                class="flex items-center gap-2 rounded-md border bg-muted/40 p-2"
+              >
                 <span class="flex-1 truncate text-sm">{file.name}</span>
-                <Badge variant="secondary" class="text-xs">{formatFileSize(file.size)}</Badge>
+                <Badge variant="secondary" class="text-xs"
+                  >{formatFileSize(file.size)}</Badge
+                >
                 <Button
                   variant="ghost"
                   size="icon"
@@ -265,7 +295,9 @@
               </div>
             {/each}
             <div class="rounded-md bg-muted p-2 text-right text-xs font-medium">
-              Total: {formatFileSize(totalAttachmentSize)} / {formatFileSize(attachmentSizeLimit)}
+              Total: {formatFileSize(totalAttachmentSize)} / {formatFileSize(
+                attachmentSizeLimit,
+              )}
             </div>
           </div>
         {/if}
@@ -274,7 +306,9 @@
       <!-- CMVH Signing Toggle -->
       {#if cmvhConfig.enableSigning && cmvhConfig.privateKey && cmvhConfig.derivedAddress}
         <div class="space-y-2 pt-2">
-          <div class="flex items-center space-x-3 rounded-md border bg-muted/40 p-3">
+          <div
+            class="flex items-center space-x-3 rounded-md border bg-muted/40 p-3"
+          >
             <input
               type="checkbox"
               id="enable-cmvh-signing"
@@ -293,16 +327,131 @@
           </div>
           {#if enableCMVHSigning}
             <p class="text-xs text-muted-foreground pl-3">
-              Signing address: <span class="font-mono">{cmvhConfig.derivedAddress}</span>
+              Signing address: <span class="font-mono"
+                >{cmvhConfig.derivedAddress}</span
+              >
             </p>
           {/if}
         </div>
       {/if}
+
+      <!-- CMVH Reward Toggle -->
+      <div class="space-y-2 pt-2">
+        <div
+          class="flex items-center space-x-3 rounded-md border bg-muted/40 p-3"
+        >
+          <input
+            type="checkbox"
+            id="attach-reward"
+            bind:checked={appState.attachReward}
+            disabled={isSending}
+            class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+          />
+          <div class="flex-1">
+            <Label for="attach-reward" class="text-sm font-normal">
+              Attach Crypto Reward (wACT)
+            </Label>
+            <p class="text-xs text-muted-foreground">
+              Incentivize the recipient to read/reply
+            </p>
+          </div>
+          {#if appState.attachReward}
+            <Badge
+              variant="secondary"
+              class="text-xs bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-200"
+            >
+              💰 Reward Attached
+            </Badge>
+          {/if}
+        </div>
+
+        {#if appState.attachReward}
+          <div class="pl-4 pr-4 pb-2 space-y-3 border-l-2 border-muted ml-3">
+            {#if !walletStore.isConnected}
+              <div
+                class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 text-sm text-amber-900 dark:text-amber-200"
+              >
+                <p class="mb-2">Wallet not connected.</p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onclick={() => walletStore.connect()}
+                  disabled={walletStore.isConnecting}
+                >
+                  {walletStore.isConnecting
+                    ? "Connecting..."
+                    : "Connect Wallet"}
+                </Button>
+                {#if walletStore.error}
+                  <p class="text-xs text-destructive mt-1">
+                    {walletStore.error}
+                  </p>
+                {/if}
+              </div>
+            {:else}
+              <div class="space-y-3">
+                <div class="space-y-2">
+                  <Label for="reward-recipient">Recipient Wallet Address</Label>
+                  <Input
+                    type="text"
+                    id="reward-recipient"
+                    bind:value={appState.rewardRecipient}
+                    placeholder="0x... (Ethereum address)"
+                    disabled={isSending}
+                    class="font-mono text-sm"
+                  />
+                  <p class="text-xs text-muted-foreground">
+                    The Ethereum address that will receive the reward
+                  </p>
+                </div>
+
+                <div class="space-y-2">
+                  <Label for="reward-amount">Amount (wACT)</Label>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      id="reward-amount"
+                      bind:value={appState.rewardAmount}
+                      min="0.1"
+                      step="0.1"
+                      placeholder="10"
+                      disabled={isSending}
+                      class="w-32"
+                    />
+                    <span class="text-sm font-medium">wACT</span>
+                  </div>
+                  <p class="text-xs text-muted-foreground">
+                    Connected wallet: <span class="font-mono"
+                      >{walletStore.address?.slice(
+                        0,
+                        6,
+                      )}...{walletStore.address?.slice(-4)}</span
+                    >
+                  </p>
+                </div>
+
+                <div
+                  class="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3 text-xs text-blue-900 dark:text-blue-200"
+                >
+                  <p class="font-semibold mb-1">How it works:</p>
+                  <ul class="list-disc list-inside space-y-0.5">
+                    <li>Email is sent first, then reward is created on-chain</li>
+                    <li>Recipient can claim reward after reading the email</li>
+                    <li>Reward expires after 30 days if not claimed</li>
+                  </ul>
+                </div>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
 
     <DialogFooter class="gap-2">
       <ButtonGroup.Root>
-        <Button variant="outline" onclick={onCancel} disabled={isSending}>Cancel</Button>
+        <Button variant="outline" onclick={onCancel} disabled={isSending}
+          >Cancel</Button
+        >
         <Button variant="default" onclick={onSend} disabled={isSending}>
           {isSending ? "Sending..." : "Send"}
         </Button>
@@ -352,7 +501,7 @@
   }
 
   .resize-handle-se::after {
-    content: '';
+    content: "";
     position: absolute;
     right: 2px;
     bottom: 2px;

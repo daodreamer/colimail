@@ -42,57 +42,76 @@ export interface VerificationState {
   error?: string;
 }
 
+export interface RewardInfo {
+  rewardId: string;
+  sender: string;
+  recipient: string;
+  amount: string; // In wei (string to handle large numbers)
+  timestamp: string;
+  expiryTime: string;
+  claimed: boolean;
+  emailHash: string;
+}
+
+export interface UserStats {
+  totalSent: string;
+  totalReceived: string;
+  totalAmountSent: string;
+  totalAmountReceived: string;
+  activeRewards: string;
+}
+
 // CMVH Error types for fine-grained error handling
 // These match the Rust CMVHError enum variants
 export type CMVHError =
   | {
-      type: "InvalidPrivateKey";
-      message: string;
-    }
+    type: "InvalidPrivateKey";
+    message: string;
+  }
   | {
-      type: "SigningFailed";
-      message: string;
-    }
+    type: "SigningFailed";
+    message: string;
+  }
   | {
-      type: "SMTPConnectionFailed";
-      server: string;
-      port: number;
-      message: string;
-    }
+    type: "SMTPConnectionFailed";
+    server: string;
+    port: number;
+    message: string;
+  }
   | {
-      type: "SMTPAuthFailed";
-      message: string;
-    }
+    type: "SMTPAuthFailed";
+    message: string;
+  }
   | {
-      type: "NetworkTimeout";
-      duration_secs: number;
-    }
+    type: "NetworkTimeout";
+    duration_secs: number;
+  }
   | {
-      type: "RateLimited";
-      retry_after_secs: number;
-    }
+    type: "RateLimited";
+    retry_after_secs: number;
+  }
   | {
-      type: "InvalidEmailAddress";
-      address: string;
-      message: string;
-    }
+    type: "InvalidEmailAddress";
+    address: string;
+    message: string;
+  }
   | {
-      type: "EmailBuildFailed";
-      message: string;
-    }
+    type: "EmailBuildFailed";
+    message: string;
+  }
   | {
-      type: "InvalidAttachment";
-      filename: string;
-      message: string;
-    }
+    type: "InvalidAttachment";
+    filename: string;
+    message: string;
+  }
   | {
-      type: "TokenError";
-      message: string;
-    }
+    type: "TokenError";
+    message: string;
+  }
   | {
-      type: "Unknown";
-      message: string;
-    };
+    type: "Unknown";
+    message: string;
+  };
 
 /**
  * Type guard to check if an error is a CMVHError
@@ -166,6 +185,7 @@ export interface CMVHConfig {
   rpcUrl: string;
   network: "arbitrum" | "arbitrum-sepolia";
   contractAddress: string;
+  rewardPoolAddress?: string;
   // Signing configuration
   enableSigning: boolean;
   privateKey: string; // Hex-encoded private key (without 0x prefix)
@@ -199,6 +219,7 @@ export const NETWORK_CONFIG = {
     name: "Arbitrum Sepolia",
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
     contractAddress: "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03", // UUPS Proxy: CMVHVerifier v2.0.0 (EIP-712 + timestamp)
+    rewardPoolAddress: "0x60fE7D46D3120bE671FE4C4fe45065e8f181B8eF", // CMVHRewardPool
     explorerUrl: "https://sepolia.arbiscan.io",
     // UUPS Proxy deployed at: 0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03
   },
@@ -207,6 +228,7 @@ export const NETWORK_CONFIG = {
     name: "Arbitrum One",
     rpcUrl: "https://arb1.arbitrum.io/rpc",
     contractAddress: "", // Not deployed yet - use arbitrum-sepolia for testing
+    rewardPoolAddress: "",
     explorerUrl: "https://arbiscan.io",
   },
 } as const;

@@ -22,14 +22,21 @@
   import RotateCcwIcon from "lucide-svelte/icons/rotate-ccw";
   import SaveIcon from "lucide-svelte/icons/save";
   import XIcon from "lucide-svelte/icons/x";
+  import CircleDollarSignIcon from "lucide-svelte/icons/circle-dollar-sign";
   import { state as appState } from "../lib/state.svelte";
   import {
     loadConfig,
     saveConfig,
     resetConfig,
     type CMVHConfig,
-    NETWORK_CONFIG
+    NETWORK_CONFIG,
   } from "$lib/cmvh";
+  import { RewardService } from "$lib/cmvh/reward-service";
+  import { walletStore } from "$lib/stores/wallet.svelte";
+  import type { RewardInfo, UserStats } from "$lib/cmvh/types";
+  import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
+  import { Skeleton } from "$lib/components/ui/skeleton";
+  import { ScrollArea } from "$lib/components/ui/scroll-area";
 
   interface SettingsDialogProps {
     open: boolean;
@@ -45,6 +52,7 @@
       { name: "Language & region", icon: GlobeIcon },
       { name: "Privacy & visibility", icon: LockIcon },
       { name: "CMVH Verification", icon: ShieldIcon },
+      { name: "CMVH Rewards", icon: CircleDollarSignIcon },
       { name: "Advanced", icon: SettingsIcon },
       { name: "About", icon: InfoIcon },
     ],
@@ -69,12 +77,22 @@
   let showPrivateKey = $state(false);
   let isDerivedAddressLoading = $state(false);
 
+  // CMVH Rewards state
+  let rewardsSent = $state<RewardInfo[]>([]);
+  let rewardsReceived = $state<RewardInfo[]>([]);
+  let userStats = $state<UserStats | null>(null);
+  let isLoadingRewards = $state(false);
+  let isCancellingReward = $state<string | null>(null);
+
   // Encryption state
   interface EncryptionStatus {
     enabled: boolean;
     unlocked: boolean;
   }
-  let encryptionStatus = $state<EncryptionStatus>({ enabled: false, unlocked: false });
+  let encryptionStatus = $state<EncryptionStatus>({
+    enabled: false,
+    unlocked: false,
+  });
   let masterPassword = $state("");
   let confirmPassword = $state("");
   let unlockPassword = $state("");
@@ -101,7 +119,9 @@
       notificationEnabled = await invoke<boolean>("get_notification_enabled");
       soundEnabled = await invoke<boolean>("get_sound_enabled");
       minimizeToTray = await invoke<boolean>("get_minimize_to_tray");
-      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      encryptionStatus = await invoke<EncryptionStatus>(
+        "get_encryption_status",
+      );
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -120,7 +140,9 @@
     isEnablingEncryption = true;
     try {
       await invoke("enable_encryption", { password: masterPassword });
-      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      encryptionStatus = await invoke<EncryptionStatus>(
+        "get_encryption_status",
+      );
       toast.success("Encryption enabled successfully!");
       masterPassword = "";
       confirmPassword = "";
@@ -139,8 +161,12 @@
     }
 
     try {
-      await invoke("unlock_encryption_with_password", { password: unlockPassword });
-      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      await invoke("unlock_encryption_with_password", {
+        password: unlockPassword,
+      });
+      encryptionStatus = await invoke<EncryptionStatus>(
+        "get_encryption_status",
+      );
       toast.success("Encryption unlocked successfully!");
       unlockPassword = "";
     } catch (error) {
@@ -152,7 +178,9 @@
   async function lockEncryption() {
     try {
       await invoke("lock_encryption_command");
-      encryptionStatus = await invoke<EncryptionStatus>("get_encryption_status");
+      encryptionStatus = await invoke<EncryptionStatus>(
+        "get_encryption_status",
+      );
       toast.success("Encryption locked");
     } catch (error) {
       console.error("Failed to lock encryption:", error);
@@ -230,7 +258,9 @@
     isSaving = true;
     try {
       await invoke("set_sync_interval", { interval: syncInterval });
-      await invoke("set_notification_enabled", { enabled: notificationEnabled });
+      await invoke("set_notification_enabled", {
+        enabled: notificationEnabled,
+      });
       await invoke("set_sound_enabled", { enabled: soundEnabled });
       await invoke("set_minimize_to_tray", { enabled: minimizeToTray });
       toast.success("Settings saved successfully!");
@@ -262,7 +292,7 @@
       if (update) {
         toast.success(`New version available: ${update.version}`);
         const shouldUpdate = confirm(
-          `A new version (${update.version}) is available!\n\nRelease notes:\n${update.body || "No release notes provided."}\n\nWould you like to download and install it now?`
+          `A new version (${update.version}) is available!\n\nRelease notes:\n${update.body || "No release notes provided."}\n\nWould you like to download and install it now?`,
         );
         if (shouldUpdate) {
           toast.info("Downloading update...");
@@ -294,10 +324,9 @@
       } catch (openError) {
         console.error("Failed to reveal file:", openError);
         // Show success with file path if reveal fails
-        toast.success(
-          `Logs exported successfully!\nSaved to: ${zipPath}`,
-          { duration: 8000 }
-        );
+        toast.success(`Logs exported successfully!\nSaved to: ${zipPath}`, {
+          duration: 8000,
+        });
       }
     } catch (error) {
       console.error("Failed to export logs:", error);
@@ -316,16 +345,20 @@
 
     // Validate hex format
     const hexPattern = /^[0-9a-fA-F]{64}$/;
-    if (!hexPattern.test(cmvhConfig.privateKey.replace(/^0x/, ''))) {
-      toast.error("Invalid private key format. Must be 64 hex characters (with or without 0x prefix)");
+    if (!hexPattern.test(cmvhConfig.privateKey.replace(/^0x/, ""))) {
+      toast.error(
+        "Invalid private key format. Must be 64 hex characters (with or without 0x prefix)",
+      );
       return;
     }
 
     isDerivedAddressLoading = true;
     try {
       // Remove 0x prefix if present
-      const cleanKey = cmvhConfig.privateKey.replace(/^0x/, '');
-      const address = await invoke<string>("derive_eth_address", { privateKey: cleanKey });
+      const cleanKey = cmvhConfig.privateKey.replace(/^0x/, "");
+      const address = await invoke<string>("derive_eth_address", {
+        privateKey: cleanKey,
+      });
       cmvhConfig.derivedAddress = address;
       toast.success("Address derived successfully");
     } catch (error) {
@@ -377,6 +410,101 @@
       console.error("Failed to save onboarding status:", error);
     }
   }
+  async function fetchRewards() {
+    if (!walletStore.isConnected) {
+      // If wallet not connected, try to use derived address if available
+      if (!cmvhConfig.derivedAddress) return;
+    }
+
+    const addressToCheck = walletStore.address || cmvhConfig.derivedAddress;
+    if (!addressToCheck) return;
+
+    isLoadingRewards = true;
+    try {
+      const rewardService = new RewardService(cmvhConfig);
+
+      // Fetch user stats
+      userStats = await rewardService.getUserStats(addressToCheck);
+
+      // Fetch all rewards involved with user (sent and received)
+      // The contract `getUserRewards` returns rewards where user is recipient.
+      // To get sent rewards, we might need to filter events or if the contract supports it.
+      // `getUserRewards` in `CMVHRewardPool` returns `rewardIds` for a user.
+      // Wait, `getUserRewards` returns `uint256[]`.
+      // And `getRewardInfo` gets info for a ID.
+      // The contract doesn't explicitly separate "sent" vs "received" in `getUserRewards`?
+      // Let's check `CMVHRewardPool.sol`.
+      // `userRewards[user]` stores IDs where user is recipient?
+      // `mapping(address => uint256[]) public userRewards;`
+      // `_createReward` pushes to `userRewards[recipient]`.
+      // It does NOT push to sender.
+      // So `getUserRewards` only returns RECEIVED rewards.
+      // To get SENT rewards, we would need to index events or store locally.
+      // For now, we will only show RECEIVED rewards from chain.
+      // We can show "Sent" if we had a local store, but we don't yet.
+      // So I will only show "Received Rewards" for now, and maybe "Sent" if I can find a way.
+      // Actually, `RewardService` could query events?
+      // `getPastEvents("RewardCreated", { filter: { creator: user } })`?
+      // `viem` supports `getContractEvents`.
+      // I'll stick to Received for now to be safe and simple.
+
+      const rewardIds = await rewardService.getUserRewards(
+        addressToCheck,
+        true,
+      );
+
+      // Fetch details for each reward
+      const rewardPromises = rewardIds.map((id) =>
+        rewardService.getRewardInfo(id),
+      );
+      rewardsReceived = await Promise.all(rewardPromises);
+    } catch (error) {
+      console.error("Failed to fetch rewards:", error);
+      toast.error("Failed to fetch rewards");
+    } finally {
+      isLoadingRewards = false;
+    }
+  }
+
+  async function handleCancelReward(rewardId: string) {
+    if (!walletStore.isConnected) {
+      toast.error("Please connect wallet to cancel reward");
+      return;
+    }
+
+    if (
+      !confirm(
+        "Are you sure you want to cancel this reward? The funds will be returned to you.",
+      )
+    )
+      return;
+
+    isCancellingReward = rewardId;
+    try {
+      const rewardService = new RewardService(cmvhConfig);
+      const tx = await rewardService.cancelReward(rewardId);
+      toast.success("Reward cancelled successfully");
+      await fetchRewards();
+    } catch (error) {
+      console.error("Failed to cancel reward:", error);
+      toast.error(`Failed to cancel reward: ${error}`);
+    } finally {
+      isCancellingReward = null;
+    }
+  }
+
+  // Fetch rewards when tab is selected
+  $effect(() => {
+    if (currentPage === "CMVH Rewards" && open) {
+      fetchRewards();
+    }
+  });
+
+  // Format address helper
+  function formatAddress(address: string): string {
+    if (!address || address.length < 10) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  }
 </script>
 
 <Dialog.Root bind:open {onOpenChange}>
@@ -385,8 +513,10 @@
     trapFocus={false}
   >
     <Dialog.Title class="sr-only">Settings</Dialog.Title>
-    <Dialog.Description class="sr-only">Customize your settings here.</Dialog.Description>
-    
+    <Dialog.Description class="sr-only"
+      >Customize your settings here.</Dialog.Description
+    >
+
     <Sidebar.Provider class="items-start">
       <Sidebar.Root collapsible="none" class="hidden md:flex">
         <Sidebar.Content>
@@ -456,7 +586,9 @@
                     <option value={-1}>Never (cache only)</option>
                   </select>
                   <p class="text-xs text-muted-foreground">
-                    Current: <strong>{getIntervalDescription(syncInterval)}</strong>
+                    Current: <strong
+                      >{getIntervalDescription(syncInterval)}</strong
+                    >
                   </p>
                 </div>
               </div>
@@ -509,14 +641,12 @@
                 </Button>
               </div>
             </div>
-
           {:else if currentPage === "Appearance"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-4 max-w-3xl">
               <p class="text-sm text-muted-foreground">
                 Theme and appearance settings coming soon...
               </p>
             </div>
-
           {:else if currentPage === "Language & region"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-4 max-w-3xl">
               <div class="space-y-2">
@@ -532,13 +662,14 @@
                 </p>
               </div>
             </div>
-
           {:else if currentPage === "Privacy & visibility"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- Local Data Encryption -->
               <div class="space-y-4">
                 <div>
-                  <h4 class="text-sm font-medium mb-1">Local data encryption</h4>
+                  <h4 class="text-sm font-medium mb-1">
+                    Local data encryption
+                  </h4>
                   <p class="text-xs text-muted-foreground">
                     Encrypt email content stored in the local cache database
                   </p>
@@ -548,18 +679,28 @@
                 <div class="flex items-center gap-2">
                   {#if encryptionStatus.enabled}
                     {#if encryptionStatus.unlocked}
-                      <div class="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 px-3 py-1 text-xs font-medium text-green-800 dark:text-green-200">
-                        <span class="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400"></span>
+                      <div
+                        class="inline-flex items-center gap-1.5 rounded-full bg-green-100 dark:bg-green-900/30 px-3 py-1 text-xs font-medium text-green-800 dark:text-green-200"
+                      >
+                        <span
+                          class="h-1.5 w-1.5 rounded-full bg-green-600 dark:bg-green-400"
+                        ></span>
                         Unlocked
                       </div>
                     {:else}
-                      <div class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-3 py-1 text-xs font-medium text-amber-800 dark:text-amber-200">
-                        <span class="h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-amber-400"></span>
+                      <div
+                        class="inline-flex items-center gap-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 px-3 py-1 text-xs font-medium text-amber-800 dark:text-amber-200"
+                      >
+                        <span
+                          class="h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-amber-400"
+                        ></span>
                         Locked
                       </div>
                     {/if}
                   {:else}
-                    <div class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                    <div
+                      class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300"
+                    >
                       <span class="h-1.5 w-1.5 rounded-full bg-gray-400"></span>
                       Disabled
                     </div>
@@ -595,11 +736,17 @@
                     </div>
                     <div class="rounded-md bg-blue-50 dark:bg-blue-950/30 p-3">
                       <p class="text-xs text-blue-900 dark:text-blue-200">
-                        <strong>Important:</strong> Your master password cannot be recovered if lost. Make sure to remember it or store it securely.
+                        <strong>Important:</strong> Your master password cannot be
+                        recovered if lost. Make sure to remember it or store it securely.
                       </p>
                     </div>
-                    <Button onclick={enableEncryption} disabled={isEnablingEncryption}>
-                      {isEnablingEncryption ? "Enabling..." : "Enable encryption"}
+                    <Button
+                      onclick={enableEncryption}
+                      disabled={isEnablingEncryption}
+                    >
+                      {isEnablingEncryption
+                        ? "Enabling..."
+                        : "Enable encryption"}
                     </Button>
                   </div>
                 {:else if !encryptionStatus.unlocked}
@@ -615,7 +762,8 @@
                         bind:value={unlockPassword}
                         placeholder="Enter your master password"
                         class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                        onkeydown={(e) => e.key === 'Enter' && unlockEncryption()}
+                        onkeydown={(e) =>
+                          e.key === "Enter" && unlockEncryption()}
                       />
                     </div>
                     <Button onclick={unlockEncryption}>
@@ -627,13 +775,25 @@
                   <div class="rounded-lg border bg-card p-4 space-y-4">
                     <div class="flex items-center gap-3">
                       <div class="flex-shrink-0">
-                        <svg class="h-10 w-10 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        <svg
+                          class="h-10 w-10 text-green-600 dark:text-green-400"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
+                          />
                         </svg>
                       </div>
                       <div class="flex-1">
                         <p class="text-sm font-medium">Encryption is active</p>
-                        <p class="text-xs text-muted-foreground">Your email data is being encrypted</p>
+                        <p class="text-xs text-muted-foreground">
+                          Your email data is being encrypted
+                        </p>
                       </div>
                     </div>
 
@@ -641,7 +801,11 @@
                       <Button onclick={lockEncryption} variant="outline">
                         Lock encryption
                       </Button>
-                      <Button onclick={() => showChangePassword = !showChangePassword} variant="outline">
+                      <Button
+                        onclick={() =>
+                          (showChangePassword = !showChangePassword)}
+                        variant="outline"
+                      >
                         {showChangePassword ? "Cancel" : "Change password"}
                       </Button>
                     </div>
@@ -649,7 +813,9 @@
                     {#if showChangePassword}
                       <Separator />
                       <div class="space-y-4 pt-2">
-                        <h5 class="text-sm font-medium">Change master password</h5>
+                        <h5 class="text-sm font-medium">
+                          Change master password
+                        </h5>
 
                         <div class="space-y-2">
                           <Label for="old-password" class="text-sm">
@@ -690,25 +856,47 @@
                           />
                         </div>
 
-                        <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
+                        <div
+                          class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2"
+                        >
                           <p class="text-xs text-amber-900 dark:text-amber-200">
                             <strong>Important:</strong>
                           </p>
-                          <ul class="text-xs text-amber-900 dark:text-amber-200 list-disc list-inside space-y-1">
-                            <li>There is no password recovery option. Make sure to remember your new password.</li>
-                            <li><strong>All cached email data will be cleared</strong> after changing the password.</li>
-                            <li>You will need to sync your emails again after the password change.</li>
+                          <ul
+                            class="text-xs text-amber-900 dark:text-amber-200 list-disc list-inside space-y-1"
+                          >
+                            <li>
+                              There is no password recovery option. Make sure to
+                              remember your new password.
+                            </li>
+                            <li>
+                              <strong
+                                >All cached email data will be cleared</strong
+                              > after changing the password.
+                            </li>
+                            <li>
+                              You will need to sync your emails again after the
+                              password change.
+                            </li>
                           </ul>
                         </div>
 
                         <div class="flex gap-2">
                           <Button
                             onclick={validateAndShowConfirmation}
-                            disabled={isChangingPassword || !oldPassword || !newPassword || !confirmNewPassword}
+                            disabled={isChangingPassword ||
+                              !oldPassword ||
+                              !newPassword ||
+                              !confirmNewPassword}
                           >
-                            {isChangingPassword ? "Changing..." : "Change password"}
+                            {isChangingPassword
+                              ? "Changing..."
+                              : "Change password"}
                           </Button>
-                          <Button onclick={cancelChangePassword} variant="outline">
+                          <Button
+                            onclick={cancelChangePassword}
+                            variant="outline"
+                          >
                             Cancel
                           </Button>
                         </div>
@@ -720,35 +908,49 @@
                 <!-- Info Section -->
                 <div class="rounded-lg border bg-muted/50 p-4 space-y-2">
                   <h5 class="text-xs font-semibold">What gets encrypted?</h5>
-                  <ul class="text-xs text-muted-foreground space-y-1 ml-4 list-disc">
+                  <ul
+                    class="text-xs text-muted-foreground space-y-1 ml-4 list-disc"
+                  >
                     <li>Email subjects</li>
                     <li>Email body content</li>
                     <li>Email attachments</li>
                   </ul>
                   <p class="text-xs text-muted-foreground mt-3">
-                    <strong>Note:</strong> Email metadata (sender, recipient, date) is not encrypted for performance reasons.
+                    <strong>Note:</strong> Email metadata (sender, recipient, date)
+                    is not encrypted for performance reasons.
                   </p>
                 </div>
               </div>
             </div>
-
           {:else if currentPage === "CMVH Verification"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- Onboarding Guide -->
               {#if !cmvhConfig.hasSeenOnboarding}
-                <Alert.Root class="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30">
+                <Alert.Root
+                  class="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30"
+                >
                   <div class="flex items-start gap-3">
-                    <InfoIcon class="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
+                    <InfoIcon
+                      class="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400"
+                    />
                     <div class="flex-1 space-y-2">
-                      <Alert.Title class="text-base font-semibold text-blue-900 dark:text-blue-100">
+                      <Alert.Title
+                        class="text-base font-semibold text-blue-900 dark:text-blue-100"
+                      >
                         What is CMVH?
                       </Alert.Title>
-                      <Alert.Description class="text-sm text-blue-800 dark:text-blue-200 space-y-3">
+                      <Alert.Description
+                        class="text-sm text-blue-800 dark:text-blue-200 space-y-3"
+                      >
                         <p>
-                          CMVH (ColiMail Verification Header) uses blockchain cryptography to enhance email security and authenticity:
+                          CMVH (ColiMail Verification Header) uses blockchain
+                          cryptography to enhance email security and
+                          authenticity:
                         </p>
                         <ul class="list-disc pl-5 space-y-1">
-                          <li>Prove your identity without revealing passwords</li>
+                          <li>
+                            Prove your identity without revealing passwords
+                          </li>
                           <li>Prevent email spoofing and tampering</li>
                           <li>Enable verifiable on-chain reputation</li>
                           <li>Maintain privacy while ensuring authenticity</li>
@@ -757,7 +959,8 @@
                           <Button
                             variant="link"
                             class="h-auto p-0 text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
-                            onclick={() => openUrl('https://docs.colimail.net/cmvh')}
+                            onclick={() =>
+                              openUrl("https://docs.colimail.net/cmvh")}
                           >
                             Learn more →
                           </Button>
@@ -787,26 +990,29 @@
               <!-- Email Signing Settings -->
               <div class="space-y-4">
                 <div>
-                  <h4 class="text-sm font-medium mb-1">Email Signature Creation</h4>
+                  <h4 class="text-sm font-medium mb-1">
+                    Email Signature Creation
+                  </h4>
                   <p class="text-xs text-muted-foreground">
-                    Sign outgoing emails with your private key to prove authenticity
+                    Sign outgoing emails with your private key to prove
+                    authenticity
                   </p>
                 </div>
 
-                <div class="flex items-center justify-between">
-                  <div class="space-y-0.5">
-                    <Label for="cmvh-signing-enabled" class="text-sm">Enable CMVH Signing</Label>
-                    <p class="text-xs text-muted-foreground">
-                      Add blockchain-verifiable signatures to your outgoing emails
-                    </p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    id="cmvh-signing-enabled"
-                    bind:checked={cmvhConfig.enableSigning}
-                    class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-                  />
+                <div class="space-y-0.5">
+                  <Label for="cmvh-signing-enabled" class="text-sm"
+                    >Enable Email Signing</Label
+                  >
+                  <p class="text-xs text-muted-foreground">
+                    Sign outgoing emails with your private key
+                  </p>
                 </div>
+                <input
+                  type="checkbox"
+                  id="cmvh-signing-enabled"
+                  bind:checked={cmvhConfig.enableSigning}
+                  class="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+                />
 
                 {#if cmvhConfig.enableSigning}
                   <Separator />
@@ -828,8 +1034,10 @@
                         <Button
                           variant="outline"
                           size="icon"
-                          onclick={() => showPrivateKey = !showPrivateKey}
-                          title={showPrivateKey ? "Hide private key" : "Show private key"}
+                          onclick={() => (showPrivateKey = !showPrivateKey)}
+                          title={showPrivateKey
+                            ? "Hide private key"
+                            : "Show private key"}
                         >
                           {showPrivateKey ? "🙈" : "👁️"}
                         </Button>
@@ -840,21 +1048,27 @@
                     </div>
 
                     <div class="space-y-2">
-                      <Label for="derived-address" class="text-sm">Ethereum Address</Label>
+                      <Label for="derived-address" class="text-sm"
+                        >Ethereum Address</Label
+                      >
                       <div class="flex gap-2">
                         <input
                           id="derived-address"
                           type="text"
-                          value={cmvhConfig.derivedAddress || "Click 'Derive Address' to generate"}
+                          value={cmvhConfig.derivedAddress ||
+                            "Click 'Derive Address' to generate"}
                           readonly
                           class="flex-1 h-10 rounded-md border border-input bg-muted px-3 py-2 text-sm font-mono"
                         />
                         <Button
                           variant="default"
                           onclick={deriveAddressFromKey}
-                          disabled={isDerivedAddressLoading || !cmvhConfig.privateKey}
+                          disabled={isDerivedAddressLoading ||
+                            !cmvhConfig.privateKey}
                         >
-                          {isDerivedAddressLoading ? "Deriving..." : "Derive Address"}
+                          {isDerivedAddressLoading
+                            ? "Deriving..."
+                            : "Derive Address"}
                         </Button>
                       </div>
                       <p class="text-xs text-muted-foreground">
@@ -862,9 +1076,14 @@
                       </p>
                     </div>
 
-                    <div class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3">
+                    <div
+                      class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3"
+                    >
                       <p class="text-xs text-amber-900 dark:text-amber-200">
-                        <strong>Security Warning:</strong> Your private key is stored locally in browser storage (localStorage). Never share your private key with anyone. Consider using a dedicated key for email signing, separate from your main wallet.
+                        <strong>Security Warning:</strong> Your private key is stored
+                        locally in browser storage (localStorage). Never share your
+                        private key with anyone. Consider using a dedicated key for
+                        email signing, separate from your main wallet.
                       </p>
                     </div>
                   </div>
@@ -876,15 +1095,20 @@
               <!-- General Settings -->
               <div class="space-y-4">
                 <div>
-                  <h4 class="text-sm font-medium mb-1">Email Signature Verification</h4>
+                  <h4 class="text-sm font-medium mb-1">
+                    Email Signature Verification
+                  </h4>
                   <p class="text-xs text-muted-foreground">
-                    Verify email signatures using CMVH (ColiMail Verification Header) blockchain standard
+                    Verify email signatures using CMVH (ColiMail Verification
+                    Header) blockchain standard
                   </p>
                 </div>
 
                 <div class="flex items-center justify-between">
                   <div class="space-y-0.5">
-                    <Label for="cmvh-enabled" class="text-sm">Enable CMVH Verification</Label>
+                    <Label for="cmvh-enabled" class="text-sm"
+                      >Enable CMVH Verification</Label
+                    >
                     <p class="text-xs text-muted-foreground">
                       Automatically verify email signatures when available
                     </p>
@@ -901,7 +1125,9 @@
 
                 <div class="flex items-center justify-between">
                   <div class="space-y-0.5">
-                    <Label for="cmvh-auto-verify" class="text-sm">Auto-verify on Email Open</Label>
+                    <Label for="cmvh-auto-verify" class="text-sm"
+                      >Auto-verify on Email Open</Label
+                    >
                     <p class="text-xs text-muted-foreground">
                       Automatically verify signatures when opening emails
                     </p>
@@ -919,9 +1145,12 @@
 
                 <div class="flex items-center justify-between">
                   <div class="space-y-0.5">
-                    <Label for="cmvh-onchain" class="text-sm">Enable On-Chain Verification</Label>
+                    <Label for="cmvh-onchain" class="text-sm"
+                      >Enable On-Chain Verification</Label
+                    >
                     <p class="text-xs text-muted-foreground">
-                      Verify signatures using smart contracts (slower but more secure)
+                      Verify signatures using smart contracts (slower but more
+                      secure)
                     </p>
                   </div>
                   <input
@@ -941,7 +1170,8 @@
                 <div>
                   <h4 class="text-sm font-medium mb-1">Blockchain Settings</h4>
                   <p class="text-xs text-muted-foreground">
-                    Configure blockchain network and RPC endpoint for on-chain verification
+                    Configure blockchain network and RPC endpoint for on-chain
+                    verification
                   </p>
                 </div>
 
@@ -953,12 +1183,14 @@
                     disabled={!cmvhConfig.enabled}
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
                   >
-                    <option value="arbitrum-sepolia">Arbitrum Sepolia (Testnet)</option>
+                    <option value="arbitrum-sepolia"
+                      >Arbitrum Sepolia (Testnet)</option
+                    >
                     <option value="arbitrum">Arbitrum One (Mainnet)</option>
                   </select>
                   <p class="text-xs text-muted-foreground">
-                    Chain ID: {NETWORK_CONFIG[cmvhConfig.network].chainId} |
-                    Explorer: {NETWORK_CONFIG[cmvhConfig.network].explorerUrl}
+                    Chain ID: {NETWORK_CONFIG[cmvhConfig.network].chainId} | Explorer:
+                    {NETWORK_CONFIG[cmvhConfig.network].explorerUrl}
                   </p>
                 </div>
 
@@ -978,11 +1210,14 @@
                 </div>
 
                 <div class="space-y-2">
-                  <Label for="cmvh-contract" class="text-sm">Contract Address</Label>
+                  <Label for="cmvh-contract" class="text-sm"
+                    >Contract Address</Label
+                  >
                   <input
                     id="cmvh-contract"
                     type="text"
-                    value={cmvhConfig.contractAddress || NETWORK_CONFIG[cmvhConfig.network].contractAddress}
+                    value={cmvhConfig.contractAddress ||
+                      NETWORK_CONFIG[cmvhConfig.network].contractAddress}
                     readonly
                     disabled={!cmvhConfig.enabled}
                     class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background focus-visible:outline-none disabled:opacity-50"
@@ -994,16 +1229,28 @@
               </div>
 
               <!-- Info Section -->
-              <div class="rounded-lg border bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2">
-                <h5 class="text-xs font-semibold text-blue-900 dark:text-blue-200">What is CMVH?</h5>
+              <div
+                class="rounded-lg border bg-blue-50 dark:bg-blue-950/30 p-4 space-y-2"
+              >
+                <h5
+                  class="text-xs font-semibold text-blue-900 dark:text-blue-200"
+                >
+                  What is CMVH?
+                </h5>
                 <p class="text-xs text-blue-900 dark:text-blue-200">
-                  CMVH (ColiMail Verification Header) is a blockchain-based email authentication system that allows you to verify the sender's identity and ensure email content hasn't been tampered with.
+                  CMVH (ColiMail Verification Header) is a blockchain-based
+                  email authentication system that allows you to verify the
+                  sender's identity and ensure email content hasn't been
+                  tampered with.
                 </p>
               </div>
 
               <!-- Save/Reset Buttons -->
               <div class="flex justify-between gap-2 pt-4">
-                <Button variant="outline" onclick={() => showResetCMVHDialog = true}>
+                <Button
+                  variant="outline"
+                  onclick={() => (showResetCMVHDialog = true)}
+                >
                   <RotateCcwIcon class="h-4 w-4 mr-2" />
                   Reset to Defaults
                 </Button>
@@ -1013,7 +1260,157 @@
                 </Button>
               </div>
             </div>
+          {:else if currentPage === "CMVH Rewards"}
+            <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
+              <!-- User Stats -->
+              <div class="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardHeader class="pb-2">
+                    <CardTitle class="text-sm font-medium"
+                      >Total Received</CardTitle
+                    >
+                  </CardHeader>
+                  <CardContent>
+                    <div class="text-2xl font-bold">
+                      {userStats?.totalReceived || "0"}
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                      {userStats?.totalAmountReceived
+                        ? (
+                            Number(userStats.totalAmountReceived) / 1e18
+                          ).toFixed(4)
+                        : "0"} ETH
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader class="pb-2">
+                    <CardTitle class="text-sm font-medium"
+                      >Active Rewards</CardTitle
+                    >
+                  </CardHeader>
+                  <CardContent>
+                    <div class="text-2xl font-bold">
+                      {userStats?.activeRewards || "0"}
+                    </div>
+                    <p class="text-xs text-muted-foreground">
+                      Waiting to be claimed
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
 
+              <Separator />
+
+              <!-- Rewards List -->
+              <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-sm font-medium">Received Rewards</h4>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={fetchRewards}
+                    disabled={isLoadingRewards}
+                  >
+                    {#if isLoadingRewards}
+                      <svg
+                        class="animate-spin -ml-1 mr-2 h-4 w-4"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
+                          stroke="currentColor"
+                          stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                      Refreshing...
+                    {:else}
+                      <RotateCcwIcon class="h-4 w-4 mr-2" />
+                      Refresh
+                    {/if}
+                  </Button>
+                </div>
+
+                {#if isLoadingRewards && rewardsReceived.length === 0}
+                  <div class="space-y-3">
+                    <Skeleton class="h-20 w-full" />
+                    <Skeleton class="h-20 w-full" />
+                  </div>
+                {:else if rewardsReceived.length === 0}
+                  <div
+                    class="flex flex-col items-center justify-center py-8 text-center text-muted-foreground"
+                  >
+                    <CircleDollarSignIcon class="h-12 w-12 mb-4 opacity-20" />
+                    <p>No rewards found</p>
+                  </div>
+                {:else}
+                  <ScrollArea class="h-[300px] pr-4">
+                    <div class="space-y-3">
+                      {#each rewardsReceived as reward}
+                        <div
+                          class="rounded-lg border bg-card p-4 transition-colors hover:bg-accent/50"
+                        >
+                          <div class="flex items-start justify-between">
+                            <div class="space-y-1">
+                              <div class="flex items-center gap-2">
+                                <span class="font-semibold">
+                                  {(Number(reward.amount) / 1e18).toFixed(4)} ETH
+                                </span>
+                                {#if reward.claimed}
+                                  <span
+                                    class="rounded-full bg-green-100 px-2 py-0.5 text-xs font-medium text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                  >
+                                    Claimed
+                                  </span>
+                                {:else}
+                                  <span
+                                    class="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                                  >
+                                    Available
+                                  </span>
+                                {/if}
+                              </div>
+                              <p class="text-xs text-muted-foreground">
+                                From: {formatAddress(reward.sender)}
+                              </p>
+                              <p class="text-xs text-muted-foreground">
+                                Date: {new Date(
+                                  Number(reward.timestamp) * 1000,
+                                ).toLocaleString()}
+                              </p>
+                            </div>
+                            {#if !reward.claimed && reward.sender.toLowerCase() === (walletStore.address?.toLowerCase() || "")}
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={isCancellingReward ===
+                                  reward.rewardId}
+                                onclick={() =>
+                                  handleCancelReward(reward.rewardId)}
+                              >
+                                {isCancellingReward === reward.rewardId
+                                  ? "Cancelling..."
+                                  : "Cancel"}
+                              </Button>
+                            {/if}
+                          </div>
+                        </div>
+                      {/each}
+                    </div>
+                  </ScrollArea>
+                {/if}
+              </div>
+            </div>
           {:else if currentPage === "Advanced"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- System Tray Settings -->
@@ -1031,10 +1428,13 @@
                   </Label>
                 </div>
                 <p class="text-xs text-muted-foreground ml-7">
-                  Keep the application running in the system tray when you close the window. Click the tray icon to restore the window.
+                  Keep the application running in the system tray when you close
+                  the window. Click the tray icon to restore the window.
                 </p>
                 {#if !minimizeToTray}
-                  <div class="rounded-md bg-amber-50 p-2 dark:bg-amber-950/30 ml-7">
+                  <div
+                    class="rounded-md bg-amber-50 p-2 dark:bg-amber-950/30 ml-7"
+                  >
                     <p class="text-xs text-amber-900 dark:text-amber-200">
                       ⚠️ Closing the window will exit the application completely
                     </p>
@@ -1048,14 +1448,14 @@
                 </Button>
               </div>
             </div>
-
           {:else if currentPage === "About"}
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- Version Info -->
               <div class="space-y-4">
                 <div class="flex items-center justify-between">
                   <h4 class="text-sm font-medium">Version</h4>
-                  <span class="text-sm text-muted-foreground">{appVersion}</span>
+                  <span class="text-sm text-muted-foreground">{appVersion}</span
+                  >
                 </div>
                 <Separator />
                 <div class="flex items-center justify-between">
@@ -1077,19 +1477,24 @@
               <div class="space-y-3">
                 <h4 class="text-sm font-medium">Software Updates</h4>
                 <p class="text-xs text-muted-foreground">
-                  Check for the latest version to get new features and bug fixes.
+                  Check for the latest version to get new features and bug
+                  fixes.
                 </p>
                 <Button
                   onclick={checkForUpdates}
                   disabled={isCheckingUpdate}
                   class="w-full"
                 >
-                  {isCheckingUpdate ? "Checking for Updates..." : "Check for Updates"}
+                  {isCheckingUpdate
+                    ? "Checking for Updates..."
+                    : "Check for Updates"}
                 </Button>
 
                 <div class="rounded-md bg-blue-50 p-3 dark:bg-blue-950/30">
                   <p class="text-xs text-blue-900 dark:text-blue-200">
-                    💡 <strong>Auto Update:</strong> The application automatically checks for updates on startup and will notify you when a new version is available.
+                    💡 <strong>Auto Update:</strong> The application automatically
+                    checks for updates on startup and will notify you when a new
+                    version is available.
                   </p>
                 </div>
               </div>
@@ -1100,7 +1505,8 @@
               <div class="space-y-3">
                 <h4 class="text-sm font-medium">Debug Logs</h4>
                 <p class="text-xs text-muted-foreground">
-                  Export application logs as a ZIP file to help the development team troubleshoot issues.
+                  Export application logs as a ZIP file to help the development
+                  team troubleshoot issues.
                 </p>
                 <Button
                   onclick={exportLogs}
@@ -1113,7 +1519,9 @@
 
                 <div class="rounded-md bg-amber-50 p-3 dark:bg-amber-950/30">
                   <p class="text-xs text-amber-900 dark:text-amber-200">
-                    📋 <strong>Bug Reports:</strong> When reporting issues on GitHub, please attach the exported log file to help us diagnose the problem faster.
+                    📋 <strong>Bug Reports:</strong> When reporting issues on GitHub,
+                    please attach the exported log file to help us diagnose the problem
+                    faster.
                   </p>
                 </div>
               </div>
@@ -1154,11 +1562,14 @@
     <AlertDialog.Header>
       <AlertDialog.Title>Reset CMVH Settings?</AlertDialog.Title>
       <AlertDialog.Description>
-        This will reset all CMVH verification settings to their default values. This action cannot be undone.
+        This will reset all CMVH verification settings to their default values.
+        This action cannot be undone.
       </AlertDialog.Description>
     </AlertDialog.Header>
     <AlertDialog.Footer>
-      <AlertDialog.Cancel onclick={() => showResetCMVHDialog = false}>Cancel</AlertDialog.Cancel>
+      <AlertDialog.Cancel onclick={() => (showResetCMVHDialog = false)}
+        >Cancel</AlertDialog.Cancel
+      >
       <AlertDialog.Action onclick={handleResetCMVH}>Reset</AlertDialog.Action>
     </AlertDialog.Footer>
   </AlertDialog.Content>

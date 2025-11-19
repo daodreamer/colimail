@@ -53,6 +53,9 @@ class AppState {
   autoSaveTimerId = $state<number | null>(null); // Auto-save timer ID
   enableCMVHSigning = $state<boolean>(false); // Enable CMVH signing for current email
   cmvhVerification = $state<import("./types").CMVHVerificationResult | null>(null); // CMVH verification result for current email
+  attachReward = $state<boolean>(false); // Attach CMVH reward to current email
+  rewardAmount = $state<string>("10"); // Reward amount in wACT
+  rewardRecipient = $state<string>(""); // Recipient wallet address
 
   // Draft state
   drafts = $state<DraftListItem[]>([]);
@@ -80,27 +83,18 @@ class AppState {
     this.composeAttachments = [];
     this.isReplyMode = false;
     this.isForwardMode = false;
-    this.isSending = false;
     this.currentDraftId = null;
     this.enableCMVHSigning = false;
-    this.error = null;
-    // Clear auto-save timer
-    if (this.autoSaveTimerId !== null) {
-      clearTimeout(this.autoSaveTimerId);
-      this.autoSaveTimerId = null;
-    }
+    this.attachReward = false;
+    this.rewardAmount = "10";
+    this.rewardRecipient = "";
   }
 
   resetEmailState() {
     this.selectedEmailUid = null;
     this.emailBody = null;
     this.attachments = [];
-  }
-
-  resetFolderState() {
-    this.emails = [];
-    this.resetEmailState();
-    this.currentPage = 1; // Reset to first page when switching folders
+    this.cmvhVerification = null;
   }
 }
 

@@ -10,6 +10,7 @@ pub mod folders;
 pub mod logs;
 pub mod notifications;
 pub mod oauth2;
+pub mod rewards;
 pub mod send;
 pub mod send_cmvh;
 pub mod test_connection;
@@ -54,6 +55,7 @@ pub use notifications::{
     set_notification_enabled, set_sound_enabled,
 };
 pub use oauth2::{complete_oauth2_flow, listen_for_oauth_callback, start_oauth2_flow};
+pub use rewards::{get_all_reward_caches, get_reward_cache, save_reward_cache};
 pub use send::{forward_email, get_attachment_size_limit, reply_email, send_email};
 pub use send_cmvh::{send_email_smtp, send_email_with_cmvh, sign_email_cmvh};
 pub use test_connection::test_connection;
