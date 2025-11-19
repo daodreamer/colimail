@@ -40,11 +40,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Automatic cache cleanup for expired entries
   - Cache statistics and monitoring
 
+- **💰 CMVH Reward Pool Integration**
+  - Attach cryptocurrency rewards (wACT) to emails via smart contracts
+  - On-chain reward creation with configurable expiry (default 30 days)
+  - Automatic reward detection and display for received emails
+  - One-click reward claiming with wallet integration
+  - Rewards dashboard in settings for managing sent/received rewards
+  - Support for reward cancellation and status tracking
+
 - **📧 Email Features**
   - Decrypted subject display in notifications
   - Clear folder selection feedback
   - New email arrival triggers incremental sync
   - Improved email encoding and dependency cleanup
+  - Fixed iframe link handling to open in system default browser
 
 #### Changed
 - **🔄 CMVH Contract Upgrade to UUPS Proxy v2.0.0 with Full EIP-712 Support**
