@@ -115,9 +115,15 @@
   // Handle wallet session rejection
   async function handleWalletSessionReject() {
     try {
+      // Disconnect WalletConnect
+      await walletConnectStore.disconnect();
+
+      // Also delete from keyring
       await invoke("delete_wallet_session");
+
+      console.log("✅ Wallet disconnected successfully");
     } catch (error) {
-      console.error("Failed to delete wallet session:", error);
+      console.error("Failed to disconnect wallet:", error);
     }
 
     showWalletSessionConfirm = false;
@@ -268,28 +274,19 @@
   // Initialize app after encryption is set up
   async function initializeApp() {
     try {
-      appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
-      appState.syncInterval = await invoke<number>("get_sync_interval");
+      // Check for saved wallet session (after encryption is unlocked)
+      const savedSession = await invoke<WalletSession | null>("get_wallet_session");
 
-      // Auto-select first account if available and none is selected
-      if (appState.accounts.length > 0 && !appState.selectedAccountId) {
-        await handleAccountClick(appState.accounts[0].id);
+      if (savedSession) {
+        console.log("🔐 Found saved wallet session:", savedSession);
+        pendingWalletSession = savedSession;
+        showWalletSessionConfirm = true;
+        // Wait for user confirmation before loading app
+        return;
       }
 
-      startAutoSyncTimer();
-
-      // Start IDLE connections for all accounts
-      for (const account of appState.accounts) {
-        try {
-          await invoke("start_idle", {
-            accountId: account.id,
-            folderName: "INBOX",
-            config: account,
-          });
-        } catch (e) {
-          console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
-        }
-      }
+      // No wallet session, proceed with app loading
+      await loadApp();
     } catch (e) {
       appState.error = `Failed to initialize app: ${e}`;
     }

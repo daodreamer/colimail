@@ -131,19 +131,22 @@ class WalletConnectStore {
   async disconnect() {
     if (this.provider && this.session) {
       try {
+        // Disconnect from WalletConnect (this also clears the session from WalletConnect's storage)
         await this.provider.disconnect();
+        console.log("✅ WalletConnect provider disconnected");
       } catch (error) {
         console.error("Failed to disconnect WalletConnect:", error);
       }
     }
 
+    // Clear all state
     this.address = null;
     this.chainId = null;
     this.isConnected = false;
     this.session = null;
     this.provider = null;
 
-    // Clear session from secure storage
+    // Clear session from secure storage (OS keyring)
     await this.clearSessionFromStorage();
   }
 
@@ -167,6 +170,10 @@ class WalletConnectStore {
           console.log("WalletConnect session restored:", {
             address: this.address,
           });
+
+          // IMPORTANT: Save session to OS keyring for startup confirmation dialog
+          // Preserve existing timestamp if session already exists in keyring
+          await this.saveSessionToStoragePreserveTimestamp();
         }
       }
     } catch (error) {
@@ -205,6 +212,33 @@ class WalletConnectStore {
         }
       });
       console.log("✅ Wallet session saved to secure storage");
+    } catch (error) {
+      console.error("Failed to save wallet session:", error);
+    }
+  }
+
+  /**
+   * Save session to secure storage, preserving existing timestamp if available
+   * This is used during session restoration to avoid updating the last_active time
+   */
+  private async saveSessionToStoragePreserveTimestamp() {
+    if (!this.isConnected || !this.address || !this.session) return;
+
+    try {
+      // Try to get existing session to preserve timestamp
+      const existingSession = await this.loadSessionFromStorage();
+      const timestamp = existingSession?.last_active_timestamp || Math.floor(Date.now() / 1000);
+
+      await invoke("save_wallet_session", {
+        session: {
+          address: this.address,
+          chain_id: this.chainId || 421614,
+          connection_method: "walletconnect",
+          last_active_timestamp: timestamp,
+          wc_session_topic: this.session.topic,
+        }
+      });
+      console.log("✅ Wallet session saved to secure storage (timestamp preserved)");
     } catch (error) {
       console.error("Failed to save wallet session:", error);
     }
