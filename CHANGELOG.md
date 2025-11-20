@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - QR code-based mobile wallet connection (supports MetaMask, Trust Wallet, Rainbow, etc.)
   - Auto-expiration of inactive wallet sessions
   - Wallet timeout settings in Settings → Notifications page
+  - Fixed wallet session dialog timing - now appears after unlock
+  - Preserved original last activity timestamp during session restoration
+  - Proper wallet disconnection with full state cleanup
 
 - **📧 Email Features**
   - Decrypted subject display in notifications
@@ -65,6 +68,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - New email arrival triggers incremental sync
   - Improved email encoding and dependency cleanup
   - Fixed iframe link handling to open in system default browser
+
+- **🔒 Enhanced Security & Privacy**
+  - **Zero-knowledge architecture**: No sensitive data accessed before master password unlock
+  - Account loading and IMAP connections now deferred until after encryption unlock
+  - Updater checks moved to pre-unlock phase for better UX (no sensitive data involved)
+  - Prevents unnecessary network activity and resource usage before authentication
+  - Improved privacy: No account metadata or network connections visible before unlock
 
 #### Changed
 - **🔄 CMVH Contract Upgrade to UUPS Proxy v2.0.0 with Full EIP-712 Support**
