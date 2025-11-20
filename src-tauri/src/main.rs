@@ -164,19 +164,11 @@ async fn main() {
 
     tracing::info!("Starting Colimail application");
 
+    // Initialize database (metadata only, no sensitive data access yet)
     db::init().await.expect("Failed to initialize database");
 
-    match load_account_configs().await {
-        Ok(accounts) => {
-            tracing::info!(
-                account_count = accounts.len(),
-                "App startup: Loaded accounts from database"
-            );
-        }
-        Err(e) => {
-            tracing::error!(error = %e, "Error loading accounts on startup");
-        }
-    }
+    // Note: Account loading and IDLE manager startup are deferred until after user unlocks encryption
+    // This ensures zero-knowledge security: no sensitive data is accessed before master password is entered
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -423,40 +415,9 @@ async fn main() {
                 }
             });
 
-            // Auto-start IDLE monitoring for all accounts on app startup
-            let idle_manager_clone = idle_manager.clone();
-            tokio::spawn(async move {
-                // Wait a bit for the app to fully initialize
-                tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-                tracing::info!("Auto-starting IDLE monitoring for all accounts");
-
-                match load_account_configs().await {
-                    Ok(accounts) => {
-                        tracing::info!(account_count = accounts.len(), "Found accounts to monitor");
-
-                        let manager = idle_manager_clone.lock().unwrap();
-                        if let Some(ref mgr) = *manager {
-                            for account in accounts {
-                                tracing::info!(email = %account.email, "Starting IDLE for account");
-                                if let Err(e) = mgr.send_command(IdleCommand::StartAllForAccount {
-                                    config: account.clone(),
-                                }) {
-                                    tracing::error!(
-                                        email = %account.email,
-                                        error = %e,
-                                        "Failed to start IDLE for account"
-                                    );
-                                }
-                            }
-                            tracing::info!("IDLE auto-start completed");
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!(error = %e, "Failed to load accounts for IDLE auto-start");
-                    }
-                }
-            });
+            // Note: IDLE manager auto-start has been removed for security
+            // IDLE connections will be started by frontend after user unlocks encryption
+            // This prevents any network activity before master password is entered
 
             Ok(())
         })
