@@ -129,6 +129,7 @@
       // Reload CMVH config from storage
       const { loadConfigAsync } = await import("$lib/cmvh");
       cmvhConfig = await loadConfigAsync();
+      console.log("📥 Loaded CMVH config:", JSON.stringify(cmvhConfig, null, 2));
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
@@ -362,10 +363,12 @@
     }
 
     try {
+      console.log("💾 Saving CMVH config:", JSON.stringify(cmvhConfig, null, 2));
       await saveConfig(cmvhConfig);
       toast.success("CMVH settings saved successfully");
+      console.log("✅ CMVH config saved successfully");
     } catch (error) {
-      console.error("Failed to save CMVH settings:", error);
+      console.error("❌ Failed to save CMVH settings:", error);
       toast.error(`Failed to save settings: ${error}`);
     }
   }
