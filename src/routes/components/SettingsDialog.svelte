@@ -125,6 +125,10 @@
       encryptionStatus = await invoke<EncryptionStatus>(
         "get_encryption_status",
       );
+
+      // Reload CMVH config from storage
+      const { loadConfigAsync } = await import("$lib/cmvh");
+      cmvhConfig = await loadConfigAsync();
     } catch (error) {
       console.error("Failed to load settings:", error);
     }
