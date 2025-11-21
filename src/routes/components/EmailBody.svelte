@@ -167,10 +167,8 @@
       const cmvhConfig = loadConfig();
       const rewardService = new RewardService(cmvhConfig);
 
-      let userAddress = walletStore.address;
-      if (!userAddress && cmvhConfig.derivedAddress) {
-        userAddress = cmvhConfig.derivedAddress as `0x${string}`;
-      }
+      // Only check rewards if wallet is connected
+      const userAddress = walletStore.address;
 
       if (userAddress) {
         const rewardId = await rewardService.findRewardForEmail(

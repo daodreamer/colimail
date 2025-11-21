@@ -188,8 +188,7 @@ export interface CMVHConfig {
   rewardPoolAddress?: string;
   // Signing configuration
   enableSigning: boolean;
-  privateKey: string; // Hex-encoded private key (without 0x prefix)
-  derivedAddress: string; // Ethereum address derived from private key
+  walletConnectEnabled: boolean; // Use WalletConnect for signing (default: true)
   // Onboarding
   hasSeenOnboarding?: boolean; // Whether user has seen the onboarding guide
 }
@@ -207,8 +206,7 @@ export const DEFAULT_CMVH_CONFIG: CMVHConfig = {
   network: "arbitrum-sepolia",
   contractAddress: "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03", // UUPS Proxy v2.0.0 with EIP-712
   enableSigning: false,
-  privateKey: "",
-  derivedAddress: "",
+  walletConnectEnabled: true,
   hasSeenOnboarding: false,
 };
 

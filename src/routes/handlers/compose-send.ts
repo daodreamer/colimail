@@ -300,19 +300,20 @@ export async function handleSendEmail(
 
       // Send with or without CMVH signing based on user choice
       if (shouldSignWithCMVH) {
-        // Load CMVH config to get private key
+        // Load CMVH config and check wallet connection
         const cmvhConfig = loadConfig();
+        const { walletStore } = await import("$lib/stores/wallet.svelte");
 
-        if (!cmvhConfig.privateKey || !cmvhConfig.derivedAddress) {
-          appState.error = "CMVH signing enabled but private key not configured. Please configure in Settings.";
+        if (!walletStore.isConnected || !walletStore.address) {
+          appState.error = "CMVH signing enabled but wallet not connected. Please connect your wallet in Settings.";
           appState.isSending = false;
           return null;
         }
 
         try {
-          // Step 1: Sign the email metadata
-          const cmvhHeaders = await invoke<CMVHHeaders>("sign_email_with_cmvh", {
-            privateKey: cmvhConfig.privateKey,
+          // Step 1: Sign the email metadata using WalletConnect
+          const cmvhHeaders = await invoke<CMVHHeaders>("sign_email_with_walletconnect", {
+            address: walletStore.address,
             content: {
               from: selectedConfig.email,
               to: appState.composeTo,

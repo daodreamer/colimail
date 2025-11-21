@@ -59,6 +59,37 @@
   // Load CMVH config to check if signing is available
   const cmvhConfig = $derived(loadConfig());
 
+  // WalletConnect QR code display state (local to Compose Dialog)
+  let showComposeWalletConnectQR = $state(false);
+
+  // Monitor wallet connection status to hide QR when connected
+  $effect(() => {
+    if (walletStore.isConnected) {
+      showComposeWalletConnectQR = false;
+    }
+  });
+
+  // Handle wallet connect click in Compose
+  async function handleComposeWalletConnect() {
+    showComposeWalletConnectQR = true;
+    await walletStore.connect();
+  }
+
+  // Handle cancel connection in Compose
+  async function handleComposeCancelConnection() {
+    await walletStore.cancelConnection();
+    showComposeWalletConnectQR = false;
+  }
+
+  // Auto-cancel connection when Compose Dialog closes
+  $effect(() => {
+    // Cleanup function - runs when dialog closes
+    if (!show && showComposeWalletConnectQR && walletStore.isConnecting && !walletStore.isConnected) {
+      console.log("Compose Dialog closed - auto-cancelling wallet connection");
+      handleComposeCancelConnection();
+    }
+  });
+
   // Resizable dialog state
   let dialogElement = $state<HTMLDivElement | null>(null);
   let isResizing = $state(false);
@@ -304,7 +335,7 @@
       </div>
 
       <!-- CMVH Signing Toggle -->
-      {#if cmvhConfig.enableSigning && cmvhConfig.privateKey && cmvhConfig.derivedAddress}
+      {#if cmvhConfig.enableSigning && walletStore.isConnected && walletStore.address}
         <div class="space-y-2 pt-2">
           <div
             class="flex items-center space-x-3 rounded-md border bg-muted/40 p-3"
@@ -328,7 +359,7 @@
           {#if enableCMVHSigning}
             <p class="text-xs text-muted-foreground pl-3">
               Signing address: <span class="font-mono"
-                >{cmvhConfig.derivedAddress}</span
+                >{walletStore.getDisplayName()}</span
               >
             </p>
           {/if}
@@ -378,16 +409,16 @@
                 <Button
                   size="sm"
                   variant="outline"
-                  onclick={() => walletStore.connect()}
+                  onclick={handleComposeWalletConnect}
                   disabled={walletStore.isConnecting}
                   class="w-full"
                 >
                   📱 Connect WalletConnect
                 </Button>
 
-                {#if walletStore.walletConnectUri}
+                {#if showComposeWalletConnectQR && walletStore.walletConnectUri}
                   <div
-                    class="rounded-lg border-2 border-dashed border-primary/50 bg-white dark:bg-muted p-3"
+                    class="rounded-lg border-2 border-dashed border-primary/50 bg-white dark:bg-muted p-3 space-y-2"
                   >
                     <p class="text-xs font-medium mb-2 text-center">
                       Scan with mobile wallet
@@ -403,9 +434,19 @@
                         class="rounded"
                       />
                     </div>
-                    <p class="text-xs text-muted-foreground mt-2 text-center">
+                    <p class="text-xs text-muted-foreground text-center">
                       Open MetaMask, Trust Wallet, or any compatible wallet
                     </p>
+                    <div class="flex justify-center pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onclick={handleComposeCancelConnection}
+                        class="w-full"
+                      >
+                        Cancel Connection
+                      </Button>
+                    </div>
                   </div>
                 {/if}
 

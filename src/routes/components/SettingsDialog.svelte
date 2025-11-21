@@ -75,8 +75,6 @@
   // CMVH settings state
   let cmvhConfig = $state<CMVHConfig>(loadConfig());
   let showResetCMVHDialog = $state(false);
-  let showPrivateKey = $state(false);
-  let isDerivedAddressLoading = $state(false);
 
   // CMVH Rewards state
   let rewardsSent = $state<RewardInfo[]>([]);
@@ -84,6 +82,9 @@
   let userStats = $state<UserStats | null>(null);
   let isLoadingRewards = $state(false);
   let isCancellingReward = $state<string | null>(null);
+
+  // WalletConnect QR code display state (local to Settings Dialog)
+  let showWalletConnectQR = $state(false);
 
   // Encryption state
   interface EncryptionStatus {
@@ -349,49 +350,11 @@
   }
 
   // CMVH Settings Functions
-  async function deriveAddressFromKey() {
-    if (!cmvhConfig.privateKey) {
-      toast.error("Please enter a private key first");
-      return;
-    }
-
-    // Validate hex format
-    const hexPattern = /^[0-9a-fA-F]{64}$/;
-    if (!hexPattern.test(cmvhConfig.privateKey.replace(/^0x/, ""))) {
-      toast.error(
-        "Invalid private key format. Must be 64 hex characters (with or without 0x prefix)",
-      );
-      return;
-    }
-
-    isDerivedAddressLoading = true;
-    try {
-      // Remove 0x prefix if present
-      const cleanKey = cmvhConfig.privateKey.replace(/^0x/, "");
-      const address = await invoke<string>("derive_eth_address", {
-        privateKey: cleanKey,
-      });
-      cmvhConfig.derivedAddress = address;
-      toast.success("Address derived successfully");
-    } catch (error) {
-      console.error("Failed to derive address:", error);
-      toast.error(`Failed to derive address: ${error}`);
-    } finally {
-      isDerivedAddressLoading = false;
-    }
-  }
-
   async function saveCMVHSettings() {
     // Validate signing configuration if enabled
-    if (cmvhConfig.enableSigning) {
-      if (!cmvhConfig.privateKey) {
-        toast.error("Please enter a private key to enable signing");
-        return;
-      }
-      if (!cmvhConfig.derivedAddress) {
-        toast.error("Please derive address from private key first");
-        return;
-      }
+    if (cmvhConfig.enableSigning && !walletStore.isConnected) {
+      toast.error("Please connect your wallet before enabling email signing");
+      return;
     }
 
     try {
@@ -423,12 +386,12 @@
     }
   }
   async function fetchRewards() {
-    if (!walletStore.isConnected) {
-      // If wallet not connected, try to use derived address if available
-      if (!cmvhConfig.derivedAddress) return;
+    // Only fetch rewards if wallet is connected
+    if (!walletStore.isConnected || !walletStore.address) {
+      return;
     }
 
-    const addressToCheck = walletStore.address || cmvhConfig.derivedAddress;
+    const addressToCheck = walletStore.address;
     if (!addressToCheck) return;
 
     isLoadingRewards = true;
@@ -517,6 +480,34 @@
     if (!address || address.length < 10) return address;
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
+
+  // Handle wallet connect click in Settings
+  async function handleSettingsWalletConnect() {
+    showWalletConnectQR = true;
+    await walletStore.connect();
+  }
+
+  // Handle cancel connection in Settings
+  async function handleSettingsCancelConnection() {
+    await walletStore.cancelConnection();
+    showWalletConnectQR = false;
+  }
+
+  // Monitor wallet connection status to hide QR when connected
+  $effect(() => {
+    if (walletStore.isConnected) {
+      showWalletConnectQR = false;
+    }
+  });
+
+  // Auto-cancel connection when Settings Dialog closes
+  $effect(() => {
+    // Cleanup function - runs when dialog closes
+    if (!open && showWalletConnectQR && walletStore.isConnecting && !walletStore.isConnected) {
+      console.log("Settings Dialog closed - auto-cancelling wallet connection");
+      handleSettingsCancelConnection();
+    }
+  });
 </script>
 
 <Dialog.Root bind:open {onOpenChange}>
@@ -965,65 +956,61 @@
             <div class="bg-muted/50 rounded-xl p-6 space-y-6 max-w-3xl">
               <!-- Onboarding Guide -->
               {#if !cmvhConfig.hasSeenOnboarding}
-                <Alert.Root
-                  class="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30"
-                >
-                  <div class="flex items-start gap-3">
-                    <InfoIcon
-                      class="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400"
-                    />
-                    <div class="flex-1 space-y-2">
-                      <Alert.Title
-                        class="text-base font-semibold text-blue-900 dark:text-blue-100"
-                      >
-                        What is CMVH?
-                      </Alert.Title>
-                      <Alert.Description
-                        class="text-sm text-blue-800 dark:text-blue-200 space-y-3"
-                      >
-                        <p>
-                          CMVH (ColiMail Verification Header) uses blockchain
-                          cryptography to enhance email security and
-                          authenticity:
-                        </p>
-                        <ul class="list-disc pl-5 space-y-1">
-                          <li>
-                            Prove your identity without revealing passwords
-                          </li>
-                          <li>Prevent email spoofing and tampering</li>
-                          <li>Enable verifiable on-chain reputation</li>
-                          <li>Maintain privacy while ensuring authenticity</li>
-                        </ul>
-                        <div class="flex items-center gap-3 pt-2">
-                          <Button
-                            variant="link"
-                            class="h-auto p-0 text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
-                            onclick={() =>
-                              openUrl("https://docs.colimail.net/cmvh")}
-                          >
-                            Learn more →
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
-                            onclick={dismissOnboarding}
-                          >
-                            Got it, don't show again
-                          </Button>
-                        </div>
-                      </Alert.Description>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      class="h-6 w-6 text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-100"
-                      onclick={dismissOnboarding}
+                <div class="relative">
+                  <Alert.Root
+                    class="border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/30"
+                  >
+                    <InfoIcon class="text-blue-600 dark:text-blue-400" />
+                    <Alert.Title
+                      class="text-base font-semibold text-blue-900 dark:text-blue-100"
                     >
-                      <XIcon class="h-4 w-4" />
-                    </Button>
-                  </div>
-                </Alert.Root>
+                      What is CMVH?
+                    </Alert.Title>
+                    <Alert.Description
+                      class="text-sm text-blue-800 dark:text-blue-200 space-y-3"
+                    >
+                      <p>
+                        CMVH (ColiMail Verification Header) uses blockchain
+                        cryptography to enhance email security and
+                        authenticity:
+                      </p>
+                      <ul class="list-disc pl-5 space-y-1">
+                        <li>
+                          Prove your identity without revealing passwords
+                        </li>
+                        <li>Prevent email spoofing and tampering</li>
+                        <li>Enable verifiable on-chain reputation</li>
+                        <li>Maintain privacy while ensuring authenticity</li>
+                      </ul>
+                      <div class="flex items-center gap-3 pt-2">
+                        <Button
+                          variant="link"
+                          class="h-auto p-0 text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+                          onclick={() =>
+                            openUrl("https://docs.colimail.net/cmvh")}
+                        >
+                          Learn more →
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-blue-100"
+                          onclick={dismissOnboarding}
+                        >
+                          Got it, don't show again
+                        </Button>
+                      </div>
+                    </Alert.Description>
+                  </Alert.Root>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="absolute top-3 right-3 h-6 w-6 text-blue-600 dark:text-blue-400 hover:text-blue-900 dark:hover:text-blue-100"
+                    onclick={dismissOnboarding}
+                  >
+                    <XIcon class="h-4 w-4" />
+                  </Button>
+                </div>
               {/if}
 
               <!-- Email Signing Settings -->
@@ -1043,7 +1030,7 @@
                     >Enable Email Signing</Label
                   >
                   <p class="text-xs text-muted-foreground">
-                    Sign outgoing emails with your private key
+                    Sign outgoing emails with your wallet via WalletConnect
                   </p>
                 </div>
                 <input
@@ -1056,75 +1043,154 @@
                 {#if cmvhConfig.enableSigning}
                   <Separator />
 
+                  <!-- WalletConnect Integration -->
                   <div class="rounded-lg border bg-card p-4 space-y-4">
-                    <div class="space-y-2">
-                      <Label for="private-key" class="text-sm">
-                        Private Key
-                        <span class="text-destructive">*</span>
-                      </Label>
-                      <div class="flex gap-2">
-                        <input
-                          id="private-key"
-                          type={showPrivateKey ? "text" : "password"}
-                          bind:value={cmvhConfig.privateKey}
-                          placeholder="Enter your Ethereum private key (64 hex characters)"
-                          class="flex-1 h-10 rounded-md border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        />
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          onclick={() => (showPrivateKey = !showPrivateKey)}
-                          title={showPrivateKey
-                            ? "Hide private key"
-                            : "Show private key"}
-                        >
-                          {showPrivateKey ? "🙈" : "👁️"}
-                        </Button>
-                      </div>
-                      <p class="text-xs text-muted-foreground">
-                        64 hexadecimal characters (with or without 0x prefix)
-                      </p>
-                    </div>
+                    {#if walletStore.isConnected}
+                      <!-- Connected State -->
+                      <div class="space-y-4">
+                        <div class="flex items-center justify-between">
+                          <div class="flex items-center gap-2">
+                            <div class="h-2 w-2 rounded-full bg-green-500 animate-pulse"></div>
+                            <span class="text-sm font-medium text-green-700 dark:text-green-400">
+                              Wallet Connected
+                            </span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onclick={() => walletStore.disconnect()}
+                          >
+                            Disconnect
+                          </Button>
+                        </div>
 
-                    <div class="space-y-2">
-                      <Label for="derived-address" class="text-sm"
-                        >Ethereum Address</Label
-                      >
-                      <div class="flex gap-2">
-                        <input
-                          id="derived-address"
-                          type="text"
-                          value={cmvhConfig.derivedAddress ||
-                            "Click 'Derive Address' to generate"}
-                          readonly
-                          class="flex-1 h-10 rounded-md border border-input bg-muted px-3 py-2 text-sm font-mono"
-                        />
-                        <Button
-                          variant="default"
-                          onclick={deriveAddressFromKey}
-                          disabled={isDerivedAddressLoading ||
-                            !cmvhConfig.privateKey}
-                        >
-                          {isDerivedAddressLoading
-                            ? "Deriving..."
-                            : "Derive Address"}
-                        </Button>
-                      </div>
-                      <p class="text-xs text-muted-foreground">
-                        Your Ethereum address derived from the private key
-                      </p>
-                    </div>
+                        <div class="space-y-3 rounded-md bg-muted/50 p-3">
+                          <!-- ENS Name or Address -->
+                          <div class="space-y-1">
+                            <Label class="text-xs text-muted-foreground">Identity</Label>
+                            <div class="flex items-center gap-2">
+                              {#if walletStore.isResolvingENS}
+                                <div class="flex items-center gap-2">
+                                  <div class="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent"></div>
+                                  <span class="text-sm">Resolving ENS...</span>
+                                </div>
+                              {:else if walletStore.ensName}
+                                <div class="flex flex-col gap-1">
+                                  <span class="text-sm font-medium font-mono">
+                                    {walletStore.ensName}
+                                  </span>
+                                  <span class="text-xs text-muted-foreground font-mono">
+                                    {walletStore.formatAddress()}
+                                  </span>
+                                </div>
+                              {:else}
+                                <span class="text-sm font-mono">
+                                  {walletStore.formatAddress(walletStore.address, 'full')}
+                                </span>
+                              {/if}
+                            </div>
+                          </div>
 
-                    <div
-                      class="rounded-md bg-amber-50 dark:bg-amber-950/30 p-3"
-                    >
-                      <p class="text-xs text-amber-900 dark:text-amber-200">
-                        <strong>Security Warning:</strong> Your private key is stored
-                        locally in browser storage (localStorage). Never share your
-                        private key with anyone. Consider using a dedicated key for
-                        email signing, separate from your main wallet.
-                      </p>
-                    </div>
+                          <!-- Chain Info -->
+                          {#if walletStore.chainId}
+                            <div class="space-y-1">
+                              <Label class="text-xs text-muted-foreground">Network</Label>
+                              <span class="text-sm">
+                                {walletStore.chainId === 421614 ? 'Arbitrum Sepolia' :
+                                 walletStore.chainId === 42161 ? 'Arbitrum One' :
+                                 `Chain ${walletStore.chainId}`}
+                              </span>
+                            </div>
+                          {/if}
+                        </div>
+
+                        <Alert.Root class="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950/30">
+                          <InfoIcon class="text-green-600 dark:text-green-400" />
+                          <Alert.Description class="text-sm text-green-800 dark:text-green-200">
+                            Your wallet is securely connected via WalletConnect.
+                            Your private key never leaves your device.
+                            All signatures are confirmed on your mobile wallet.
+                          </Alert.Description>
+                        </Alert.Root>
+                      </div>
+                    {:else}
+                      <!-- Disconnected State -->
+                      <div class="space-y-4">
+                        <Alert.Root>
+                          <InfoIcon />
+                          <Alert.Title>Wallet Not Connected</Alert.Title>
+                          <Alert.Description>
+                            <p>
+                              Connect your wallet via WalletConnect to enable CMVH email signing.
+                              Your private key stays secure on your mobile device.
+                            </p>
+                            <ul class="list-disc pl-5 space-y-1 mt-2">
+                              <li>No private key storage in the app</li>
+                              <li>Sign emails directly from your mobile wallet</li>
+                              <li>Works with MetaMask, Trust Wallet, Rainbow, and more</li>
+                              <li>Hardware wallet support (Ledger, Trezor)</li>
+                            </ul>
+                          </Alert.Description>
+                        </Alert.Root>
+
+                        <div class="flex justify-center">
+                          <Button
+                            onclick={handleSettingsWalletConnect}
+                            disabled={walletStore.isConnecting}
+                            class="w-full sm:w-auto"
+                          >
+                            {#if walletStore.isConnecting}
+                              <div class="flex items-center gap-2">
+                                <div class="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></div>
+                                <span>Connecting...</span>
+                              </div>
+                            {:else}
+                              🔌 Connect Wallet via QR Code
+                            {/if}
+                          </Button>
+                        </div>
+
+                        {#if showWalletConnectQR && walletStore.walletConnectUri}
+                          <div class="rounded-lg border-2 border-dashed border-primary/50 bg-white dark:bg-muted p-4 space-y-3">
+                            <p class="text-xs font-medium mb-3 text-center">
+                              Scan with mobile wallet
+                            </p>
+                            <div class="flex justify-center">
+                              <img
+                                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(
+                                  walletStore.walletConnectUri,
+                                )}`}
+                                alt="WalletConnect QR Code"
+                                width="200"
+                                height="200"
+                                class="rounded"
+                              />
+                            </div>
+                            <p class="text-xs text-muted-foreground text-center">
+                              Open MetaMask, Trust Wallet, Rainbow, or any WalletConnect-compatible wallet
+                            </p>
+                            <div class="flex justify-center pt-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onclick={handleSettingsCancelConnection}
+                                class="w-full sm:w-auto"
+                              >
+                                Cancel Connection
+                              </Button>
+                            </div>
+                          </div>
+                        {/if}
+
+                        {#if walletStore.error}
+                          <Alert.Root variant="destructive">
+                            <Alert.Description>
+                              {walletStore.error}
+                            </Alert.Description>
+                          </Alert.Root>
+                        {/if}
+                      </div>
+                    {/if}
                   </div>
                 {/if}
               </div>
