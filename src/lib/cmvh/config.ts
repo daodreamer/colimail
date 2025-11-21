@@ -2,7 +2,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import type { CMVHConfig } from "./types";
-import { DEFAULT_CMVH_CONFIG, CMVH_CONFIG_VERSION, NETWORK_CONFIG } from "./types";
+import { DEFAULT_CMVH_CONFIG, NETWORK_CONFIG } from "./types";
 import { createCMVHClient } from "./blockchain";
 import type { Address, Hex } from "viem";
 
@@ -10,33 +10,6 @@ const STORAGE_KEY = "cmvh_config";
 
 // In-memory cache to avoid frequent file reads
 let configCache: CMVHConfig | null = null;
-
-/**
- * Migrate old configuration to new version
- */
-async function migrateConfig(oldConfig: Partial<CMVHConfig>): Promise<CMVHConfig> {
-  const configVersion = oldConfig.version || 1;
-
-  // If config is outdated, migrate to new version
-  if (configVersion < CMVH_CONFIG_VERSION) {
-    console.log(`🔄 Migrating CMVH config from v${configVersion} to v${CMVH_CONFIG_VERSION}`);
-
-    // Merge with defaults, but preserve user settings
-    const migratedConfig = {
-      ...DEFAULT_CMVH_CONFIG,
-      ...oldConfig,
-      version: CMVH_CONFIG_VERSION,
-      contractAddress: DEFAULT_CMVH_CONFIG.contractAddress, // Force update
-    };
-
-    // Save migrated config
-    await saveConfig(migratedConfig);
-    return migratedConfig;
-  }
-
-  // Config is up-to-date, return as-is (cast to CMVHConfig since we know all required fields exist)
-  return oldConfig as CMVHConfig;
-}
 
 /**
  * Load CMVH configuration from Tauri secure storage (synchronous wrapper)
@@ -62,8 +35,7 @@ export async function loadConfigAsync(): Promise<CMVHConfig> {
   try {
     const stored = await invoke<string>("get_secure_storage", { key: STORAGE_KEY });
     if (stored) {
-      const oldConfig = JSON.parse(stored) as Partial<CMVHConfig>;
-      const config = await migrateConfig(oldConfig);
+      const config = JSON.parse(stored) as CMVHConfig;
       configCache = config;
       return config;
     }
