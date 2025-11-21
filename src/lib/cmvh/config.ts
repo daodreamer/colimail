@@ -17,11 +17,11 @@ let configCache: CMVHConfig | null = null;
 async function migrateConfig(oldConfig: Partial<CMVHConfig>): Promise<CMVHConfig> {
   const configVersion = oldConfig.version || 1;
 
-  // If config is outdated, update contract address
+  // If config is outdated, migrate to new version
   if (configVersion < CMVH_CONFIG_VERSION) {
     console.log(`🔄 Migrating CMVH config from v${configVersion} to v${CMVH_CONFIG_VERSION}`);
 
-    // Reset contract address to new default
+    // Merge with defaults, but preserve user settings
     const migratedConfig = {
       ...DEFAULT_CMVH_CONFIG,
       ...oldConfig,
@@ -34,7 +34,8 @@ async function migrateConfig(oldConfig: Partial<CMVHConfig>): Promise<CMVHConfig
     return migratedConfig;
   }
 
-  return { ...DEFAULT_CMVH_CONFIG, ...oldConfig };
+  // Config is up-to-date, return as-is (cast to CMVHConfig since we know all required fields exist)
+  return oldConfig as CMVHConfig;
 }
 
 /**
