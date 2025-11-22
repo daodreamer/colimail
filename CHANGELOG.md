@@ -69,6 +69,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - One-click connect/disconnect from any interface
     - Fixed connection cancellation - state correctly resets after cancel
     - Prevented $effect re-triggering during connection cancellation
+  - **UX & Performance Enhancements**
+    - Toast notifications for wallet operations (success/error/disconnect with ENS/address details)
+    - Skeleton loaders during ENS resolution (ComposeDialog, nav-user, Rewards list)
+    - Smooth connection animations (scale, fly, fade transitions for all dialog states)
+    - Batch ENS resolution with 50x performance improvement (25s → 0.5s for 50 addresses)
+    - Request deduplication prevents duplicate RPC calls for concurrent ENS requests
+    - Fixed critical race condition in ENS resolver concurrent request handling
 
 - **📧 Email Features**
   - Decrypted subject display in notifications
