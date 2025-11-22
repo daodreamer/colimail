@@ -9,12 +9,18 @@
 	import SparklesIcon from "@lucide/svelte/icons/sparkles";
 	import SettingsIcon from "@lucide/svelte/icons/settings";
 	import BirdIcon from "@lucide/svelte/icons/bird";
+	import WalletIcon from "@lucide/svelte/icons/wallet";
+	import LinkIcon from "@lucide/svelte/icons/link";
+	import UnlinkIcon from "@lucide/svelte/icons/unlink";
+	import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
 
 	import * as Avatar from "$lib/components/ui/avatar/index.js";
 	import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 	import * as Sidebar from "$lib/components/ui/sidebar/index.js";
 	import { useSidebar } from "$lib/components/ui/sidebar/index.js";
 	import { goto } from "$app/navigation";
+	import { walletStore } from "$lib/stores/wallet.svelte";
+	import WalletConnectDialog from "$lib/components/WalletConnectDialog.svelte";
 
 	let {
 		user,
@@ -37,6 +43,31 @@
 	} = $props();
 
 	const sidebar = useSidebar();
+
+	// WalletConnect dialog state
+	let showWalletConnectDialog = $state(false);
+
+	// Handler for wallet connection - opens dialog
+	function handleWalletConnect() {
+		showWalletConnectDialog = true;
+	}
+
+	// Handler for wallet disconnection
+	async function handleWalletDisconnect() {
+		try {
+			await walletStore.disconnect();
+		} catch (error) {
+			console.error("Failed to disconnect wallet:", error);
+		}
+	}
+
+	// Handler for managing wallet (open settings)
+	function handleManageWallet() {
+		if (onSettings) {
+			onSettings();
+			// TODO: Optionally scroll to CMVH section in settings
+		}
+	}
 </script>
 
 <Sidebar.Menu>
@@ -75,6 +106,64 @@
 				align="end"
 				sideOffset={4}
 			>
+				<!-- Wallet Status Section - Always visible for all users -->
+				<DropdownMenu.Group>
+					<DropdownMenu.Label class="flex items-center gap-2">
+						<WalletIcon class="size-4" />
+						Wallet Status
+					</DropdownMenu.Label>
+					{#if walletStore.isConnecting}
+						<DropdownMenu.Item disabled>
+							<LoaderCircleIcon class="size-4 animate-spin" />
+							<span class="text-sm">Connecting...</span>
+						</DropdownMenu.Item>
+					{:else if walletStore.isConnected}
+						<DropdownMenu.Item disabled class="flex-col items-start gap-1">
+							<div class="flex items-center gap-2 w-full">
+								<div class="size-2 rounded-full bg-green-500 shrink-0"></div>
+								<span class="text-sm font-medium">Connected</span>
+							</div>
+							<div class="pl-4 space-y-0.5">
+								<p class="text-xs font-mono">
+									{walletStore.getDisplayName()}
+								</p>
+								{#if walletStore.ensName && walletStore.address}
+									<p class="text-xs text-muted-foreground font-mono">
+										{walletStore.formatAddress(walletStore.address, 'short')}
+									</p>
+								{/if}
+								{#if walletStore.chainId}
+									<p class="text-xs text-muted-foreground">
+										Chain ID: {walletStore.chainId}
+									</p>
+								{/if}
+							</div>
+						</DropdownMenu.Item>
+						{#if onSettings}
+							<DropdownMenu.Item onclick={handleManageWallet}>
+								<SettingsIcon class="size-4" />
+								Manage Wallet
+							</DropdownMenu.Item>
+						{/if}
+						<DropdownMenu.Item onclick={handleWalletDisconnect}>
+							<UnlinkIcon class="size-4" />
+							Disconnect
+						</DropdownMenu.Item>
+					{:else}
+						<DropdownMenu.Item disabled class="flex-col items-start gap-1">
+							<div class="flex items-center gap-2 w-full">
+								<div class="size-2 rounded-full bg-red-500 shrink-0"></div>
+								<span class="text-sm">Not connected</span>
+							</div>
+						</DropdownMenu.Item>
+						<DropdownMenu.Item onclick={handleWalletConnect}>
+							<LinkIcon class="size-4" />
+							Connect Wallet
+						</DropdownMenu.Item>
+					{/if}
+				</DropdownMenu.Group>
+				<DropdownMenu.Separator />
+
 				{#if isAuthenticated}
 					<!-- Authenticated user menu -->
 					<DropdownMenu.Label class="p-0 font-normal">
@@ -175,3 +264,6 @@
 		</DropdownMenu.Root>
 	</Sidebar.MenuItem>
 </Sidebar.Menu>
+
+<!-- WalletConnect Dialog -->
+<WalletConnectDialog bind:open={showWalletConnectDialog} />

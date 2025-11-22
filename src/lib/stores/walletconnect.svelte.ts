@@ -68,12 +68,25 @@ class WalletConnectStore {
    * Connect to wallet via WalletConnect
    */
   async connect() {
+    // Prevent starting a new connection if already connecting
+    if (this.isConnecting) {
+      console.log("Connection already in progress, skipping");
+      return;
+    }
+
+    console.log("Starting WalletConnect connection...");
     this.isConnecting = true;
     this.error = null;
     this.uri = null;
 
     try {
       const provider = await this.initProvider();
+
+      // Check if connection was cancelled during provider initialization
+      if (!this.isConnecting) {
+        console.log("Connection cancelled during initialization");
+        return;
+      }
 
       // Connect and get session
       const session = await provider.connect({
@@ -94,6 +107,12 @@ class WalletConnectStore {
           },
         },
       });
+
+      // Check if connection was cancelled during the connect call
+      if (!this.isConnecting) {
+        console.log("Connection cancelled during connect");
+        return;
+      }
 
       if (session) {
         this.session = session as any; // Type compatibility workaround for WalletConnect types
@@ -118,10 +137,18 @@ class WalletConnectStore {
       }
     } catch (error) {
       console.error("WalletConnect connection failed:", error);
-      this.error = error instanceof Error ? error.message : String(error);
+      // Only set error if we're still in connecting state (not cancelled)
+      if (this.isConnecting) {
+        this.error = error instanceof Error ? error.message : String(error);
+      }
     } finally {
-      this.isConnecting = false;
-      this.uri = null; // Clear URI after connection
+      // Only clear isConnecting if we're still in connecting state
+      // This prevents race condition where cancel sets it to false, then finally sets it to false again
+      if (this.isConnecting) {
+        this.isConnecting = false;
+        this.uri = null; // Clear URI after connection
+        console.log("Connection attempt finished");
+      }
     }
   }
 
@@ -155,12 +182,11 @@ class WalletConnectStore {
    * Used when user closes dialog or clicks cancel button before completing connection
    */
   async cancelConnection() {
-    if (!this.isConnecting) {
-      console.log("No active connection to cancel");
-      return;
-    }
-
-    console.log("Cancelling WalletConnect connection...");
+    console.log("Cancelling WalletConnect connection...", {
+      isConnecting: this.isConnecting,
+      hasProvider: !!this.provider,
+      uri: this.uri
+    });
 
     try {
       // If provider exists and is connecting, disconnect it
@@ -173,17 +199,20 @@ class WalletConnectStore {
         }
       }
 
-      // Clear connection state
+      // Force clear all connection-related state immediately
       this.uri = null;
       this.isConnecting = false;
       this.error = null;
+      this.provider = null; // Clear provider to force re-initialization
 
-      console.log("✅ Connection cancelled successfully");
+      console.log("✅ Connection cancelled successfully - state cleared");
     } catch (error) {
       console.error("Failed to cancel connection:", error);
-      // Still clear state even if cancellation failed
+      // Still force clear state even if cancellation failed
       this.uri = null;
       this.isConnecting = false;
+      this.error = null;
+      this.provider = null;
     }
   }
 

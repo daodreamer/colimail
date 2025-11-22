@@ -61,6 +61,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed wallet session dialog timing - now appears after unlock
   - Preserved original last activity timestamp during session restoration
   - Proper wallet disconnection with full state cleanup
+  - **Unified Wallet Status Display**
+    - Wallet status visible in nav-user menu for all users (no login required)
+    - Dedicated WalletConnect dialog with step-by-step connection guide
+    - Real-time status updates across all components (Settings, Compose, nav-user)
+    - ENS name display with fallback to formatted address
+    - One-click connect/disconnect from any interface
+    - Fixed connection cancellation - state correctly resets after cancel
+    - Prevented $effect re-triggering during connection cancellation
 
 - **📧 Email Features**
   - Decrypted subject display in notifications

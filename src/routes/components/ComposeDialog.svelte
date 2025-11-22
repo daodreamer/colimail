@@ -458,6 +458,37 @@
               </div>
             {:else}
               <div class="space-y-3">
+                <!-- Wallet Status Display -->
+                <div
+                  class="rounded-md border bg-muted/40 p-3 flex items-center justify-between"
+                >
+                  <div class="flex-1">
+                    <p class="text-xs font-medium text-muted-foreground mb-1">
+                      Connected Wallet
+                    </p>
+                    <p class="text-sm font-medium font-mono">
+                      {walletStore.getDisplayName()}
+                    </p>
+                    {#if walletStore.ensName && walletStore.address}
+                      <p class="text-xs text-muted-foreground font-mono mt-0.5">
+                        {walletStore.formatAddress(walletStore.address, 'short')}
+                      </p>
+                    {/if}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onclick={async () => {
+                      await walletStore.disconnect();
+                      showComposeWalletConnectQR = false;
+                    }}
+                    disabled={isSending}
+                    class="text-xs"
+                  >
+                    Change Wallet
+                  </Button>
+                </div>
+
                 <div class="space-y-2">
                   <Label for="reward-recipient">Recipient Wallet Address</Label>
                   <Input
@@ -488,14 +519,6 @@
                     />
                     <span class="text-sm font-medium">wACT</span>
                   </div>
-                  <p class="text-xs text-muted-foreground">
-                    Connected wallet: <span class="font-mono"
-                      >{walletStore.address?.slice(
-                        0,
-                        6,
-                      )}...{walletStore.address?.slice(-4)}</span
-                    >
-                  </p>
                 </div>
 
                 <div
