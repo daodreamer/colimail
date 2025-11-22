@@ -6,6 +6,8 @@
   import CheckCircleIcon from "@lucide/svelte/icons/check-circle";
   import WalletIcon from "@lucide/svelte/icons/wallet";
   import SmartphoneIcon from "@lucide/svelte/icons/smartphone";
+  import { scale, fly, fade } from "svelte/transition";
+  import { cubicOut } from "svelte/easing";
 
   let {
     open = $bindable(false),
@@ -102,11 +104,21 @@
     <div class="space-y-4">
       {#if walletStore.isConnected}
         <!-- Success State -->
-        <div class="flex flex-col items-center justify-center py-8 space-y-4">
-          <div class="rounded-full bg-green-100 dark:bg-green-900/30 p-3">
+        <div
+          class="flex flex-col items-center justify-center py-8 space-y-4"
+          in:scale={{ duration: 400, easing: cubicOut, start: 0.8 }}
+          out:fade={{ duration: 200 }}
+        >
+          <div
+            class="rounded-full bg-green-100 dark:bg-green-900/30 p-3"
+            in:scale={{ duration: 600, delay: 200, easing: cubicOut, start: 0 }}
+          >
             <CheckCircleIcon class="size-12 text-green-600 dark:text-green-400" />
           </div>
-          <div class="text-center space-y-1">
+          <div
+            class="text-center space-y-1"
+            in:fly={{ y: 10, duration: 400, delay: 300, easing: cubicOut }}
+          >
             <p class="text-lg font-semibold text-green-600 dark:text-green-400">
               Connected Successfully!
             </p>
@@ -117,9 +129,16 @@
         </div>
       {:else if walletStore.isConnecting && walletStore.walletConnectUri}
         <!-- QR Code Display State -->
-        <div class="space-y-4">
+        <div
+          class="space-y-4"
+          in:fly={{ y: 20, duration: 400, easing: cubicOut }}
+          out:fade={{ duration: 200 }}
+        >
           <!-- QR Code -->
-          <div class="flex justify-center p-4 bg-white dark:bg-muted rounded-lg border-2 border-dashed border-primary/30">
+          <div
+            class="flex justify-center p-4 bg-white dark:bg-muted rounded-lg border-2 border-dashed border-primary/30"
+            in:scale={{ duration: 400, delay: 100, easing: cubicOut, start: 0.9 }}
+          >
             <img
               src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
                 walletStore.walletConnectUri,
@@ -189,7 +208,11 @@
         </div>
       {:else if connectionAttempted}
         <!-- Loading State (initial connection) -->
-        <div class="flex flex-col items-center justify-center py-12 space-y-4">
+        <div
+          class="flex flex-col items-center justify-center py-12 space-y-4"
+          in:fade={{ duration: 300 }}
+          out:fade={{ duration: 200 }}
+        >
           <LoaderCircleIcon class="size-12 animate-spin text-primary" />
           <div class="text-center space-y-1">
             <p class="text-sm font-medium">Initializing connection...</p>
@@ -198,7 +221,11 @@
         </div>
       {:else}
         <!-- Error State or Initial State -->
-        <div class="flex flex-col items-center justify-center py-8 space-y-4">
+        <div
+          class="flex flex-col items-center justify-center py-8 space-y-4"
+          in:scale={{ duration: 300, easing: cubicOut, start: 0.95 }}
+          out:fade={{ duration: 200 }}
+        >
           <div class="rounded-full bg-amber-100 dark:bg-amber-900/30 p-3">
             <WalletIcon class="size-12 text-amber-600 dark:text-amber-400" />
           </div>

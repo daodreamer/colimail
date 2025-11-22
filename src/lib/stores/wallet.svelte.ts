@@ -2,6 +2,7 @@
 import type { Address } from "viem";
 import { walletConnectStore } from "./walletconnect.svelte";
 import { ensResolver } from "$lib/services/ens-resolver";
+import { toast } from "svelte-sonner";
 
 /**
  * Unified wallet interface that wraps WalletConnect
@@ -46,13 +47,28 @@ class WalletStore {
         try {
             await walletConnectStore.connect();
 
-            // Resolve ENS name in background after connection
+            // Show success toast with wallet info
             if (this.address) {
+                // Resolve ENS name in background
                 this.resolveENS();
+
+                // Show success notification
+                const displayName = this.getDisplayName();
+                toast.success('Wallet connected successfully', {
+                    description: displayName,
+                    duration: 3000,
+                });
             }
         } catch (e) {
             console.error("Failed to connect WalletConnect:", e);
             this.error = e instanceof Error ? e.message : String(e);
+
+            // Show friendly error toast
+            const friendlyMessage = this.getFriendlyErrorMessage(e);
+            toast.error('Connection failed', {
+                description: friendlyMessage,
+                duration: 5000,
+            });
         }
     }
 
@@ -60,6 +76,9 @@ class WalletStore {
      * Disconnect wallet
      */
     async disconnect() {
+        const wasConnected = this.isConnected;
+        const displayName = wasConnected ? this.getDisplayName() : '';
+
         await walletConnectStore.disconnect();
         this.error = null;
 
@@ -67,6 +86,14 @@ class WalletStore {
         this.ensName = null;
         this.ensAvatar = null;
         this.isResolvingENS = false;
+
+        // Show disconnect toast
+        if (wasConnected) {
+            toast.info('Wallet disconnected', {
+                description: displayName,
+                duration: 2000,
+            });
+        }
     }
 
     /**
@@ -149,6 +176,39 @@ class WalletStore {
      */
     async clearSession() {
         await walletConnectStore.clearSessionFromStorage();
+    }
+
+    /**
+     * Get user-friendly error message for wallet connection errors
+     */
+    private getFriendlyErrorMessage(error: unknown): string {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+
+        // User cancelled
+        if (errorMsg.toLowerCase().includes('user rejected') ||
+            errorMsg.toLowerCase().includes('user canceled') ||
+            errorMsg.toLowerCase().includes('user denied')) {
+            return 'Connection was cancelled. Please try again.';
+        }
+
+        // Timeout
+        if (errorMsg.toLowerCase().includes('timeout')) {
+            return 'Connection timed out. Please scan the QR code again.';
+        }
+
+        // Network errors
+        if (errorMsg.toLowerCase().includes('network') ||
+            errorMsg.toLowerCase().includes('fetch')) {
+            return 'Network error. Please check your internet connection.';
+        }
+
+        // QR code related
+        if (errorMsg.toLowerCase().includes('qr')) {
+            return 'Failed to generate QR code. Please try again.';
+        }
+
+        // Generic fallback
+        return 'Please try scanning the QR code again.';
     }
 }
 

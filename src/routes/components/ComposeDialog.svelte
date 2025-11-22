@@ -16,6 +16,7 @@
   import { loadConfig } from "$lib/cmvh";
   import { walletStore } from "$lib/stores/wallet.svelte";
   import { state as appState } from "../lib/state.svelte";
+  import LoaderCircleIcon from "@lucide/svelte/icons/loader-circle";
 
   // Props
   let {
@@ -466,13 +467,20 @@
                     <p class="text-xs font-medium text-muted-foreground mb-1">
                       Connected Wallet
                     </p>
-                    <p class="text-sm font-medium font-mono">
-                      {walletStore.getDisplayName()}
-                    </p>
-                    {#if walletStore.ensName && walletStore.address}
-                      <p class="text-xs text-muted-foreground font-mono mt-0.5">
-                        {walletStore.formatAddress(walletStore.address, 'short')}
+                    {#if walletStore.isResolvingENS}
+                      <div class="flex items-center gap-2">
+                        <LoaderCircleIcon class="size-3 animate-spin text-muted-foreground" />
+                        <span class="text-sm text-muted-foreground">Resolving ENS...</span>
+                      </div>
+                    {:else}
+                      <p class="text-sm font-medium font-mono">
+                        {walletStore.getDisplayName()}
                       </p>
+                      {#if walletStore.ensName && walletStore.address}
+                        <p class="text-xs text-muted-foreground font-mono mt-0.5">
+                          {walletStore.formatAddress(walletStore.address, 'short')}
+                        </p>
+                      {/if}
                     {/if}
                   </div>
                   <Button

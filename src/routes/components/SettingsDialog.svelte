@@ -37,6 +37,8 @@
   import { Card, CardContent, CardHeader, CardTitle } from "$lib/components/ui/card";
   import { Skeleton } from "$lib/components/ui/skeleton";
   import { ScrollArea } from "$lib/components/ui/scroll-area";
+  import { ensResolver } from "$lib/services/ens-resolver";
+  import type { Address } from "viem";
 
   interface SettingsDialogProps {
     open: boolean;
@@ -439,7 +441,24 @@
       const rewardPromises = rewardIds.map((id) =>
         rewardService.getRewardInfo(id),
       );
-      rewardsReceived = await Promise.all(rewardPromises);
+      const rewards = await Promise.all(rewardPromises);
+
+      // Extract all unique sender addresses for batch ENS resolution
+      const senderAddresses = rewards
+        .map(r => r.sender)
+        .filter((addr): addr is Address => !!addr && addr.startsWith('0x'));
+
+      // Batch resolve ENS names for all senders (parallel + deduplication)
+      if (senderAddresses.length > 0) {
+        console.log(`[Rewards] Batch resolving ENS for ${senderAddresses.length} addresses`);
+        const startTime = performance.now();
+        await ensResolver.resolveBatch(senderAddresses);
+        const duration = performance.now() - startTime;
+        console.log(`[Rewards] ENS batch resolution completed in ${duration.toFixed(0)}ms`);
+      }
+
+      // Set rewards (ENS names now cached for instant display)
+      rewardsReceived = rewards;
     } catch (error) {
       console.error("Failed to fetch rewards:", error);
       toast.error("Failed to fetch rewards");
@@ -482,9 +501,17 @@
     }
   });
 
-  // Format address helper
+  // Format address helper with ENS support
   function formatAddress(address: string): string {
     if (!address || address.length < 10) return address;
+
+    // Try to get cached ENS name (should be available from batch resolution)
+    const ensInfo = ensResolver.getCached(address as Address);
+    if (ensInfo?.name) {
+      return ensInfo.name;
+    }
+
+    // Fallback to shortened address
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
 

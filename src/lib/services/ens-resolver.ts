@@ -36,6 +36,7 @@ interface ENSCacheEntry {
  */
 export class ENSResolver {
   private memoryCache: Map<string, ENSInfo | null> = new Map();
+  private pendingRequests: Map<string, Promise<ENSInfo | null>> = new Map();
   private publicClient;
 
   // Cache TTLs
@@ -53,16 +54,42 @@ export class ENSResolver {
   /**
    * Resolve ENS name for a given address
    * Uses 3-tier caching: Memory → SQLite → RPC
+   * Includes request deduplication to prevent parallel RPC calls for same address
    */
   async resolve(address: Address): Promise<ENSInfo | null> {
     const normalizedAddress = address.toLowerCase();
 
-    // Layer 1: Check memory cache
+    // Layer 1: Check memory cache (synchronous, fastest)
     const memoryCached = this.getFromMemoryCache(normalizedAddress);
     if (memoryCached !== undefined) {
       return memoryCached;
     }
 
+    // Check if there's already a pending request for this address
+    // IMPORTANT: Check BEFORE starting async operations to prevent race conditions
+    const pendingRequest = this.pendingRequests.get(normalizedAddress);
+    if (pendingRequest) {
+      console.log(`[ENS Dedup] Reusing pending request for ${normalizedAddress.slice(0, 10)}...`);
+      return pendingRequest;
+    }
+
+    // Create and store promise IMMEDIATELY to prevent concurrent requests
+    const resolutionPromise = this.performFullResolution(address, normalizedAddress);
+    this.pendingRequests.set(normalizedAddress, resolutionPromise);
+
+    try {
+      return await resolutionPromise;
+    } finally {
+      // Clean up the pending request after completion
+      this.pendingRequests.delete(normalizedAddress);
+    }
+  }
+
+  /**
+   * Perform full resolution: SQLite cache check → RPC fallback
+   * Separated to ensure promise is stored before any async operations
+   */
+  private async performFullResolution(address: Address, normalizedAddress: string): Promise<ENSInfo | null> {
     // Layer 2: Check SQLite cache
     const sqliteCached = await this.getFromSQLiteCache(normalizedAddress);
     if (sqliteCached !== undefined) {
@@ -72,6 +99,14 @@ export class ENSResolver {
     }
 
     // Layer 3: RPC resolution
+    return this.performRPCResolution(address, normalizedAddress);
+  }
+
+  /**
+   * Perform RPC resolution and cache the result
+   * Separated for better request deduplication handling
+   */
+  private async performRPCResolution(address: Address, normalizedAddress: string): Promise<ENSInfo | null> {
     try {
       const ensInfo = await this.resolveViaRPC(address);
 
@@ -100,6 +135,14 @@ export class ENSResolver {
     await Promise.all(promises);
 
     return results;
+  }
+
+  /**
+   * Get cached ENS info synchronously (returns null if not in cache)
+   * Useful for displaying ENS names without triggering async resolution
+   */
+  getCached(address: Address): ENSInfo | null | undefined {
+    return this.getFromMemoryCache(address.toLowerCase());
   }
 
   /**

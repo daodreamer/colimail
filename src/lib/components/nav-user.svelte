@@ -124,13 +124,20 @@
 								<span class="text-sm font-medium">Connected</span>
 							</div>
 							<div class="pl-4 space-y-0.5">
-								<p class="text-xs font-mono">
-									{walletStore.getDisplayName()}
-								</p>
-								{#if walletStore.ensName && walletStore.address}
-									<p class="text-xs text-muted-foreground font-mono">
-										{walletStore.formatAddress(walletStore.address, 'short')}
+								{#if walletStore.isResolvingENS}
+									<div class="flex items-center gap-1.5">
+										<LoaderCircleIcon class="size-3 animate-spin text-muted-foreground" />
+										<span class="text-xs text-muted-foreground">Resolving ENS...</span>
+									</div>
+								{:else}
+									<p class="text-xs font-mono">
+										{walletStore.getDisplayName()}
 									</p>
+									{#if walletStore.ensName && walletStore.address}
+										<p class="text-xs text-muted-foreground font-mono">
+											{walletStore.formatAddress(walletStore.address, 'short')}
+										</p>
+									{/if}
 								{/if}
 								{#if walletStore.chainId}
 									<p class="text-xs text-muted-foreground">
