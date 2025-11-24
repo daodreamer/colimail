@@ -20,12 +20,14 @@
   // Track connection attempt state
   let connectionAttempted = $state(false);
   let isCancelling = $state(false); // Track if we're in the process of cancelling
+  let hasShownError = $state(false); // Track if we've shown an error
 
   // Start connection when dialog opens
   $effect(() => {
     if (open && !walletStore.isConnected && !walletStore.isConnecting && !isCancelling && !connectionAttempted) {
       console.log("Dialog opened - initiating connection");
       connectionAttempted = true;
+      hasShownError = false;
       walletStore.connect().catch((error) => {
         console.error("Failed to initiate wallet connection:", error);
       });
@@ -43,6 +45,24 @@
     }
   });
 
+  // Track error state and auto-close dialog after error is cleared
+  $effect(() => {
+    if (walletStore.error && open) {
+      // Mark that we've shown an error
+      hasShownError = true;
+    } else if (hasShownError && !walletStore.error && !walletStore.isConnecting && !walletStore.isConnected && open) {
+      // Error was cleared - close the dialog
+      console.log("Error cleared - closing dialog");
+      setTimeout(() => {
+        open = false;
+        if (onOpenChange) onOpenChange(false);
+        // Reset states
+        connectionAttempted = false;
+        hasShownError = false;
+      }, 500); // Small delay to show the cleared state
+    }
+  });
+
   // Handle dialog close
   async function handleOpenChange(newOpen: boolean) {
     console.log("Dialog open state changing:", newOpen);
@@ -57,6 +77,7 @@
       }
       // Reset local state
       connectionAttempted = false;
+      hasShownError = false;
     }
 
     // Update open state after cleanup
@@ -76,6 +97,7 @@
 
     // Reset local state
     connectionAttempted = false;
+    hasShownError = false;
 
     // Close dialog (this will trigger handleOpenChange, but isCancelling prevents re-connection)
     open = false;
@@ -206,7 +228,7 @@
             </Button>
           </div>
         </div>
-      {:else if connectionAttempted}
+      {:else if connectionAttempted && !walletStore.error}
         <!-- Loading State (initial connection) -->
         <div
           class="flex flex-col items-center justify-center py-12 space-y-4"
@@ -226,23 +248,64 @@
           in:scale={{ duration: 300, easing: cubicOut, start: 0.95 }}
           out:fade={{ duration: 200 }}
         >
-          <div class="rounded-full bg-amber-100 dark:bg-amber-900/30 p-3">
-            <WalletIcon class="size-12 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div class="text-center space-y-2">
-            <p class="text-sm font-medium">
-              {walletStore.error || "Failed to generate QR code"}
-            </p>
-            <Button onclick={() => walletStore.connect()} variant="outline" size="sm">
-              Try Again
-            </Button>
-          </div>
-        </div>
-      {/if}
-
-      {#if walletStore.error && !walletStore.isConnected}
-        <div class="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-xs text-destructive">
-          {walletStore.error}
+          {#if walletStore.error}
+            <!-- User cancelled or error occurred -->
+            <div class="rounded-full bg-red-100 dark:bg-red-900/30 p-3">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="size-12 text-red-600 dark:text-red-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
+            </div>
+            <div class="text-center space-y-3">
+              <div>
+                <p class="text-base font-semibold text-red-600 dark:text-red-400">
+                  {walletStore.error}
+                </p>
+                <p class="text-xs text-muted-foreground mt-1">
+                  You can try connecting again when ready
+                </p>
+              </div>
+              <Button
+                onclick={() => {
+                  connectionAttempted = true;
+                  walletStore.connect();
+                }}
+                variant="default"
+                size="sm"
+                class="mt-2"
+              >
+                Try Again
+              </Button>
+            </div>
+          {:else}
+            <!-- Initial state or unknown error -->
+            <div class="rounded-full bg-amber-100 dark:bg-amber-900/30 p-3">
+              <WalletIcon class="size-12 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div class="text-center space-y-2">
+              <p class="text-sm font-medium">Ready to connect</p>
+              <Button
+                onclick={() => {
+                  connectionAttempted = true;
+                  walletStore.connect();
+                }}
+                variant="outline"
+                size="sm"
+              >
+                Connect Wallet
+              </Button>
+            </div>
+          {/if}
         </div>
       {/if}
     </div>

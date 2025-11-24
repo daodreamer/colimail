@@ -9,8 +9,6 @@ import { toast } from "svelte-sonner";
  * This store provides a simplified API for the rest of the application
  */
 class WalletStore {
-    error = $state<string | null>(null);
-
     // ENS state
     ensName = $state<string | null>(null);
     ensAvatar = $state<string | null>(null);
@@ -33,6 +31,11 @@ class WalletStore {
         return walletConnectStore.isConnecting;
     }
 
+    // Error state from WalletConnect store
+    get error(): string | null {
+        return walletConnectStore.error;
+    }
+
     // WalletConnect QR code URI
     get walletConnectUri(): string | null {
         return walletConnectStore.uri;
@@ -42,8 +45,6 @@ class WalletStore {
      * Connect via WalletConnect (shows QR code for mobile wallet)
      */
     async connect() {
-        this.error = null;
-
         try {
             await walletConnectStore.connect();
 
@@ -61,14 +62,18 @@ class WalletStore {
             }
         } catch (e) {
             console.error("Failed to connect WalletConnect:", e);
-            this.error = e instanceof Error ? e.message : String(e);
 
-            // Show friendly error toast
-            const friendlyMessage = this.getFriendlyErrorMessage(e);
-            toast.error('Connection failed', {
-                description: friendlyMessage,
-                duration: 5000,
-            });
+            // Show friendly error toast (only for non-user-cancellation errors)
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            const isUserCancellation = errorMessage.includes("cancelled by user");
+
+            if (!isUserCancellation) {
+                const friendlyMessage = this.getFriendlyErrorMessage(e);
+                toast.error('Connection failed', {
+                    description: friendlyMessage,
+                    duration: 5000,
+                });
+            }
         }
     }
 
@@ -80,7 +85,6 @@ class WalletStore {
         const displayName = wasConnected ? this.getDisplayName() : '';
 
         await walletConnectStore.disconnect();
-        this.error = null;
 
         // Clear ENS state
         this.ensName = null;
@@ -102,7 +106,6 @@ class WalletStore {
      */
     async cancelConnection() {
         await walletConnectStore.cancelConnection();
-        this.error = null;
     }
 
     /**

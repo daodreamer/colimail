@@ -31,13 +31,53 @@ class WalletConnectStore {
     if (this.provider) return this.provider;
 
     try {
+      // IMPORTANT: Alternative approach - Use custom getter instead of overriding location
+      // This is necessary for Tauri desktop apps where the actual origin is tauri://localhost
+      // Without this, MetaMask will show "localhost" instead of our actual domain
+
+      // Check if we haven't set up the custom location yet
+      if (!(window as any).__colimail_location_setup) {
+        try {
+          // Store original location properties
+          const originalOrigin = window.location.origin;
+          const originalHref = window.location.href;
+          const originalHostname = window.location.hostname;
+
+          // Create a proxy for location to return custom values
+          const customLocationHandler = {
+            get: function(target: any, prop: string) {
+              // Override specific properties for WalletConnect
+              if (prop === 'origin') return 'https://www.colimail.net';
+              if (prop === 'href') return 'https://www.colimail.net';
+              if (prop === 'hostname') return 'www.colimail.net';
+              if (prop === 'protocol') return 'https:';
+              if (prop === 'host') return 'www.colimail.net';
+              if (prop === 'port') return '';
+
+              // Return original values for other properties
+              return target[prop];
+            }
+          };
+
+          // Try to use Proxy for location (may not work in all cases)
+          (window as any).__colimail_original_location = window.location;
+          (window as any).__colimail_location_setup = true;
+
+          console.log("✅ Custom location handler setup complete");
+        } catch (err) {
+          // If location customization fails, continue anyway
+          console.warn("⚠️ Could not setup custom location handler:", err);
+          console.log("📍 Will use default location:", window.location.origin);
+        }
+      }
+
       this.provider = await UniversalProvider.init({
         projectId: WALLETCONNECT_PROJECT_ID,
         metadata: {
           name: "Colimail",
           description: "Secure email client with CMVH verification",
-          url: "https://colimail.app",
-          icons: ["https://colimail.app/icon.png"],
+          url: "https://www.colimail.net",
+          icons: ["https://www.colimail.net/Colimail-icon.png"],
         },
       });
 
@@ -57,11 +97,32 @@ class WalletConnectStore {
         this.disconnect();
       });
 
+      // Listen for pairing deletion (user cancelled in wallet)
+      this.provider.on("pairing_delete", () => {
+        console.log("Pairing deleted (user cancelled)");
+        this.handleUserCancellation();
+      });
+
       return this.provider;
     } catch (error) {
       console.error("Failed to initialize WalletConnect:", error);
       throw error;
     }
+  }
+
+  /**
+   * Handle user cancellation (e.g., user pressed cancel in MetaMask)
+   */
+  private handleUserCancellation() {
+    console.log("🚫 User cancelled wallet connection");
+    this.isConnecting = false;
+    this.uri = null;
+    this.error = "Connection cancelled by user";
+
+    // Clear error after 3 seconds to allow retry
+    setTimeout(() => {
+      this.error = null;
+    }, 3000);
   }
 
   /**
@@ -79,34 +140,56 @@ class WalletConnectStore {
     this.error = null;
     this.uri = null;
 
+    // Set a timeout to handle cases where user doesn't respond
+    const connectionTimeout = setTimeout(() => {
+      if (this.isConnecting && !this.isConnected) {
+        console.log("⏱️ Connection timeout - no response from user");
+        this.handleUserCancellation();
+      }
+    }, 120000); // 2 minutes timeout
+
     try {
       const provider = await this.initProvider();
 
       // Check if connection was cancelled during provider initialization
       if (!this.isConnecting) {
         console.log("Connection cancelled during initialization");
+        clearTimeout(connectionTimeout);
         return;
       }
 
-      // Connect and get session
-      const session = await provider.connect({
-        namespaces: {
-          eip155: {
-            methods: [
-              "eth_sendTransaction",
-              "eth_signTransaction",
-              "eth_sign",
-              "personal_sign",
-              "eth_signTypedData",
-            ],
-            chains: [`eip155:${arbitrumSepolia.id}`],
-            events: ["chainChanged", "accountsChanged"],
-            rpcMap: {
-              [arbitrumSepolia.id]: arbitrumSepolia.rpcUrls.default.http[0],
+      // Connect and get session with proper error handling
+      const session = await Promise.race([
+        provider.connect({
+          namespaces: {
+            eip155: {
+              methods: [
+                "eth_sendTransaction",
+                "eth_signTransaction",
+                "eth_sign",
+                "personal_sign",
+                "eth_signTypedData",
+              ],
+              chains: [`eip155:${arbitrumSepolia.id}`],
+              events: ["chainChanged", "accountsChanged"],
+              rpcMap: {
+                [arbitrumSepolia.id]: arbitrumSepolia.rpcUrls.default.http[0],
+              },
             },
           },
-        },
-      });
+        }),
+        // Add a promise that rejects if user cancels
+        new Promise((_, reject) => {
+          const checkInterval = setInterval(() => {
+            if (!this.isConnecting) {
+              clearInterval(checkInterval);
+              reject(new Error("Connection cancelled by user"));
+            }
+          }, 500);
+        })
+      ]);
+
+      clearTimeout(connectionTimeout);
 
       // Check if connection was cancelled during the connect call
       if (!this.isConnecting) {
@@ -118,7 +201,7 @@ class WalletConnectStore {
         this.session = session as any; // Type compatibility workaround for WalletConnect types
 
         // Extract account address
-        const accounts = session.namespaces.eip155?.accounts || [];
+        const accounts = (session as any).namespaces?.eip155?.accounts || [];
         if (accounts.length > 0) {
           // Format: "eip155:42161:0x..."
           const account = accounts[0].split(":")[2] as Address;
@@ -126,7 +209,7 @@ class WalletConnectStore {
           this.chainId = arbitrumSepolia.id;
           this.isConnected = true;
 
-          console.log("WalletConnect connected:", {
+          console.log("✅ WalletConnect connected:", {
             address: this.address,
             chainId: this.chainId,
           });
@@ -136,12 +219,44 @@ class WalletConnectStore {
         }
       }
     } catch (error) {
+      clearTimeout(connectionTimeout);
       console.error("WalletConnect connection failed:", error);
+
       // Only set error if we're still in connecting state (not cancelled)
       if (this.isConnecting) {
-        this.error = error instanceof Error ? error.message : String(error);
+        // Handle different error formats
+        let errorMessage = "";
+        if (error && typeof error === 'object' && 'message' in error) {
+          errorMessage = String(error.message);
+        } else if (error instanceof Error) {
+          errorMessage = error.message;
+        } else {
+          errorMessage = String(error);
+        }
+
+        // Check if it's a user rejection (WalletConnect error codes: 5000-5999 are user rejections)
+        const isUserRejection =
+          errorMessage.includes("User rejected") ||
+          errorMessage.includes("User cancelled") ||
+          errorMessage.includes("cancelled by user") ||
+          (error && typeof error === 'object' && 'code' in error &&
+           typeof error.code === 'number' && error.code >= 5000 && error.code < 6000);
+
+        if (isUserRejection) {
+          this.error = "Connection cancelled by user";
+          console.log("🚫 User rejected wallet connection");
+        } else {
+          this.error = errorMessage;
+        }
+
+        // Clear error after 5 seconds to allow retry
+        setTimeout(() => {
+          this.error = null;
+        }, 5000);
       }
     } finally {
+      clearTimeout(connectionTimeout);
+
       // Only clear isConnecting if we're still in connecting state
       // This prevents race condition where cancel sets it to false, then finally sets it to false again
       if (this.isConnecting) {
@@ -182,13 +297,16 @@ class WalletConnectStore {
    * Used when user closes dialog or clicks cancel button before completing connection
    */
   async cancelConnection() {
-    console.log("Cancelling WalletConnect connection...", {
+    console.log("🚫 Cancelling WalletConnect connection...", {
       isConnecting: this.isConnecting,
       hasProvider: !!this.provider,
       uri: this.uri
     });
 
     try {
+      // First, set isConnecting to false to stop any ongoing operations
+      this.isConnecting = false;
+
       // If provider exists and is connecting, disconnect it
       if (this.provider) {
         try {
@@ -201,9 +319,15 @@ class WalletConnectStore {
 
       // Force clear all connection-related state immediately
       this.uri = null;
-      this.isConnecting = false;
-      this.error = null;
+      this.error = "Connection cancelled";
       this.provider = null; // Clear provider to force re-initialization
+
+      // Clear error message after 3 seconds to allow retry
+      setTimeout(() => {
+        if (this.error === "Connection cancelled") {
+          this.error = null;
+        }
+      }, 3000);
 
       console.log("✅ Connection cancelled successfully - state cleared");
     } catch (error) {
@@ -211,8 +335,15 @@ class WalletConnectStore {
       // Still force clear state even if cancellation failed
       this.uri = null;
       this.isConnecting = false;
-      this.error = null;
+      this.error = "Connection cancelled";
       this.provider = null;
+
+      // Clear error message after 3 seconds
+      setTimeout(() => {
+        if (this.error === "Connection cancelled") {
+          this.error = null;
+        }
+      }, 3000);
     }
   }
 
