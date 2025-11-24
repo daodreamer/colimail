@@ -79,10 +79,39 @@ npm run check
 cd src-tauri
 cargo fmt
 cargo check
+cargo clippy -- -D warnings
 
 # Run the application
 npm run tauri dev
 ```
+
+**Testing CMVH Features:**
+
+If your changes affect CMVH (email signing/verification) or WalletConnect:
+
+1. **CMVH Signing Test:**
+   - Configure Ethereum private key in Settings → CMVH
+   - Compose email and enable "Sign with CMVH"
+   - Send to another account and verify signature appears
+
+2. **WalletConnect Test:**
+   - Connect wallet via QR code (test with MetaMask Mobile)
+   - Verify ENS name resolution displays correctly
+   - Test connection timeout and session restoration
+   - Test cancellation flow (scan QR, cancel in wallet app)
+
+3. **Reward Pool Test:**
+   - Connect wallet with test wACT tokens
+   - Create reward for email (use Arbitrum Sepolia testnet)
+   - Claim reward as recipient
+   - Verify rewards dashboard displays correctly
+
+4. **Rust CMVH Tests:**
+   ```bash
+   cd src-tauri
+   cargo test cmvh
+   cargo test ens
+   ```
 
 ### 4. Commit Changes
 
@@ -285,11 +314,11 @@ Who would benefit from this feature and how?
 Looking for where to start? Here are some areas that need help:
 
 ### High Priority
-- Password encryption (currently stored in plaintext)
-- OAuth2 token secure storage
 - Email search functionality
 - Performance optimizations
-- Cross-platform testing
+- Cross-platform testing (especially Linux)
+- CMVH smart contract testing on Arbitrum mainnet
+- WalletConnect compatibility testing with more wallet apps
 
 ### Good First Issues
 - UI/UX improvements
@@ -297,13 +326,23 @@ Looking for where to start? Here are some areas that need help:
 - Additional email provider configurations
 - Keyboard shortcuts
 - Accessibility improvements
+- CMVH onboarding flow improvements
+
+### CMVH & Blockchain Features
+- Smart contract audit and security improvements
+- Reward pool UI/UX enhancements
+- ENS avatar display support
+- Multi-chain support (beyond Arbitrum)
+- Gas optimization for on-chain operations
+- CMVH signature format versioning
 
 ### Advanced
 - Plugin/extension system
-- PGP encryption support
+- PGP encryption support (alongside CMVH)
 - Calendar integration
 - Custom themes
 - Multi-language support
+- CMVH batch verification API
 
 ## Questions?
 

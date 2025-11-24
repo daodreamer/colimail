@@ -103,10 +103,20 @@ src-tauri/src/
 ├── oauth2_config.rs           # OAuth2配置
 ├── logger.rs                  # 日志系统
 ├── attachment_limits.rs       # 附件大小限制
+├── cmvh/                      # CMVH（邮件加密签名）模块
+│   ├── mod.rs                # 模块导出
+│   ├── types.rs              # CMVH类型定义
+│   ├── signer.rs             # EIP-712邮件签名
+│   ├── verifier.rs           # 签名验证
+│   ├── parser.rs             # CMVH头部解析
+│   ├── mime.rs               # RFC5322邮件构建
+│   └── cache.rs              # 验证结果缓存
 ├── commands/                  # Tauri命令层
 │   ├── mod.rs                # 命令导出
 │   ├── accounts.rs           # 账户管理
 │   ├── encryption_manager.rs # 加密管理命令
+│   ├── cmvh.rs               # CMVH命令
+│   ├── send_cmvh.rs          # CMVH邮件发送
 │   ├── emails/               # 邮件操作模块
 │   │   ├── mod.rs
 │   │   ├── fetch.rs          # 邮件获取
@@ -759,6 +769,237 @@ await invoke('lock_encryption_command')
 
 ---
 
+### 7. CMVH（邮件加密签名验证系统）
+
+**CMVH (ColiMail Verification Header)** 是基于区块链的邮件签名验证系统，使用 EIP-712 标准对邮件进行加密签名，确保邮件发送者身份真实性。
+
+#### 架构概览
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                      前端层 (TypeScript)                  │
+├─────────────────────────────────────────────────────────┤
+│  • blockchain.ts      - 智能合约交互                      │
+│  • verifier.ts        - 签名验证逻辑                      │
+│  • reward-service.ts  - 奖励池管理                       │
+│  • ens-resolver.ts    - ENS名称解析                      │
+│  • types.ts           - TypeScript类型定义                │
+└─────────────────────────────────────────────────────────┘
+                            ↕ Tauri IPC
+┌─────────────────────────────────────────────────────────┐
+│                      后端层 (Rust)                        │
+├─────────────────────────────────────────────────────────┤
+│  cmvh/                                                   │
+│  ├── signer.rs        - EIP-712 邮件签名                 │
+│  ├── verifier.rs      - 本地签名验证                     │
+│  ├── parser.rs        - CMVH头部解析                     │
+│  ├── mime.rs          - RFC5322邮件构建                  │
+│  ├── cache.rs         - 验证结果缓存                     │
+│  └── types.rs         - Rust数据类型                     │
+│                                                          │
+│  commands/                                               │
+│  ├── cmvh.rs          - CMVH Tauri命令                   │
+│  └── send_cmvh.rs     - CMVH邮件发送                     │
+└─────────────────────────────────────────────────────────┘
+                            ↕
+┌─────────────────────────────────────────────────────────┐
+│                   区块链层 (Arbitrum)                     │
+├─────────────────────────────────────────────────────────┤
+│  • CMVH Contract      - 链上签名验证                     │
+│  • Reward Pool        - wACT代币奖励池                   │
+│  • ENS Registry       - 以太坊名称服务                   │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### EIP-712 签名流程
+
+**签名生成** (Rust: `signer.rs`)
+
+```rust
+// 1. 构建 EIP-712 Domain Separator
+domain_separator = keccak256(
+    abi.encode(
+        keccak256("EIP712Domain(string name,string version,uint256 chainId)"),
+        keccak256("ColiMail Verification"),
+        keccak256("2"),
+        chain_id  // Arbitrum: 42161 或 421614
+    )
+)
+
+// 2. 构建 Email Struct Hash
+struct_hash = keccak256(
+    abi.encode(
+        EMAIL_TYPEHASH,  // keccak256("Email(string subject,string from,string to,uint256 timestamp)")
+        keccak256(subject),
+        keccak256(from),
+        keccak256(to),
+        timestamp
+    )
+)
+
+// 3. 生成最终签名
+digest = keccak256("\x19\x01" + domain_separator + struct_hash)
+signature = secp256k1_sign(digest, private_key)
+```
+
+**CMVH 头部格式**
+
+```
+X-CMVH-Version: 2
+X-CMVH-Address: 0x1234...5678
+X-CMVH-Signature: 0xabc...def
+X-CMVH-Timestamp: 1700000000
+X-CMVH-Hash-Algo: eip712
+```
+
+#### 三层验证架构
+
+**Layer 1: 本地签名验证** (< 1ms)
+- 位置: `src-tauri/src/cmvh/verifier.rs`
+- 验证签名是否由声明的地址生成
+- 无需网络请求，即时反馈
+
+**Layer 2: 缓存查询** (< 10ms)
+- 双层缓存: Memory (1小时TTL) + SQLite (90天TTL)
+- 减少重复RPC调用，提升性能
+- 自动清理过期缓存
+
+**Layer 3: 链上验证** (~2-5秒)
+- 智能合约: `0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03` (Arbitrum Sepolia)
+- 使用 viem 调用 `verifyEmail` 函数
+- 验证结果自动缓存
+
+#### 核心 API
+
+**Rust 命令** (`commands/cmvh.rs`)
+
+```rust
+// 签名邮件
+sign_email_with_cmvh(private_key, content) -> CMVHHeaders
+
+// 解析CMVH头部
+parse_email_cmvh_headers(raw_headers) -> CMVHHeaders
+
+// 本地签名验证
+verify_cmvh_signature(headers, content) -> VerificationResult
+
+// 缓存管理
+get_cmvh_cache(signature, email_hash) -> Option<CacheEntry>
+save_cmvh_cache(signature, email_hash, is_valid, error)
+cleanup_cmvh_cache() -> deleted_count
+```
+
+**TypeScript 服务** (`src/lib/cmvh/`)
+
+```typescript
+// 链上验证
+verifyOnChain(headers: CMVHHeaders, content: EmailContent): Promise<boolean>
+
+// 奖励管理
+createReward(recipient, amount, emailContent) -> Hash
+claimReward(rewardId, emailContent, signature) -> Hash
+
+// ENS解析
+ensResolver.resolve(address: Address) -> ENSInfo | null
+```
+
+#### 奖励池系统
+
+**功能特性**:
+- 发件人可为邮件附加 wACT 代币奖励
+- 收件人验证签名后可领取奖励
+- 支持奖励取消和过期机制（默认30天）
+- 奖励状态实时追踪
+
+**UI 位置**:
+- 发送: ComposeDialog → Rewards选项卡
+- 接收: EmailView → 奖励通知卡片
+- 管理: Settings → Rewards Dashboard
+
+#### ENS 集成
+
+**三层缓存架构**:
+```
+L1: Memory Cache (Map)      - <1ms,  5分钟TTL
+L2: SQLite Cache            - ~10ms, 7天TTL
+L3: RPC Fallback (Mainnet)  - ~200-500ms
+```
+
+**批量解析优化**:
+- 并发请求去重，防止重复RPC调用
+- 批量解析50个地址: 25秒 → 0.5秒 (50倍提升)
+- 缓存命中率 > 90%
+
+**UI 显示**:
+- 优先显示 ENS 名称 (如 "vitalik.eth")
+- 降级为格式化地址 (如 "0x1234...5678")
+- 骨架屏加载动画提升用户体验
+
+#### 数据库表
+
+```sql
+-- CMVH 验证缓存
+CREATE TABLE cmvh_verification_cache (
+    signature TEXT PRIMARY KEY,
+    email_hash TEXT NOT NULL,
+    is_valid BOOLEAN NOT NULL,
+    error TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
+-- ENS 名称缓存
+CREATE TABLE ens_cache (
+    address TEXT PRIMARY KEY,
+    ens_name TEXT,
+    resolved_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+```
+
+#### WalletConnect 集成
+
+**连接方式**: 仅支持 WalletConnect (移除浏览器插件支持以提升安全性)
+
+**支持钱包**:
+- MetaMask Mobile
+- Trust Wallet
+- Rainbow Wallet
+- 所有 WalletConnect 兼容钱包
+
+**安全机制**:
+- **Layer 1**: 启动时确认对话框（恢复已保存会话）
+- **Layer 2**: 可配置会话超时（1小时-30天，默认24小时）
+- **Layer 3**: 交易确认对话框（发送奖励前）
+- 私钥存储在 OS Keyring（Windows Credential Manager/macOS Keychain/Linux Secret Service）
+
+**状态管理**:
+- 位置: `src/lib/stores/walletconnect.svelte.ts`
+- 统一钱包状态显示（Settings、Compose、nav-user）
+- 实时状态同步（连接/断开/错误）
+- Toast 通知（成功/失败/断开连接）
+
+#### 性能指标
+
+| 操作 | 延迟 | 说明 |
+|------|------|------|
+| 本地签名验证 | < 1ms | Rust secp256k1 |
+| 缓存命中查询 | < 10ms | SQLite |
+| 链上验证 | 2-5秒 | Arbitrum RPC |
+| ENS解析（缓存） | < 1ms | Memory |
+| ENS解析（RPC） | 200-500ms | Ethereum Mainnet |
+
+#### 技术栈
+
+- **签名算法**: secp256k1 (Ethereum标准)
+- **签名标准**: EIP-712 Typed Data
+- **区块链**: Arbitrum One / Arbitrum Sepolia
+- **智能合约**: UUPS Proxy v2.0.0
+- **前端库**: viem (轻量级以太坊交互)
+- **Rust库**: secp256k1, keccak-hash, hex
+
+---
+
 ## 数据库设计
 
 ### ER 图
@@ -1250,5 +1491,5 @@ console.error("❌ Failed to fetch emails:", error)
 
 ---
 
-**最后更新**: 2025-11-05
+**最后更新**: 2025-11-24
 **文档版本**: v1.0.0

@@ -30,12 +30,15 @@ Deliver a fast, resource‑efficient alternative to heavy legacy clients (e.g. T
 4. Secure by default: Credentials in OS keyring, tokens chunked to avoid platform limits.
 5. Progressive enhancement: Guest mode → optional cloud features (user profile, subscription, future sync).
 
-## Highlights (v0.6.2 latest)
+## Highlights (v1.0.0 latest)
 
 Recent major capabilities (see full [CHANGELOG](./CHANGELOG.md)):
 
 | Area | Key Additions |
 |------|---------------|
+| **CMVH Email Signing** | **Cryptographic email signing using EIP-712 standard; local & on-chain verification (Arbitrum); signature caching; first-time user onboarding guide** |
+| **Wallet Integration** | **WalletConnect QR code-based mobile wallet connection; ENS name resolution with 3-layer caching; unified wallet status display; auto-session timeout** |
+| **Reward Pool** | **Attach wACT cryptocurrency rewards to emails; on-chain reward creation/claiming; rewards dashboard; 30-day expiry with cancellation support** |
 | Authentication | Supabase email/password + Google OAuth; user profile sync to local DB; deep link handling; robust session refresh & environment detection |
 | Security | OS keyring credential storage with chunking; **AES-256-GCM local data encryption** for email content; Argon2 key derivation; zero-knowledge master password; auto-update with signature verification |
 | Logging | Structured JSON logs, rotation (daily, 7‑day retention), backend log viewer, export & filtering groundwork |
@@ -45,13 +48,17 @@ Recent major capabilities (see full [CHANGELOG](./CHANGELOG.md)):
 | Drafts | Local SQLite draft storage (compose/reply/forward) with auto‑save & attachment metadata |
 | Folders | Create/delete (remote vs local), system folder protection, context menus |
 | System Tray | Windows tray integration with minimize‑to‑tray preference |
-| Performance | Full mailbox sync (no artificial cap); batch & adaptive fetching; optimized logging noise reduction |
+| Performance | Full mailbox sync (no artificial cap); batch & adaptive fetching; optimized logging noise reduction; ENS batch resolution (50x improvement) |
 
 ## Feature Matrix
 
 | Category | Implemented | Notes |
 |----------|-------------|-------|
 | Multi‑Account IMAP/SMTP | ✅ | OAuth2 (Gmail/Outlook) & Basic auth; presets for 13 providers |
+| **CMVH Email Signing** | ✅ | **EIP-712 cryptographic signatures; local & on-chain verification (Arbitrum)** |
+| **Wallet Integration (WalletConnect)** | ✅ | **Mobile wallet QR code connection; MetaMask, Trust Wallet, Rainbow support** |
+| **ENS Name Resolution** | ✅ | **3-layer caching (Memory/SQLite/RPC); batch optimization; 90%+ cache hit rate** |
+| **Reward Pool (wACT)** | ✅ | **Attach crypto rewards to emails; on-chain claiming; rewards dashboard** |
 | OAuth2 Deep Link | ✅ | Desktop + browser flow; `colimail://auth/callback` scheme |
 | User Auth (Supabase) | ✅ | Optional; guest mode fully supported |
 | Local Cache | ✅ | SQLite + incremental sync; flag & attachment metadata |
@@ -83,8 +90,9 @@ Frontend (SvelteKit + runes) calls Rust backend via Tauri invoke commands. Rust 
 | Module | Purpose |
 |--------|---------|
 | `main.rs` | App bootstrap, command registration, system tray, deep link & notification permission handling, IDLE auto‑start |
-| `db.rs` | SQLite initialization & migrations (accounts, folders, emails, drafts, app_user, settings) |
-| `commands/` | Domain commands (accounts, emails sync & fetch, folders CRUD, drafts, send, auth, logs, notifications, OAuth2, test_connection, display name detection) |
+| `db.rs` | SQLite initialization & migrations (accounts, folders, emails, drafts, app_user, settings, cmvh_verification_cache, ens_cache) |
+| `commands/` | Domain commands (accounts, emails sync & fetch, folders CRUD, drafts, send, auth, logs, notifications, OAuth2, test_connection, display name detection, **cmvh, send_cmvh**) |
+| **`cmvh/`** | **EIP-712 email signing (signer.rs), signature verification (verifier.rs), CMVH header parsing (parser.rs), RFC5322 MIME building (mime.rs), verification caching (cache.rs), types (types.rs)** |
 | `idle_manager/` | Real‑time IMAP IDLE session orchestration split into manager/session/notification/types |
 | `security.rs` | OS keyring credential chunking, retrieval, deletion, updates |
 | `encryption.rs` | **AES-256-GCM encryption/decryption with Argon2 key derivation** |
@@ -98,8 +106,12 @@ Frontend (SvelteKit + runes) calls Rust backend via Tauri invoke commands. Rust 
 | `routes/+page.svelte` | Orchestrates UI layout & delegates logic to `handlers/*` modules |
 | `handlers/` | Split concerns: account-folder, compose-send, draft-management, email-operations, sync-idle |
 | `stores/auth.svelte.ts` | Supabase session + user reactive rune store with manual refresh capability |
+| **`stores/walletconnect.svelte.ts`** | **WalletConnect state management; wallet connection, session restoration, error handling** |
+| **`stores/wallet.svelte.ts`** | **Unified wallet interface wrapping WalletConnect; ENS resolution integration** |
+| **`lib/cmvh/`** | **CMVH TypeScript modules: blockchain.ts (smart contract), verifier.ts (signature verification), reward-service.ts (wACT rewards), types.ts, config.ts** |
+| **`lib/services/ens-resolver.ts`** | **3-layer ENS caching (Memory/SQLite/RPC); batch resolution; request deduplication** |
 | `lib/state.svelte.ts` | Global application state (selected account/folder, pagination, filters) |
-| `components/*.svelte` | UI building blocks (Sidebar, dialogs, email list, body viewer, log viewer) |
+| `components/*.svelte` | UI building blocks (Sidebar, dialogs, email list, body viewer, log viewer, **WalletConnectDialog**) |
 | Shadcn‑svelte | Adopted official sidebar & dialog patterns for consistency |
 
 ### Async & Performance Patterns
