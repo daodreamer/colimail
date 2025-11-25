@@ -41,6 +41,16 @@ class WalletStore {
         return walletConnectStore.uri;
     }
 
+    // WalletConnect provider for signing operations (exposed via method)
+    getWalletConnectProvider() {
+        return (walletConnectStore as any).provider;
+    }
+
+    // Get WalletConnect session (exposed via method)
+    getWalletConnectSession() {
+        return (walletConnectStore as any).session;
+    }
+
     /**
      * Connect via WalletConnect (shows QR code for mobile wallet)
      */

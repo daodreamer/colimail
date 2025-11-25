@@ -214,4 +214,95 @@ mod tests {
         let separator2 = get_domain_separator(chain_id, contract_address);
         assert_eq!(separator, separator2);
     }
+
+    /// Test with fixed timestamp to compare with frontend
+    /// This test should produce IDENTICAL signature to frontend signer.test.ts
+    #[test]
+    fn test_sign_email_fixed_timestamp() {
+        use secp256k1::{Message, Secp256k1, SecretKey};
+        use sha3::{Digest, Keccak256};
+
+        println!("\n📝 Backend EIP-712 Signature Test (Fixed Timestamp)");
+        println!("{}", "=".repeat(60));
+
+        // Test with known Hardhat account #0
+        let private_key = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
+
+        let content = EmailContent {
+            subject: "Test Email".to_string(),
+            from: "sender@example.com".to_string(),
+            to: "receiver@example.com".to_string(),
+            body: "Test body".to_string(),
+        };
+
+        // Fixed timestamp (matches frontend test)
+        let timestamp = 1700000000u64;
+
+        // Parse private key
+        let private_key_hex = private_key.strip_prefix("0x").unwrap_or(private_key);
+        let private_key_bytes = hex::decode(private_key_hex).unwrap();
+        let secret_key = SecretKey::from_slice(&private_key_bytes).unwrap();
+
+        // Derive address
+        let address = derive_address(&secret_key).unwrap();
+
+        // Compute EIP-712 struct hash
+        let struct_hash = content.hash_eip712_struct(timestamp);
+
+        // Get domain separator
+        let chain_id = 421614u64;
+        let contract_address = "0x8f7B72f66C3bC42A8ca6207fDAc7ec1a07641F03";
+        let domain_separator = get_domain_separator(chain_id, contract_address);
+
+        // Construct EIP-712 digest
+        let mut digest_input = Vec::with_capacity(2 + 32 + 32);
+        digest_input.extend_from_slice(&[0x19, 0x01]);
+        digest_input.extend_from_slice(&domain_separator);
+        digest_input.extend_from_slice(&struct_hash);
+
+        let mut hasher = Keccak256::new();
+        hasher.update(&digest_input);
+        let digest = hasher.finalize();
+
+        // Sign
+        let secp = Secp256k1::new();
+        let message = Message::from_digest_slice(&digest).unwrap();
+        let signature = secp.sign_ecdsa_recoverable(&message, &secret_key);
+        let (recovery_id, signature_bytes) = signature.serialize_compact();
+
+        // Combine signature with recovery id
+        let mut sig_with_v = signature_bytes.to_vec();
+        sig_with_v.push(27 + recovery_id.to_i32() as u8);
+        let signature_hex = format!("0x{}", hex::encode(&sig_with_v));
+
+        println!("Test Email Content:");
+        println!("  subject: {}", content.subject);
+        println!("  from: {}", content.from);
+        println!("  to: {}", content.to);
+        println!("  timestamp: {}", timestamp);
+        println!();
+        println!("EIP-712 Components:");
+        println!("  Domain Separator: 0x{}", hex::encode(&domain_separator));
+        println!("  Struct Hash: 0x{}", hex::encode(&struct_hash));
+        println!("  Digest: 0x{}", hex::encode(&digest));
+        println!();
+        println!("Signature Result:");
+        println!("  Address: {}", address);
+        println!("  Signature: {}", signature_hex);
+        println!("  Signature Length: {} chars", signature_hex.len());
+        println!();
+        println!("{}", "=".repeat(60));
+
+        // Verify signature format
+        assert_eq!(
+            address.to_lowercase(),
+            "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266"
+        );
+        assert!(signature_hex.starts_with("0x"));
+        assert_eq!(signature_hex.len(), 132); // 0x + 130 hex chars
+
+        // Output for comparison with frontend
+        println!("✅ Copy this signature for frontend comparison:");
+        println!("   {}", signature_hex);
+    }
 }

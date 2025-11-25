@@ -311,15 +311,14 @@ export async function handleSendEmail(
         }
 
         try {
-          // Step 1: Sign the email metadata using WalletConnect
-          const cmvhHeaders = await invoke<CMVHHeaders>("sign_email_with_walletconnect", {
-            address: walletStore.address,
-            content: {
-              from: selectedConfig.email,
-              to: appState.composeTo,
-              subject: appState.composeSubject,
-              body: "", // Body is not used in signature
-            },
+          // Step 1: Sign the email metadata using WalletConnect (frontend signing)
+          const { signEmailWithWallet } = await import("$lib/cmvh/signer");
+
+          const cmvhHeaders = await signEmailWithWallet({
+            from: selectedConfig.email,
+            to: appState.composeTo,
+            subject: appState.composeSubject,
+            body: "", // Body is not included in EIP-712 signature
           });
 
           console.log("✅ Email signed with CMVH:", cmvhHeaders);

@@ -169,12 +169,12 @@ class WalletConnectStore {
                 "eth_sign",
                 "personal_sign",
                 "eth_signTypedData",
+                "eth_signTypedData_v4", // Required for EIP-712 signing
               ],
               chains: [`eip155:${arbitrumSepolia.id}`],
               events: ["chainChanged", "accountsChanged"],
-              rpcMap: {
-                [arbitrumSepolia.id]: arbitrumSepolia.rpcUrls.default.http[0],
-              },
+              // Note: rpcMap is not required for signing operations (eth_signTypedData_v4)
+              // Omitting it avoids CORS issues with RPC endpoints
             },
           },
         }),
