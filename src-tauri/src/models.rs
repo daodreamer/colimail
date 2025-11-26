@@ -351,10 +351,10 @@ mod serde_tests {
             smtp_server: "smtp.example.com".to_string(),
             smtp_port: 587,
             auth_type: Some(AuthType::OAuth2),
-            access_token: None, // Should be skipped
-            refresh_token: None, // Should be skipped
+            access_token: None,     // Should be skipped
+            refresh_token: None,    // Should be skipped
             token_expires_at: None, // Should be skipped
-            display_name: None, // Should be skipped
+            display_name: None,     // Should be skipped
         };
 
         let json = serde_json::to_string(&account).unwrap();

@@ -525,11 +525,13 @@ mod tests {
         assert_eq!(account_id, 1, "First account should have ID 1");
 
         // Test SELECT account
-        let row = sqlx::query("SELECT email, imap_server, imap_port, display_name FROM accounts WHERE id = ?")
-            .bind(account_id)
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to fetch account");
+        let row = sqlx::query(
+            "SELECT email, imap_server, imap_port, display_name FROM accounts WHERE id = ?",
+        )
+        .bind(account_id)
+        .fetch_one(&pool)
+        .await
+        .expect("Failed to fetch account");
 
         assert_eq!(row.get::<String, _>("email"), "test@example.com");
         assert_eq!(row.get::<String, _>("imap_server"), "imap.example.com");
@@ -544,7 +546,11 @@ mod tests {
             .await;
 
         assert!(update_result.is_ok(), "Failed to update account");
-        assert_eq!(update_result.unwrap().rows_affected(), 1, "Should update exactly 1 row");
+        assert_eq!(
+            update_result.unwrap().rows_affected(),
+            1,
+            "Should update exactly 1 row"
+        );
 
         // Verify update
         let updated_row = sqlx::query("SELECT display_name FROM accounts WHERE id = ?")
@@ -562,7 +568,11 @@ mod tests {
             .await;
 
         assert!(delete_result.is_ok(), "Failed to delete account");
-        assert_eq!(delete_result.unwrap().rows_affected(), 1, "Should delete exactly 1 row");
+        assert_eq!(
+            delete_result.unwrap().rows_affected(),
+            1,
+            "Should delete exactly 1 row"
+        );
 
         // Verify deletion
         let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM accounts WHERE id = ?")
@@ -581,7 +591,7 @@ mod tests {
         // Insert first account
         sqlx::query(
             "INSERT INTO accounts (email, imap_server, imap_port, smtp_server, smtp_port)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind("duplicate@example.com")
         .bind("imap.example.com")
@@ -595,7 +605,7 @@ mod tests {
         // Try to insert duplicate email
         let duplicate_result = sqlx::query(
             "INSERT INTO accounts (email, imap_server, imap_port, smtp_server, smtp_port)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind("duplicate@example.com")
         .bind("imap2.example.com")
@@ -605,7 +615,10 @@ mod tests {
         .execute(&pool)
         .await;
 
-        assert!(duplicate_result.is_err(), "Duplicate email should violate UNIQUE constraint");
+        assert!(
+            duplicate_result.is_err(),
+            "Duplicate email should violate UNIQUE constraint"
+        );
     }
 
     #[tokio::test]
@@ -615,7 +628,7 @@ mod tests {
         // Insert account
         let account_id = sqlx::query(
             "INSERT INTO accounts (email, imap_server, imap_port, smtp_server, smtp_port)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind("test@example.com")
         .bind("imap.example.com")
@@ -630,7 +643,7 @@ mod tests {
         // Insert folder
         sqlx::query(
             "INSERT INTO folders (account_id, name, display_name)
-             VALUES (?, ?, ?)"
+             VALUES (?, ?, ?)",
         )
         .bind(account_id)
         .bind("INBOX")
@@ -640,11 +653,12 @@ mod tests {
         .expect("Failed to insert folder");
 
         // Verify folder exists
-        let folder_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE account_id = ?")
-            .bind(account_id)
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to count folders");
+        let folder_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE account_id = ?")
+                .bind(account_id)
+                .fetch_one(&pool)
+                .await
+                .expect("Failed to count folders");
 
         assert_eq!(folder_count, 1, "Should have 1 folder");
 
@@ -656,11 +670,12 @@ mod tests {
             .expect("Failed to delete account");
 
         // Verify folder is also deleted (CASCADE)
-        let folder_count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE account_id = ?")
-            .bind(account_id)
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to count folders after delete");
+        let folder_count_after: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM folders WHERE account_id = ?")
+                .bind(account_id)
+                .fetch_one(&pool)
+                .await
+                .expect("Failed to count folders after delete");
 
         assert_eq!(folder_count_after, 0, "Folder should be cascade deleted");
     }
@@ -672,7 +687,7 @@ mod tests {
         // Insert account
         let account_id = sqlx::query(
             "INSERT INTO accounts (email, imap_server, imap_port, smtp_server, smtp_port)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind("test@example.com")
         .bind("imap.example.com")
@@ -721,7 +736,10 @@ mod tests {
         .execute(&pool)
         .await;
 
-        assert!(duplicate_result.is_err(), "Duplicate email (account_id, folder_name, uid) should violate UNIQUE constraint");
+        assert!(
+            duplicate_result.is_err(),
+            "Duplicate email (account_id, folder_name, uid) should violate UNIQUE constraint"
+        );
     }
 
     #[tokio::test]
@@ -783,12 +801,12 @@ mod tests {
         // Insert expired entry
         sqlx::query(
             "INSERT INTO ens_cache (address, ens_name, resolved_at, expires_at)
-             VALUES (?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?)",
         )
         .bind("0x1111111111111111111111111111111111111111")
         .bind(Some("expired.eth"))
         .bind(one_day_ago)
-        .bind(one_day_ago)  // Expired
+        .bind(one_day_ago) // Expired
         .execute(&pool)
         .await
         .expect("Failed to insert expired ENS cache");
@@ -796,27 +814,29 @@ mod tests {
         // Insert valid entry
         sqlx::query(
             "INSERT INTO ens_cache (address, ens_name, resolved_at, expires_at)
-             VALUES (?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?)",
         )
         .bind("0x2222222222222222222222222222222222222222")
         .bind(Some("valid.eth"))
         .bind(now)
-        .bind(one_day_later)  // Not expired
+        .bind(one_day_later) // Not expired
         .execute(&pool)
         .await
         .expect("Failed to insert valid ENS cache");
 
         // Query only valid (not expired) entries
-        let valid_entries: Vec<String> = sqlx::query_scalar(
-            "SELECT address FROM ens_cache WHERE expires_at > ?"
-        )
-        .bind(now)
-        .fetch_all(&pool)
-        .await
-        .expect("Failed to query valid ENS entries");
+        let valid_entries: Vec<String> =
+            sqlx::query_scalar("SELECT address FROM ens_cache WHERE expires_at > ?")
+                .bind(now)
+                .fetch_all(&pool)
+                .await
+                .expect("Failed to query valid ENS entries");
 
         assert_eq!(valid_entries.len(), 1, "Should have 1 valid entry");
-        assert_eq!(valid_entries[0], "0x2222222222222222222222222222222222222222");
+        assert_eq!(
+            valid_entries[0],
+            "0x2222222222222222222222222222222222222222"
+        );
 
         // Test cleanup of expired entries
         let delete_result = sqlx::query("DELETE FROM ens_cache WHERE expires_at <= ?")
@@ -825,7 +845,11 @@ mod tests {
             .await
             .expect("Failed to delete expired entries");
 
-        assert_eq!(delete_result.rows_affected(), 1, "Should delete 1 expired entry");
+        assert_eq!(
+            delete_result.rows_affected(),
+            1,
+            "Should delete 1 expired entry"
+        );
 
         // Verify only valid entry remains
         let remaining_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM ens_cache")
@@ -843,7 +867,7 @@ mod tests {
         // Insert account
         let account_id = sqlx::query(
             "INSERT INTO accounts (email, imap_server, imap_port, smtp_server, smtp_port)
-             VALUES (?, ?, ?, ?, ?)"
+             VALUES (?, ?, ?, ?, ?)",
         )
         .bind("test@example.com")
         .bind("imap.example.com")
@@ -876,11 +900,12 @@ mod tests {
         .expect("Failed to insert email");
 
         // Verify email exists
-        let email_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM emails WHERE account_id = ?")
-            .bind(account_id)
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to count emails");
+        let email_count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM emails WHERE account_id = ?")
+                .bind(account_id)
+                .fetch_one(&pool)
+                .await
+                .expect("Failed to count emails");
 
         assert_eq!(email_count, 1, "Should have 1 email");
 
@@ -892,11 +917,12 @@ mod tests {
             .expect("Failed to delete account");
 
         // Verify email is cascade deleted
-        let email_count_after: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM emails WHERE account_id = ?")
-            .bind(account_id)
-            .fetch_one(&pool)
-            .await
-            .expect("Failed to count emails after delete");
+        let email_count_after: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM emails WHERE account_id = ?")
+                .bind(account_id)
+                .fetch_one(&pool)
+                .await
+                .expect("Failed to count emails after delete");
 
         assert_eq!(email_count_after, 0, "Emails should be cascade deleted");
     }
