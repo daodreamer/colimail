@@ -4,6 +4,7 @@
   import { listen } from "@tauri-apps/api/event";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
+  import { toast } from "svelte-sonner";
   import * as Sidebar from "$lib/components/ui/sidebar";
 
   // Components
@@ -76,13 +77,18 @@
       pendingWalletSession = null;
 
       // Load app after confirming wallet session
-      await PageController.loadApp(handleAccountClick);
+      const failures = await PageController.loadApp(handleAccountClick);
+
+      // Show notification if any IDLE connections failed
+      handleIdleFailures(failures);
     } catch (error) {
       console.error("Failed to restore wallet session:", error);
       // Clear invalid session
       await invoke("delete_wallet_session");
       showWalletSessionConfirm = false;
-      await PageController.loadApp(handleAccountClick);
+
+      const failures = await PageController.loadApp(handleAccountClick);
+      handleIdleFailures(failures);
     }
   }
 
@@ -104,7 +110,29 @@
     pendingWalletSession = null;
 
     // Load app after rejecting wallet session
-    await PageController.loadApp(handleAccountClick);
+    const failures = await PageController.loadApp(handleAccountClick);
+    handleIdleFailures(failures);
+  }
+
+  // Handle IDLE connection failures by showing user notifications
+  function handleIdleFailures(failures: PageController.IdleConnectionFailure[]) {
+    if (failures.length === 0) return;
+
+    if (failures.length === 1) {
+      // Single account failure - show detailed error
+      toast.warning("Real-time sync unavailable", {
+        description: `Failed to enable IDLE notifications for ${failures[0].email}. You'll still receive emails during manual sync.`,
+        duration: 8000,
+      });
+    } else {
+      // Multiple account failures - show summary
+      toast.warning("Real-time sync partially unavailable", {
+        description: `IDLE notifications failed for ${failures.length} account(s): ${failures.map(f => f.email).join(", ")}. Manual sync will still work.`,
+        duration: 10000,
+      });
+    }
+
+    console.warn("📋 IDLE Connection Failures:", failures);
   }
 
   // Lifecycle: Initialize app
@@ -249,17 +277,19 @@
   async function initializeApp() {
     try {
       // Use page controller to initialize app with wallet session check
-      const savedSession = await PageController.initializeApp(handleAccountClick);
+      const { walletSession, idleFailures } = await PageController.initializeApp(handleAccountClick);
 
-      if (savedSession) {
+      if (walletSession) {
         // Wallet session found, show confirmation dialog
-        pendingWalletSession = savedSession;
+        pendingWalletSession = walletSession;
         showWalletSessionConfirm = true;
         // Wait for user confirmation before loading app
         return;
       }
 
       // No wallet session, app is already loaded by controller
+      // Show notification if any IDLE connections failed
+      handleIdleFailures(idleFailures);
     } catch (e) {
       appState.error = `Failed to initialize app: ${e}`;
     }

@@ -250,3 +250,169 @@ pub fn check_for_attachments<T: std::fmt::Debug>(body: &T) -> bool {
     // Check for common attachment indicators in BODYSTRUCTURE
     lower.contains("attachment") || lower.contains("filename")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_decode_header_plain_text() {
+        // Test plain ASCII text (no encoding needed)
+        let input = "Hello World";
+        let output = decode_header(input);
+        assert_eq!(output, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_header_utf8_quoted_printable() {
+        // Test UTF-8 Quoted-Printable encoding
+        let input = "=?UTF-8?Q?Hello=20World?=";
+        let output = decode_header(input);
+        assert_eq!(output, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_header_utf8_base64() {
+        // Test UTF-8 Base64 encoding
+        // "Hello World" in base64 is "SGVsbG8gV29ybGQ="
+        let input = "=?UTF-8?B?SGVsbG8gV29ybGQ=?=";
+        let output = decode_header(input);
+        assert_eq!(output, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_header_chinese_utf8() {
+        // Test Chinese characters in UTF-8 encoding
+        // "测试" (test) encoded
+        let input = "=?UTF-8?B?5rWL6K+V?=";
+        let output = decode_header(input);
+        assert_eq!(output, "测试");
+    }
+
+    #[test]
+    fn test_decode_header_multiple_encoded_words() {
+        // Test multiple encoded words (whitespace should be removed between them)
+        let input = "=?UTF-8?Q?Hello?= =?UTF-8?Q?_World?=";
+        let output = decode_header(input);
+        assert_eq!(output, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_header_mixed_content() {
+        // Test mix of plain text and encoded words
+        let input = "Re: =?UTF-8?Q?Test_Subject?=";
+        let output = decode_header(input);
+        assert_eq!(output, "Re: Test Subject");
+    }
+
+    #[test]
+    fn test_decode_header_invalid_encoding() {
+        // Test invalid encoded word (should keep original)
+        let input = "=?UTF-8?X?Invalid?=";
+        let output = decode_header(input);
+        // Should keep the malformed encoding as-is
+        assert!(output.contains("=?UTF-8?X?Invalid?="));
+    }
+
+    #[test]
+    fn test_decode_quoted_printable_with_spaces() {
+        // Underscore should be converted to space
+        let result = decode_quoted_printable("Hello_World");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), b"Hello World");
+    }
+
+    #[test]
+    fn test_decode_quoted_printable_with_hex() {
+        // Test hex escaping (=XX format)
+        let result = decode_quoted_printable("Hello=20World");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), b"Hello World");
+    }
+
+    #[test]
+    fn test_decode_base64_simple() {
+        // Test simple base64 decoding
+        let result = decode_base64("SGVsbG8=");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), b"Hello");
+    }
+
+    #[test]
+    fn test_decode_base64_full() {
+        // Test full base64 string
+        let result = decode_base64("SGVsbG8gV29ybGQ=");
+        assert!(result.is_some());
+        assert_eq!(result.unwrap(), b"Hello World");
+    }
+
+    #[test]
+    fn test_decode_bytes_to_string_valid_utf8() {
+        // Test valid UTF-8 bytes
+        let bytes = b"Hello World";
+        let result = decode_bytes_to_string(bytes);
+        assert_eq!(result, "Hello World");
+    }
+
+    #[test]
+    fn test_decode_bytes_to_string_invalid_utf8() {
+        // Test invalid UTF-8 (should use lossy conversion)
+        let bytes = b"Hello \xFF\xFE World";
+        let result = decode_bytes_to_string(bytes);
+        // Should contain replacement characters or lossy conversion
+        assert!(result.contains("Hello"));
+        assert!(result.contains("World"));
+    }
+
+    #[test]
+    fn test_parse_email_date_rfc2822() {
+        // Test standard RFC 2822 format
+        let date_str = "Mon, 15 Jan 2024 14:30:00 +0800";
+        let timestamp = parse_email_date(date_str);
+        // 2024-01-15 14:30:00 +0800 = 2024-01-15 06:30:00 UTC
+        // Should be a valid positive timestamp
+        assert!(timestamp > 1705000000 && timestamp < 1706000000);
+    }
+
+    #[test]
+    fn test_parse_email_date_with_fallback() {
+        // Test fallback to INTERNALDATE when Date header is invalid
+        let invalid_date = "Invalid Date";
+        let valid_fallback = "Mon, 15 Jan 2024 14:30:00 +0000";
+        let timestamp = parse_email_date_with_fallback(invalid_date, Some(valid_fallback));
+        // Should use the fallback date
+        assert!(timestamp > 1705000000 && timestamp < 1706000000);
+    }
+
+    #[test]
+    fn test_parse_email_date_no_date() {
+        // Test special "(No Date)" string
+        let date_str = "(No Date)";
+        let timestamp = parse_email_date(date_str);
+        // Should return current time (recent timestamp)
+        let now = Utc::now().timestamp();
+        // Should be within 10 seconds of now
+        assert!((timestamp - now).abs() < 10);
+    }
+
+    #[test]
+    fn test_check_for_attachments_with_attachment() {
+        // Test with a debug string containing "attachment"
+        let test_struct = vec!["Content-Disposition: attachment"];
+        assert!(check_for_attachments(&test_struct));
+    }
+
+    #[test]
+    fn test_check_for_attachments_with_filename() {
+        // Test with a debug string containing "filename"
+        let test_struct = vec!["filename=\"test.pdf\""];
+        assert!(check_for_attachments(&test_struct));
+    }
+
+    #[test]
+    fn test_check_for_attachments_without_attachment() {
+        // Test with a debug string without attachment indicators
+        let test_struct = vec!["Just some text content"];
+        assert!(!check_for_attachments(&test_struct));
+    }
+}

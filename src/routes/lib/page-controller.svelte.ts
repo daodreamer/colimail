@@ -15,6 +15,14 @@ import * as SyncIdle from "../handlers/sync-idle";
 // The WalletSession interface is defined globally in src/global.d.ts
 
 /**
+ * IDLE connection failure information
+ */
+export interface IdleConnectionFailure {
+  email: string;
+  error: string;
+}
+
+/**
  * Auto-sync timer reference
  */
 let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -22,8 +30,11 @@ let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
 /**
  * Load application data and start services
  * @param handleAccountClick - Callback to handle account selection
+ * @returns Array of IDLE connection failures (empty if all succeeded)
  */
-export async function loadApp(handleAccountClick: (accountId: number) => Promise<void>): Promise<void> {
+export async function loadApp(
+  handleAccountClick: (accountId: number) => Promise<void>
+): Promise<IdleConnectionFailure[]> {
   // Load accounts and sync interval from backend
   appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
   appState.syncInterval = await invoke<number>("get_sync_interval");
@@ -36,14 +47,18 @@ export async function loadApp(handleAccountClick: (accountId: number) => Promise
   // Start auto-sync timer
   startAutoSyncTimer();
 
-  // Start IDLE connections for all accounts
-  await startIdleConnections();
+  // Start IDLE connections for all accounts and collect failures
+  const failures = await startIdleConnections();
+  return failures;
 }
 
 /**
  * Start IDLE connections for all accounts
+ * @returns Array of connection failures
  */
-async function startIdleConnections(): Promise<void> {
+async function startIdleConnections(): Promise<IdleConnectionFailure[]> {
+  const failures: IdleConnectionFailure[] = [];
+
   for (const account of appState.accounts) {
     try {
       await invoke("start_idle", {
@@ -53,9 +68,18 @@ async function startIdleConnections(): Promise<void> {
       });
       console.log(`✅ IDLE started for ${account.email}`);
     } catch (e) {
-      console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
+      const errorMessage = e instanceof Error ? e.message : String(e);
+      console.error(`❌ Failed to start IDLE for account ${account.email}:`, errorMessage);
+
+      // Collect failure information for user notification
+      failures.push({
+        email: account.email,
+        error: errorMessage,
+      });
     }
   }
+
+  return failures;
 }
 
 /**
@@ -91,24 +115,31 @@ export function stopAutoSyncTimer(): void {
 /**
  * Initialize application with wallet session check
  * @param handleAccountClick - Callback to handle account selection
- * @returns Wallet session if found and needs confirmation, null otherwise
+ * @returns Object with wallet session (if found) and IDLE connection failures
  */
-export async function initializeApp(
-  handleAccountClick: (accountId: number) => Promise<void>
-): Promise<WalletSession | null> {
+export async function initializeApp(handleAccountClick: (accountId: number) => Promise<void>): Promise<{
+  walletSession: WalletSession | null;
+  idleFailures: IdleConnectionFailure[];
+}> {
   try {
     // Check for saved wallet session (after encryption is unlocked)
     const savedSession = await invoke<WalletSession | null>("get_wallet_session");
 
     if (savedSession) {
       console.log("🔐 Found saved wallet session:", savedSession);
-      // Return session for confirmation dialog
-      return savedSession;
+      // Return session for confirmation dialog, no IDLE failures yet
+      return {
+        walletSession: savedSession,
+        idleFailures: [],
+      };
     }
 
     // No wallet session, proceed with app loading
-    await loadApp(handleAccountClick);
-    return null;
+    const failures = await loadApp(handleAccountClick);
+    return {
+      walletSession: null,
+      idleFailures: failures,
+    };
   } catch (e) {
     appState.error = `Failed to initialize app: ${e}`;
     throw e;

@@ -143,6 +143,249 @@ impl Folder {
     }
 }
 
+#[cfg(test)]
+mod folder_tests {
+    use super::*;
+
+    #[test]
+    fn test_is_selectable_without_flags() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "INBOX".to_string(),
+            display_name: "Inbox".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(folder.is_selectable());
+    }
+
+    #[test]
+    fn test_is_selectable_with_noselect_flag() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "[Gmail]".to_string(),
+            display_name: "[Gmail]".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: Some("\\Noselect".to_string()),
+            is_local: false,
+        };
+        assert!(!folder.is_selectable());
+    }
+
+    #[test]
+    fn test_is_selectable_case_insensitive() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "[Gmail]".to_string(),
+            display_name: "[Gmail]".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: Some("\\NOSELECT".to_string()),
+            is_local: false,
+        };
+        assert!(!folder.is_selectable());
+    }
+
+    #[test]
+    fn test_is_selectable_with_other_flags() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "INBOX".to_string(),
+            display_name: "Inbox".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: Some("\\HasChildren".to_string()),
+            is_local: false,
+        };
+        assert!(folder.is_selectable());
+    }
+
+    #[test]
+    fn test_should_show_to_user_normal_folder() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "INBOX".to_string(),
+            display_name: "Inbox".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(folder.should_show_to_user());
+    }
+
+    #[test]
+    fn test_should_show_to_user_sync_issues_chinese() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "同步问题".to_string(),
+            display_name: "同步问题".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(!folder.should_show_to_user());
+    }
+
+    #[test]
+    fn test_should_show_to_user_sync_issues_english() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "Sync Issues".to_string(),
+            display_name: "Sync Issues".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(!folder.should_show_to_user());
+    }
+
+    #[test]
+    fn test_should_show_to_user_subfolder_of_system_folder() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "Sync Issues/Server Failures".to_string(),
+            display_name: "Sync Issues/Server Failures".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(!folder.should_show_to_user());
+    }
+
+    #[test]
+    fn test_should_show_to_user_noselect_folder() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "[Gmail]".to_string(),
+            display_name: "[Gmail]".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: Some("\\Noselect".to_string()),
+            is_local: false,
+        };
+        assert!(!folder.should_show_to_user());
+    }
+
+    #[test]
+    fn test_should_show_to_user_rss_feeds() {
+        let folder = Folder {
+            id: Some(1),
+            account_id: 1,
+            name: "RSS Feeds".to_string(),
+            display_name: "RSS Feeds".to_string(),
+            delimiter: Some("/".to_string()),
+            flags: None,
+            is_local: false,
+        };
+        assert!(!folder.should_show_to_user());
+    }
+}
+
+#[cfg(test)]
+mod serde_tests {
+    use super::*;
+
+    #[test]
+    fn test_auth_type_serde() {
+        // Test Basic auth type serialization
+        let basic = AuthType::Basic;
+        let json = serde_json::to_string(&basic).unwrap();
+        assert_eq!(json, "\"basic\"");
+
+        // Test OAuth2 auth type serialization
+        let oauth = AuthType::OAuth2;
+        let json = serde_json::to_string(&oauth).unwrap();
+        assert_eq!(json, "\"oauth2\"");
+
+        // Test deserialization
+        let auth: AuthType = serde_json::from_str("\"basic\"").unwrap();
+        assert_eq!(auth, AuthType::Basic);
+
+        let auth: AuthType = serde_json::from_str("\"oauth2\"").unwrap();
+        assert_eq!(auth, AuthType::OAuth2);
+    }
+
+    #[test]
+    fn test_account_config_serde_basic() {
+        let account = AccountConfig {
+            id: Some(1),
+            email: "test@example.com".to_string(),
+            password: Some("password123".to_string()),
+            imap_server: "imap.example.com".to_string(),
+            imap_port: 993,
+            smtp_server: "smtp.example.com".to_string(),
+            smtp_port: 587,
+            auth_type: Some(AuthType::Basic),
+            access_token: None,
+            refresh_token: None,
+            token_expires_at: None,
+            display_name: Some("Test User".to_string()),
+        };
+
+        // Serialize
+        let json = serde_json::to_string(&account).unwrap();
+        assert!(json.contains("\"email\":\"test@example.com\""));
+        assert!(json.contains("\"auth_type\":\"basic\""));
+
+        // Deserialize
+        let deserialized: AccountConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.email, "test@example.com");
+        assert_eq!(deserialized.imap_port, 993);
+    }
+
+    #[test]
+    fn test_account_config_skip_none_fields() {
+        let account = AccountConfig {
+            id: Some(1),
+            email: "test@example.com".to_string(),
+            password: None, // Should be skipped in serialization
+            imap_server: "imap.example.com".to_string(),
+            imap_port: 993,
+            smtp_server: "smtp.example.com".to_string(),
+            smtp_port: 587,
+            auth_type: Some(AuthType::OAuth2),
+            access_token: None, // Should be skipped
+            refresh_token: None, // Should be skipped
+            token_expires_at: None, // Should be skipped
+            display_name: None, // Should be skipped
+        };
+
+        let json = serde_json::to_string(&account).unwrap();
+        // None fields should not appear in JSON
+        assert!(!json.contains("\"password\""));
+        assert!(!json.contains("\"access_token\""));
+        assert!(!json.contains("\"refresh_token\""));
+        assert!(!json.contains("\"token_expires_at\""));
+        assert!(!json.contains("\"display_name\""));
+    }
+
+    #[test]
+    fn test_email_header_default_fields() {
+        let json = r#"{
+            "uid": 123,
+            "subject": "Test",
+            "from": "sender@example.com",
+            "to": "receiver@example.com",
+            "date": "Mon, 15 Jan 2024 14:30:00 +0000",
+            "timestamp": 1705329000
+        }"#;
+
+        let email: EmailHeader = serde_json::from_str(json).unwrap();
+        assert_eq!(email.uid, 123);
+        assert_eq!(email.cc, ""); // Default value
+        assert!(!email.has_attachments); // Default value
+        assert!(!email.seen); // Default value
+        assert!(!email.flagged); // Default value
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(rename_all = "lowercase")]
 pub enum DraftType {

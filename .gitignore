@@ -22,3 +22,8 @@ vite.config.ts.timestamp-*
 
 # Tauri signing keys (private key should never be committed)
 src-tauri/*.key
+
+# Test coverage reports (auto-generated)
+/coverage
+/.nyc_output
+*.lcov

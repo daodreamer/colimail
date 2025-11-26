@@ -158,8 +158,6 @@ pub async fn get_ens_cache_stats() -> Result<ENSCacheStats, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[tokio::test]
     async fn test_ens_cache() {
         // This test requires database initialization
