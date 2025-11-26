@@ -1,0 +1,19 @@
+{
+  "name": "e2e-tests",
+  "version": "1.0.0",
+  "description": "End-to-end tests for Colimail using WebDriverIO and Tauri Driver",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "wdio run wdio.conf.js"
+  },
+  "keywords": ["e2e", "tauri", "webdriver"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@wdio/cli": "^9.20.1",
+    "@wdio/local-runner": "^9.20.1",
+    "@wdio/mocha-framework": "^9.20.1",
+    "@wdio/spec-reporter": "^9.20.0"
+  }
+}

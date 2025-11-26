@@ -27,3 +27,6 @@ src-tauri/*.key
 /coverage
 /.nyc_output
 *.lcov
+
+# E2E testing dependencies
+/e2e-tests/node_modules
