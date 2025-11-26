@@ -14,12 +14,29 @@ pub async fn init() -> Result<(), sqlx::Error> {
 
     println!("Database path: {}", db_path.display());
 
-    let db_url = format!("sqlite://{}?mode=rwc", db_path.to_str().unwrap());
+    let db_url = format!(
+        "sqlite://{}?mode=rwc",
+        db_path.to_str().ok_or_else(|| sqlx::Error::Configuration(
+            "Database path contains invalid UTF-8".into()
+        ))?
+    );
 
     // Create connection pool
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
         .connect(&db_url)
+        .await?;
+
+    // Enable WAL mode for better concurrency (allows readers during write operations)
+    // This significantly improves responsiveness in desktop applications
+    sqlx::query("PRAGMA journal_mode=WAL")
+        .execute(&pool)
+        .await?;
+
+    // Set synchronous to NORMAL for better performance while maintaining durability
+    // NORMAL is safe for most applications and much faster than FULL
+    sqlx::query("PRAGMA synchronous=NORMAL")
+        .execute(&pool)
         .await?;
 
     // Create tables
