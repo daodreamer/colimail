@@ -36,6 +36,9 @@
   import * as ComposeSend from "./handlers/compose-send";
   import * as SyncIdle from "./handlers/sync-idle";
 
+  // Page controller for initialization and lifecycle management
+  import * as PageController from "./lib/page-controller.svelte";
+
   // Settings dialog state
   let showSettingsDialog = $state(false);
   let showAddAccountDialog = $state(false);
@@ -61,35 +64,6 @@
   let openContextMenuType = $state<"folder" | "email" | null>(null);
   let openContextMenuId = $state<string | number | null>(null);
 
-  // Auto-sync timer reference
-  let autoSyncTimer: ReturnType<typeof setInterval> | null = null;
-
-  // Extract app loading logic into separate function
-  async function loadApp() {
-    appState.accounts = await invoke<AccountConfig[]>("load_account_configs");
-    appState.syncInterval = await invoke<number>("get_sync_interval");
-
-    // Auto-select first account if available and none is selected
-    if (appState.accounts.length > 0 && !appState.selectedAccountId) {
-      await handleAccountClick(appState.accounts[0].id);
-    }
-
-    startAutoSyncTimer();
-
-    // Start IDLE connections for all accounts
-    for (const account of appState.accounts) {
-      try {
-        await invoke("start_idle", {
-          accountId: account.id,
-          folderName: "INBOX",
-          config: account,
-        });
-      } catch (e) {
-        console.error(`❌ Failed to start IDLE for account ${account.email}:`, e);
-      }
-    }
-  }
-
   // Handle wallet session confirmation
   async function handleWalletSessionConfirm() {
     if (!pendingWalletSession) return;
@@ -102,13 +76,13 @@
       pendingWalletSession = null;
 
       // Load app after confirming wallet session
-      await loadApp();
+      await PageController.loadApp(handleAccountClick);
     } catch (error) {
       console.error("Failed to restore wallet session:", error);
       // Clear invalid session
       await invoke("delete_wallet_session");
       showWalletSessionConfirm = false;
-      await loadApp();
+      await PageController.loadApp(handleAccountClick);
     }
   }
 
@@ -130,7 +104,7 @@
     pendingWalletSession = null;
 
     // Load app after rejecting wallet session
-    await loadApp();
+    await PageController.loadApp(handleAccountClick);
   }
 
   // Lifecycle: Initialize app
@@ -209,7 +183,7 @@
         }
 
         // Encryption is enabled and unlocked, proceed normally
-        await loadApp();
+        await PageController.loadApp(handleAccountClick);
       } catch (e) {
         appState.error = `Failed to load accounts: ${e}`;
       }
@@ -220,8 +194,9 @@
       if (unlisten) unlisten();
       if (unlistenSound) unlistenSound();
       if (unlistenSettings) unlistenSettings();
-      if (autoSyncTimer) clearInterval(autoSyncTimer);
       if (timeUpdateTimer) clearInterval(timeUpdateTimer);
+      // Use page controller cleanup
+      PageController.cleanup();
     };
   });
 
@@ -232,8 +207,7 @@
         try {
           const newInterval = await invoke<number>("get_sync_interval");
           if (newInterval !== appState.syncInterval) {
-            appState.syncInterval = newInterval;
-            startAutoSyncTimer();
+            await PageController.updateSyncInterval(newInterval);
           }
         } catch (e) {
           console.error("❌ Failed to reload sync interval:", e);
@@ -274,32 +248,21 @@
   // Initialize app after encryption is set up
   async function initializeApp() {
     try {
-      // Check for saved wallet session (after encryption is unlocked)
-      const savedSession = await invoke<WalletSession | null>("get_wallet_session");
+      // Use page controller to initialize app with wallet session check
+      const savedSession = await PageController.initializeApp(handleAccountClick);
 
       if (savedSession) {
-        console.log("🔐 Found saved wallet session:", savedSession);
+        // Wallet session found, show confirmation dialog
         pendingWalletSession = savedSession;
         showWalletSessionConfirm = true;
         // Wait for user confirmation before loading app
         return;
       }
 
-      // No wallet session, proceed with app loading
-      await loadApp();
+      // No wallet session, app is already loaded by controller
     } catch (e) {
       appState.error = `Failed to initialize app: ${e}`;
     }
-  }
-
-  // Auto-sync timer management
-  function startAutoSyncTimer() {
-    autoSyncTimer = SyncIdle.startAutoSyncTimer(
-      appState.syncInterval,
-      appState.accounts,
-      appState.selectedAccountId,
-      appState.selectedFolderName
-    );
   }
 
   // Account and folder handlers
