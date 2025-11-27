@@ -8,3 +8,4 @@
 
 # OAuth2 credentials (keep your secrets safe!)
 oauth2_credentials.json
+security-reports/
