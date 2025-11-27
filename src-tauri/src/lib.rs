@@ -1,3 +1,15 @@
+// Export modules for testing
+pub mod attachment_limits;
+pub mod cmvh;
+pub mod commands;
+pub mod db;
+pub mod encryption;
+pub mod ens;
+pub mod logger;
+pub mod models;
+pub mod oauth2_config;
+pub mod security;
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {

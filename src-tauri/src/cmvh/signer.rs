@@ -284,7 +284,7 @@ mod tests {
         println!("EIP-712 Components:");
         println!("  Domain Separator: 0x{}", hex::encode(&domain_separator));
         println!("  Struct Hash: 0x{}", hex::encode(&struct_hash));
-        println!("  Digest: 0x{}", hex::encode(&digest));
+        println!("  Digest: 0x{}", hex::encode(digest));
         println!();
         println!("Signature Result:");
         println!("  Address: {}", address);
