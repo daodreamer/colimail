@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Multi-language support
 - Subscription/billing management interface
 
+## [1.0.1] - 2026-03-25
+
+### Fixed
+- OAuth2 Google account: added `access_type=offline` and `prompt=consent` to always obtain a refresh token, preventing "No refresh token available" errors after token expiry
+- About page now displays the correct app version dynamically instead of a hardcoded value
+
+### Docs
+- Updated CONTRIBUTING.md with local build instructions for contributors without the signing key
+
 ## [1.0.0] - 2025-11-14
 
 ### 🎉 Major Release - CMVH (ColiMail Verification Header) Complete

@@ -47,6 +47,36 @@ npm install
 npm run tauri dev
 ```
 
+### Local Build — Signing Key Requirement
+
+The project has auto-updater signing enabled in `tauri.conf.json`. This requires a private key (`TAURI_SIGNING_PRIVATE_KEY`) that only the maintainer has access to. If you attempt a production build (`npm run tauri build`) without this key, you will see:
+
+```
+A public key has been found, but no private key.
+Make sure to set `TAURI_SIGNING_PRIVATE_KEY`
+```
+
+**To build locally without the signing key**, temporarily comment out the updater configuration in `src-tauri/tauri.conf.json`:
+
+```json
+// "plugins": {
+//   "updater": {
+//     "pubkey": "..."
+//   }
+// }
+```
+
+And set `createUpdaterArtifacts` to `false`:
+
+```json
+"bundle": {
+  "createUpdaterArtifacts": false,
+  ...
+}
+```
+
+> **Note:** Do not commit these changes. Remember to revert them before submitting a PR. For day-to-day development, use `npm run tauri dev` which does not require the signing key.
+
 ## Development Workflow
 
 ### 1. Create a Branch

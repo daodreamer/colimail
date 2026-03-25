@@ -209,7 +209,11 @@ impl OAuth2Provider {
         // Generate authorization URL
         let mut auth_request = client
             .authorize_url(CsrfToken::new_random)
-            .set_pkce_challenge(pkce_challenge);
+            .set_pkce_challenge(pkce_challenge)
+            // Request offline access to always receive a refresh token
+            .add_extra_param("access_type", "offline")
+            // Force consent screen to ensure refresh token is returned on re-authorization
+            .add_extra_param("prompt", "consent");
 
         // Add scopes
         for scope in &self.scopes {

@@ -1,5 +1,7 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { onMount } from "svelte";
+  import { getVersion } from "@tauri-apps/api/app";
   import { check } from "@tauri-apps/plugin-updater";
   import { relaunch } from "@tauri-apps/plugin-process";
   import { revealItemInDir, openUrl } from "@tauri-apps/plugin-opener";
@@ -72,7 +74,11 @@
   let isSaving = $state(false);
   let isCheckingUpdate = $state(false);
   let isExportingLogs = $state(false);
-  let appVersion = $state("0.6.3");
+  let appVersion = $state("");
+
+  onMount(async () => {
+    appVersion = await getVersion();
+  });
 
   // CMVH settings state
   let cmvhConfig = $state<CMVHConfig>(loadConfig());
