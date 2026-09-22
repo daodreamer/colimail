@@ -426,6 +426,52 @@ describe('Email Operations - Optimistic Updates & Rollback', () => {
     });
   });
 
+  describe('handleDeleteEmailFromContextMenu', () => {
+    it.each([
+      ['INBOX', 'move_email_to_trash'],
+      ['Trash', 'delete_email'],
+    ])('deletes from %s without clearing another selected email', async (folder, command) => {
+      vi.mocked(invoke).mockResolvedValue(undefined);
+      vi.mocked(ask).mockResolvedValue(true);
+      appState.selectedEmailUid = 101;
+      const reload = vi.fn();
+
+      await EmailOperations.handleDeleteEmailFromContextMenu(
+        100, mockAccounts, 1, folder, appState.emails, reload
+      );
+
+      expect(invoke).toHaveBeenCalledWith(command, {
+        config: mockAccounts[0], uid: 100, folder,
+      });
+      expect(appState.emails.map((email) => email.uid)).toEqual([101]);
+      expect(appState.resetEmailState).not.toHaveBeenCalled();
+      expect(reload).not.toHaveBeenCalled();
+      expect(ask).toHaveBeenCalledTimes(folder === 'Trash' ? 1 : 0);
+    });
+
+    it('keeps the list unchanged when permanent deletion is cancelled', async () => {
+      vi.mocked(ask).mockResolvedValue(false);
+      await EmailOperations.handleDeleteEmailFromContextMenu(
+        100, mockAccounts, 1, 'Trash', appState.emails, vi.fn()
+      );
+      expect(appState.emails).toEqual(mockEmails);
+      expect(invoke).not.toHaveBeenCalled();
+      expect(appState.resetEmailState).not.toHaveBeenCalled();
+    });
+
+    it('clears the deleted selection and reloads the folder after a server failure', async () => {
+      vi.mocked(invoke).mockRejectedValue(new Error('Network error'));
+      appState.selectedEmailUid = 100;
+      const reload = vi.fn().mockResolvedValue(undefined);
+      await EmailOperations.handleDeleteEmailFromContextMenu(
+        100, mockAccounts, 1, 'INBOX', appState.emails, reload
+      );
+      expect(appState.resetEmailState).toHaveBeenCalledOnce();
+      expect(reload).toHaveBeenCalledWith('INBOX');
+      expect(appState.error).toContain('Failed to delete email:');
+    });
+  });
+
   describe('handlePageChange', () => {
     it('should update current page and reset email state', () => {
       appState.currentPage = 1;

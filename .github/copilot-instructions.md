@@ -2,52 +2,15 @@
 
 ## Project Overview
 
-**Colimail** is a cross-platform desktop email client built with Tauri 2, SvelteKit, and Rust. The goal is to create a lightweight, high-performance alternative to Thunderbird that handles large email volumes without performance degradation.
+Colimail uses SvelteKit/Svelte 5, Tauri 2, Rust, and SQLite through `sqlx`.
+Read [ARCHITECTURE.md](../ARCHITECTURE.md) for the source map and data flow,
+and [README.md](../README.md) for setup.
 
-- **Frontend**: SvelteKit (Svelte 5 with runes) + TypeScript under `src/`
-- **Backend**: Rust with Tauri 2 under `src-tauri/src`
-- **Database**: SQLite with `rusqlite` for local persistence
-- **Email Protocols**: IMAP (via `imap` crate), SMTP (via `lettre`)
-- **Performance Targets**: ≤1.5s startup, ≤80MB idle memory, 100 emails in ≤3s
-
-## Backend Architecture (Rust/Tauri)
-
-### Entry Point & Module Structure
-- `src-tauri/src/main.rs`: Initializes DB via `db::init()`, registers commands with `tauri::generate_handler!`
-- `src-tauri/src/lib.rs`: Contains legacy/example code; actual app logic is in `main.rs`
-- `src-tauri/src/db.rs`: Thread-safe global SQLite connection using `lazy_static` + `Mutex<Connection>`; access via `db::connection()`
-- `src-tauri/src/models.rs`: Shared structs (`AccountConfig`, `EmailHeader`) with `pub` fields and serde serialization
-- `src-tauri/src/commands/`: Command modules organized by domain
-  - `accounts.rs`: Account CRUD (`save_account_config`, `load_account_configs`)
-  - `emails.rs`: IMAP fetching (`fetch_emails`, `fetch_email_body`)
-  - `send.rs`: SMTP sending (`send_email`)
-  - `mod.rs`: Re-exports all command functions
-
-### Key Architecture Patterns
-- Long-running IMAP/SMTP operations use `tokio::task::spawn_blocking` to avoid blocking async runtime
-- Database uses `rusqlite` (synchronous) wrapped in mutex, **NOT** `sqlx` async API
-- All blocking I/O (network, database) must be kept off main async executor
-- Database schema defined in `db::init()`; extend here when adding tables
-- Database stored in platform-specific user data directory (via `directories` crate)
-
-### Adding New Commands
-1. Define struct in `models.rs` with `#[derive(Serialize, Deserialize)]` if needed
-2. Create function in appropriate `commands/*.rs` file with `#[command]` attribute
-3. Export function from `commands/mod.rs`
-4. Register in `tauri::generate_handler!` array in `main.rs`
-5. Call from frontend using `invoke("command_name", payload)`
-
-## Frontend Architecture (SvelteKit)
-
-### Routes & State
-- Routes follow SvelteKit conventions: `src/routes/+page.svelte` (inbox), `src/routes/settings/+page.svelte` (settings)
-- State management uses Svelte 5 runes (`$state`, `$derived`, `$effect`)
-- Backend commands invoked via `invoke("command_name", { ...payload })`; payload must match Rust struct shapes
-- Styling co-located in components; prefer CSS variables for theming
-
-### Build Configuration
-- `svelte.config.js`: Uses `@sveltejs/adapter-static` with SPA mode (fallback to `index.html`)
-- `vite.config.js`: Dev server on port 1420, HMR on 1421, ignores `src-tauri` directory
+- Register Tauri commands in `src-tauri/src/main.rs` and export them from `commands/mod.rs`.
+- Keep frontend `invoke` arguments consistent with Rust command signatures.
+- Use Svelte 5 runes for reactive state.
+- Keep blocking IMAP/SMTP work off the async executor; use the async pool in `db.rs` for SQL.
+- Store credentials through `security.rs` (OS keyring); cached-content encryption lives in `encryption.rs`.
 
 ## Development Workflows
 
@@ -76,13 +39,12 @@ After any code changes, **always run** appropriate checks before reporting compl
 
 ## Language and Code Conventions
 
-Per `copilot_rules.md` and `CLAUDE.md`:
+See also [CLAUDE.md](../CLAUDE.md):
 1. **All code and comments MUST be in English**
 2. **Assistant responses should be in Chinese**
 3. Use latest API versions of dependencies; request documentation if needed
 4. Always run static checks after modifications
 5. Model structs must have `pub` fields and be serde-compatible
-6. Passwords currently stored plaintext (known limitation for future improvement)
 
 ## Execution Rules (MUST FOLLOW)
 
@@ -106,14 +68,6 @@ Per `copilot_rules.md` and `CLAUDE.md`:
    - Never make assertions about code before investigating
    - Provide well-reasoned, hallucination-free responses
 
-## Key Dependencies
+## Dependencies
 
-- `tauri` v2: Desktop application framework
-- `tokio`: Async runtime (with "full" features)
-- `imap`: IMAP protocol client
-- `lettre`: SMTP email sending (with tokio runtime and native-tls)
-- `rusqlite`: Synchronous SQLite bindings (NOT using `sqlx`)
-- `serde` / `serde_json`: Serialization for command payloads
-- `mailparse`: Email message parsing
-- `directories`: Platform-specific directory paths
-- `lazy_static`: Global static database connection
+See `package.json` and `src-tauri/Cargo.toml` for the maintained dependency lists.

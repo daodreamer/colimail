@@ -12,8 +12,6 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "test:signer": "vitest run src/lib/cmvh/signer.test.ts",
-    "test:signatures": "tsx scripts/compare-signatures.ts",
     "tauri": "tauri"
   },
   "license": "MIT",

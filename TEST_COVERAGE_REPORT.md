@@ -1,5 +1,8 @@
 # Test Coverage Report - Colimail v1.0.0
 
+> Historical snapshot from November 2025, not current test results or measured coverage.
+> See [TESTING.md](TESTING.md) for current commands and use their output to assess the checkout.
+
 **Generated**: November 26, 2025
 **Test Framework**: Rust cargo test + Vitest (Frontend)
 **Scope**: P0 Priority Testing (High-Risk/Core Logic)

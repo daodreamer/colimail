@@ -5,7 +5,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { AccountConfig, EmailHeader, AttachmentInfo, CMVHHeaders, CMVHVerificationResult } from "../lib/types";
+import type { AccountConfig, EmailHeader, AttachmentInfo, CMVHHeaders } from "../lib/types";
 import { state as appState } from "../lib/state.svelte";
 import { isTrashFolder } from "../lib/utils";
 import { loadConfig } from "$lib/cmvh";
@@ -135,21 +135,11 @@ export async function handleToggleReadStatus(
   appState.emails = [...appState.emails];
 
   try {
-    // Send request to server
-    if (newSeenState) {
-      await invoke("mark_email_as_read", {
-        config: selectedConfig,
-        uid: selectedEmailUid,
-        folder: selectedFolderName,
-      });
-    } else {
-      await invoke("mark_email_as_unread", {
-        config: selectedConfig,
-        uid: selectedEmailUid,
-        folder: selectedFolderName,
-      });
-    }
-    // Success - UI already updated optimistically
+    await invoke(newSeenState ? "mark_email_as_read" : "mark_email_as_unread", {
+      config: selectedConfig,
+      uid: selectedEmailUid,
+      folder: selectedFolderName,
+    });
   } catch (e) {
     // Rollback on error
     console.error("❌ Failed to toggle read status, rolling back:", e);
@@ -159,9 +149,6 @@ export async function handleToggleReadStatus(
   }
 }
 
-/**
- * Mark email as read from context menu
- */
 export async function handleMarkEmailAsRead(
   uid: number,
   accounts: AccountConfig[],
@@ -169,51 +156,21 @@ export async function handleMarkEmailAsRead(
   selectedFolderName: string,
   emails: EmailHeader[]
 ) {
-  if (!selectedAccountId) {
-    appState.error = "Please select an account first.";
-    return;
-  }
-
-  const selectedEmail = emails.find((email) => email.uid === uid);
-  if (!selectedEmail) {
-    appState.error = "Could not find email.";
-    return;
-  }
-
-  const selectedConfig = accounts.find((acc) => acc.id === selectedAccountId);
-  if (!selectedConfig) {
-    appState.error = "Could not find account configuration.";
-    return;
-  }
-
-  // Store previous state for rollback
-  const previousSeenState = selectedEmail.seen;
-
-  // Optimistic update: immediately update UI
-  selectedEmail.seen = true;
-  appState.emails = [...appState.emails];
-
-  try {
-    // Send request to server
-    await invoke("mark_email_as_read", {
-      config: selectedConfig,
-      uid,
-      folder: selectedFolderName,
-    });
-    // Success - UI already updated optimistically
-  } catch (e) {
-    // Rollback on error
-    console.error("❌ Failed to mark as read, rolling back:", e);
-    selectedEmail.seen = previousSeenState;
-    appState.emails = [...appState.emails];
-    appState.error = `Failed to mark as read: ${e}`;
-  }
+  await setEmailReadStatus(true, uid, accounts, selectedAccountId, selectedFolderName, emails);
 }
 
-/**
- * Mark email as unread from context menu
- */
 export async function handleMarkEmailAsUnread(
+  uid: number,
+  accounts: AccountConfig[],
+  selectedAccountId: number | null,
+  selectedFolderName: string,
+  emails: EmailHeader[]
+) {
+  await setEmailReadStatus(false, uid, accounts, selectedAccountId, selectedFolderName, emails);
+}
+
+async function setEmailReadStatus(
+  seen: boolean,
   uid: number,
   accounts: AccountConfig[],
   selectedAccountId: number | null,
@@ -241,23 +198,21 @@ export async function handleMarkEmailAsUnread(
   const previousSeenState = selectedEmail.seen;
 
   // Optimistic update: immediately update UI
-  selectedEmail.seen = false;
+  selectedEmail.seen = seen;
   appState.emails = [...appState.emails];
 
   try {
-    // Send request to server
-    await invoke("mark_email_as_unread", {
+    await invoke(seen ? "mark_email_as_read" : "mark_email_as_unread", {
       config: selectedConfig,
       uid,
       folder: selectedFolderName,
     });
-    // Success - UI already updated optimistically
   } catch (e) {
     // Rollback on error
-    console.error("❌ Failed to mark as unread, rolling back:", e);
+    console.error(`❌ Failed to mark as ${seen ? "read" : "unread"}, rolling back:`, e);
     selectedEmail.seen = previousSeenState;
     appState.emails = [...appState.emails];
-    appState.error = `Failed to mark as unread: ${e}`;
+    appState.error = `Failed to mark as ${seen ? "read" : "unread"}: ${e}`;
   }
 }
 
@@ -297,21 +252,11 @@ export async function handleStarToggle(
   appState.emails = [...appState.emails];
 
   try {
-    // Send request to server
-    if (flagged) {
-      await invoke("mark_email_as_flagged", {
-        config: selectedConfig,
-        uid,
-        folder: selectedFolderName,
-      });
-    } else {
-      await invoke("mark_email_as_unflagged", {
-        config: selectedConfig,
-        uid,
-        folder: selectedFolderName,
-      });
-    }
-    // Success - UI already updated optimistically
+    await invoke(flagged ? "mark_email_as_flagged" : "mark_email_as_unflagged", {
+      config: selectedConfig,
+      uid,
+      folder: selectedFolderName,
+    });
   } catch (e) {
     // Rollback on error
     console.error("❌ Failed to toggle star status, rolling back:", e);
@@ -367,7 +312,6 @@ export async function handleDeleteEmail(
     }
   }
 
-  // Proceed with backend operations
   appState.error = null;
 
   try {
@@ -377,28 +321,11 @@ export async function handleDeleteEmail(
     appState.emails = emails.filter((email) => email.uid !== deletedUid);
     appState.resetEmailState();
 
-    if (isInTrash) {
-      // Permanently delete from server
-      await invoke("delete_email", {
-        config: selectedConfig,
-        uid: deletedUid,
-        folder: selectedFolderName,
-      });
-
-      // No success message needed - the UI update provides instant feedback
-    } else {
-      // Move to trash on server (no confirmation needed)
-      await invoke("move_email_to_trash", {
-        config: selectedConfig,
-        uid: deletedUid,
-        folder: selectedFolderName,
-      });
-
-      // No success message needed - instant UI feedback is better for smooth UX
-    }
-
-    // Note: The IDLE event handler will sync in the background if needed,
-    // but we've already updated the UI for immediate feedback
+    await invoke(isInTrash ? "delete_email" : "move_email_to_trash", {
+      config: selectedConfig,
+      uid: deletedUid,
+      folder: selectedFolderName,
+    });
   } catch (e) {
     appState.error = `Failed to delete email: ${e}`;
     // On error, reload to ensure UI is in sync with server
@@ -450,7 +377,6 @@ export async function handleDeleteEmailFromContextMenu(
     }
   }
 
-  // Proceed with backend operations
   appState.error = null;
 
   try {
@@ -462,24 +388,11 @@ export async function handleDeleteEmailFromContextMenu(
       appState.resetEmailState();
     }
 
-    if (isInTrash) {
-      // Permanently delete from server
-      await invoke("delete_email", {
-        config: selectedConfig,
-        uid,
-        folder: selectedFolderName,
-      });
-    } else {
-      // Move to trash on server (no confirmation needed)
-      await invoke("move_email_to_trash", {
-        config: selectedConfig,
-        uid,
-        folder: selectedFolderName,
-      });
-    }
-
-    // Note: The IDLE event handler will sync in the background if needed,
-    // but we've already updated the UI for immediate feedback
+    await invoke(isInTrash ? "delete_email" : "move_email_to_trash", {
+      config: selectedConfig,
+      uid,
+      folder: selectedFolderName,
+    });
   } catch (e) {
     appState.error = `Failed to delete email: ${e}`;
     // On error, reload to ensure UI is in sync with server
